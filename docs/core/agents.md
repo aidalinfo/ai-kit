@@ -85,6 +85,8 @@ Lorsque vous fournissez `messages`, l'agent injecte automatiquement `instruction
 
 Vous pouvez demander au modele de respecter un schema `zod` en passant l'option `structuredOutput`. L'agent transmet ce schema au champ `experimental_output` du SDK `ai` et vous obtenez un objet type en sortie.
 
+> Note : preferez `agent.generate` pour la generation structuree. Les flux (`stream`) peuvent rompre le parsing schema et ne sont pas encore suffisamment robustes.
+
 ```ts
 import { Output } from "@ai-kit/core/agents";
 import { z } from "zod";
@@ -113,6 +115,41 @@ const structured = await assistant.generate({
 console.log(structured.experimental_output);
 // { name: "...", age: 32, contact: { ... }, occupation: { ... } }
 ```
+
+Pour un schema plus cible, par exemple extraire un identifiant `SIRET` de 14 chiffres :
+
+```ts
+import { Agent, Output } from "@ai-kit/core";
+import { z } from "zod";
+import { google } from "@ai-sdk/google";
+
+const siretOutput = Output.object({
+  schema: z.object({
+    siret: z.string().length(14, {
+      message: "Le SIRET doit contenir exactement 14 chiffres.",
+    }),
+  }),
+});
+
+const assistant = new Agent({
+  name: "assistant-vie",
+  instructions: "Assistant de vie",
+  model: google("gemini-2.5-flash"),
+  tools: {
+    google_search: google.tools.googleSearch({}),
+  },
+});
+
+const result = await assistant.generate({
+  prompt: "Cherche le siret de la societe Aidalinfo",
+  structuredOutput: siretOutput,
+});
+
+console.log(result.experimental_output);
+// { siret: "12345678901234" }
+```
+
+Le schema `zod` impose ici exactement 14 caracteres, ce qui simplifie la validation cote application.
 
 Le champ `experimental_output` contient la reponse validee par le schema. En cas d'erreur de parsing, le SDK leve une exception que vous pouvez intercepter pour reessayer ou journaliser l'echec.
 
@@ -164,6 +201,8 @@ for await (const delta of streamedChat.textStream) {
 
 ### Streamer une sortie structuree
 
+Nous deconseillons d'utiliser `agent.stream` en combinaison avec `structuredOutput` : les sorties intermediaires peuvent devenir incoherentes et le parsing final risque d'echouer. Si vous devez tout de meme experimenter cette approche, partez du principe que vous devrez gerer les erreurs de parsing et reessayer la generation.
+
 En reutilisant `personSpec` defini plus haut, vous pouvez recevoir des fragments partiels pendant le stream puis recuperer l'objet complet une fois la generation terminee.
 
 ```ts
@@ -196,5 +235,5 @@ console.log({ lastPartial, parsedOutput });
 
 - Surchargez `system` dans chaque appel pour modifier ponctuellement les instructions.
 - Ajustez `maxOutputTokens`, `temperature`, `topP`, etc., directement dans les options passees a `generate` ou `stream`.
-- Utilisez `structuredOutput` pour faire respecter un schema `zod` : `experimental_output` sur `generate`, `experimental_partialOutputStream` + `parseOutput` sur `stream`.
+- Utilisez `structuredOutput` pour faire respecter un schema `zod` via `generate`; le support en `stream` reste experimental et fragile.
 - Combinez plusieurs agents pour modeliser des roles specialises (par exemple : redaction, validation, resume).
