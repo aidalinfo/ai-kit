@@ -10,15 +10,10 @@ AI Kit est le micro-framework agentique interne d’Aidalinfo. Son objectif est 
 
 ## Getting Started
 
-```bash
-pnpm install
-pnpm --filter core build # optionnel si vous avez un script de build
-```
-
-Ensuite, installez `@ai-kit/core` dans votre application (Monorepo : utilisez les alias PNPM) :
+Installez directement le package `@ai-kit/core` depuis ce dépôt :
 
 ```bash
-pnpm add @ai-kit/core
+pnpm add @ai-kit/core@github:aidalinfo/ai-kit#path:packages/core
 ```
 
 Configurez vos clés API (ex. Scaleway) dans l’environnement :
