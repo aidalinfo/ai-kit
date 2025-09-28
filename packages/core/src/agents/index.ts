@@ -1,4 +1,12 @@
-import { generateText, streamText, type LanguageModel, Output } from "ai";
+import {
+  generateText,
+  streamText,
+  type LanguageModel,
+  type ToolSet,
+  Output,
+} from "ai";
+
+export { Output } from "ai";
 
 type FirstArg<T> = T extends (arg: infer A, ...rest: any[]) => any ? A : never;
 
@@ -31,17 +39,20 @@ export interface AgentConfig {
   name: string;
   instructions?: string;
   model: LanguageModel;
+  tools?: ToolSet;
 }
 
 export class Agent {
   readonly name: string;
   readonly instructions?: string;
   readonly model: LanguageModel;
+  readonly tools?: ToolSet;
 
-  constructor({ name, instructions, model }: AgentConfig) {
+  constructor({ name, instructions, model, tools }: AgentConfig) {
     this.name = name;
     this.instructions = instructions;
     this.model = model;
+    this.tools = tools;
   }
 
   async generate<OUTPUT = never, PARTIAL_OUTPUT = never>(
@@ -55,6 +66,7 @@ export class Agent {
         ...rest,
         system,
         model: this.model,
+        ...(this.tools ? { tools: this.tools } : {}),
         ...(structuredOutput
           ? { experimental_output: structuredOutput }
           : {}),
@@ -71,6 +83,7 @@ export class Agent {
         ...rest,
         system,
         model: this.model,
+        ...(this.tools ? { tools: this.tools } : {}),
         ...(structuredOutput
           ? { experimental_output: structuredOutput }
           : {}),
@@ -95,6 +108,7 @@ export class Agent {
         ...rest,
         system,
         model: this.model,
+        ...(this.tools ? { tools: this.tools } : {}),
         ...(structuredOutput
           ? { experimental_output: structuredOutput }
           : {}),
@@ -111,6 +125,7 @@ export class Agent {
         ...rest,
         system,
         model: this.model,
+        ...(this.tools ? { tools: this.tools } : {}),
         ...(structuredOutput
           ? { experimental_output: structuredOutput }
           : {}),

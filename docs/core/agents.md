@@ -24,13 +24,32 @@ import { Agent, scaleway } from "@ai-kit/core";
 const assistant = new Agent({
   name: "assistant-documentation",
   instructions: "Tu aides les developpeurs a comprendre la plateforme AI Kit.",
-  model: scaleway("hermes-2-pro")
+  model: scaleway("hermes-2-pro"),
 });
 ```
 
 - `name` sert a identifier votre agent (utile pour la journalisation ou la supervision).
 - `instructions` correspond aux consignes systeme appliquees par defaut. Vous pouvez les surcharger dans chaque appel via l'option `system`.
 - `model` attend un `LanguageModel` du SDK `ai`. Ici nous utilisons l'assistant Scaleway, mais n'importe quel modele compatible est accepte.
+
+### Ajouter des outils par defaut
+
+Passez l'option `tools` pour que l'agent les expose automatiquement a chaque appel. Vous pouvez toujours fournir `tools` dans `generate`/`stream` pour les remplacer ponctuellement.
+
+```ts
+import { Agent, google } from "@ai-kit/core";
+
+const assistant = new Agent({
+  name: "assistant-vie",
+  instructions: "Assistant de vie",
+  model: google("gemini-2.5-flash"),
+  tools: {
+    google_search: google.tools.googleSearch({}),
+  },
+});
+
+await assistant.generate({ prompt: "Quelle est la meteo a Paris ?" });
+```
 
 ## Generer une reponse ponctuelle
 
@@ -67,7 +86,7 @@ Lorsque vous fournissez `messages`, l'agent injecte automatiquement `instruction
 Vous pouvez demander au modele de respecter un schema `zod` en passant l'option `structuredOutput`. L'agent transmet ce schema au champ `experimental_output` du SDK `ai` et vous obtenez un objet type en sortie.
 
 ```ts
-import { Output } from "ai";
+import { Output } from "@ai-kit/core/agents";
 import { z } from "zod";
 
 const personSpec = Output.object({
@@ -104,20 +123,29 @@ Le champ `experimental_output` contient la reponse validee par le schema. En cas
 ```ts
 const stream = await assistant.stream({
   prompt: "Redige un plan detaille pour un guide sur AI Kit.",
-  temperature: 0.5
+  temperature: 0.5,
 });
 
 for await (const chunk of stream.textStream) {
   process.stdout.write(chunk);
 }
 
-const full = await stream.fullResponse();
+const finalText = await stream.text;
+console.log("\n---\n", finalText);
 ```
+
+La fonction `streamText` du SDK renvoie des proprietes sous forme de promesses qui consomment le flux pour fournir un etat agrege :
+
+- `text` : la reponse finale complete.
+- `response` : les metadonnees LLM (messages, headers...).
+- `usage` / `totalUsage` : les compteurs de tokens.
+- `steps` : le detail des etapes intermediaires (notamment utile pour suivre les tool calls).
 
 Champs principaux exposes par le resultat de `stream` (issu de `ai.streamText`) :
 
 - `textStream` : un `AsyncIterable<string>` avec les tokens.
-- `fullResponse()` : promesse qui resout la reponse complete une fois le flux termine.
+- `fullStream` : un flux complet incluant `text`, `reasoning`, outils et erreurs.
+- `text`, `response`, `usage`, `steps` : promesses agregees (voir ci-dessus).
 - `toAIStreamResponse()` / `toDataStreamResponse()` : helpers pour brancher le flux sur une reponse HTTP (utile dans Next.js ou Remix).
 
 ### Stream avec messages
@@ -144,19 +172,29 @@ const streamWithSchema = await assistant.stream({
   structuredOutput: personSpec,
 });
 
+let lastPartial;
 for await (const partial of streamWithSchema.experimental_partialOutputStream) {
+  lastPartial = partial;
   console.log("partial", partial);
 }
 
-const finalOutput = await streamWithSchema.experimental_output;
-console.log(finalOutput);
+const parsedOutput = await personSpec.parseOutput(
+  { text: await streamWithSchema.text },
+  {
+    response: await streamWithSchema.response,
+    usage: await streamWithSchema.usage,
+    finishReason: await streamWithSchema.finishReason,
+  },
+);
+
+console.log({ lastPartial, parsedOutput });
 ```
 
-`experimental_partialOutputStream` diffuse des mises a jour incrmentales respectant le schema `zod`. Le getter `stream.experimental_output` renvoie l'objet final une fois la reponse completement analysee.
+`experimental_partialOutputStream` diffuse des mises a jour incrementales respectant le schema `zod`. Conservez le dernier fragment pour afficher un resultat provisoire, puis parsez la reponse complete avec `parseOutput` pour obtenir un objet valide en fin de flux.
 
 ## Aller plus loin
 
 - Surchargez `system` dans chaque appel pour modifier ponctuellement les instructions.
 - Ajustez `maxOutputTokens`, `temperature`, `topP`, etc., directement dans les options passees a `generate` ou `stream`.
-- Utilisez `structuredOutput` pour faire respecter un schema `zod` et recuperer des donnees fiables via `experimental_output` ou `experimental_partialOutputStream`.
+- Utilisez `structuredOutput` pour faire respecter un schema `zod` : `experimental_output` sur `generate`, `experimental_partialOutputStream` + `parseOutput` sur `stream`.
 - Combinez plusieurs agents pour modeliser des roles specialises (par exemple : redaction, validation, resume).
