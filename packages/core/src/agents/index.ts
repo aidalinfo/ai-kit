@@ -1,4 +1,4 @@
-import { generateText, streamText, type LanguageModel } from "ai";
+import { generateText, streamText, type LanguageModel, Output } from "ai";
 
 type FirstArg<T> = T extends (arg: infer A, ...rest: any[]) => any ? A : never;
 
@@ -8,15 +8,24 @@ type StreamTextParams = FirstArg<typeof streamText>;
 type WithPrompt<T> = Extract<T, { prompt: unknown }>;
 type WithMessages<T> = Extract<T, { messages: unknown }>;
 
-type BaseAgentOptions<T> = Omit<T, "model" | "system"> & { system?: string };
+type StructuredOutput<OUTPUT, PARTIAL_OUTPUT> = Output.Output<
+  OUTPUT,
+  PARTIAL_OUTPUT
+>;
 
-export type AgentGenerateOptions =
-  | BaseAgentOptions<WithPrompt<GenerateTextParams>>
-  | BaseAgentOptions<WithMessages<GenerateTextParams>>;
+type BaseAgentOptions<T, OUTPUT = never, PARTIAL_OUTPUT = never> =
+  Omit<T, "model" | "system" | "experimental_output"> & {
+    system?: string;
+    structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
+  };
 
-export type AgentStreamOptions =
-  | BaseAgentOptions<WithPrompt<StreamTextParams>>
-  | BaseAgentOptions<WithMessages<StreamTextParams>>;
+export type AgentGenerateOptions<OUTPUT = never, PARTIAL_OUTPUT = never> =
+  | BaseAgentOptions<WithPrompt<GenerateTextParams>, OUTPUT, PARTIAL_OUTPUT>
+  | BaseAgentOptions<WithMessages<GenerateTextParams>, OUTPUT, PARTIAL_OUTPUT>;
+
+export type AgentStreamOptions<OUTPUT = never, PARTIAL_OUTPUT = never> =
+  | BaseAgentOptions<WithPrompt<StreamTextParams>, OUTPUT, PARTIAL_OUTPUT>
+  | BaseAgentOptions<WithMessages<StreamTextParams>, OUTPUT, PARTIAL_OUTPUT>;
 
 export interface AgentConfig {
   name: string;
@@ -35,26 +44,38 @@ export class Agent {
     this.model = model;
   }
 
-  async generate(options: AgentGenerateOptions) {
+  async generate<OUTPUT = never, PARTIAL_OUTPUT = never>(
+    options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT>,
+  ) {
     const system = options.system ?? this.instructions;
 
     if ("prompt" in options && options.prompt !== undefined) {
-      const { system: _system, ...rest } = options;
-      const payload: WithPrompt<GenerateTextParams> = {
+      const { system: _system, structuredOutput, ...rest } = options;
+      const payload = {
         ...rest,
         system,
         model: this.model,
+        ...(structuredOutput
+          ? { experimental_output: structuredOutput }
+          : {}),
+      } satisfies WithPrompt<GenerateTextParams> & {
+        experimental_output?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
       };
 
       return generateText(payload);
     }
 
     if ("messages" in options && options.messages !== undefined) {
-      const { system: _system, ...rest } = options;
-      const payload: WithMessages<GenerateTextParams> = {
+      const { system: _system, structuredOutput, ...rest } = options;
+      const payload = {
         ...rest,
         system,
         model: this.model,
+        ...(structuredOutput
+          ? { experimental_output: structuredOutput }
+          : {}),
+      } satisfies WithMessages<GenerateTextParams> & {
+        experimental_output?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
       };
 
       return generateText(payload);
@@ -63,26 +84,38 @@ export class Agent {
     throw new Error("Agent.generate requires a prompt or messages option");
   }
 
-  stream(options: AgentStreamOptions) {
+  stream<OUTPUT = never, PARTIAL_OUTPUT = never>(
+    options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT>,
+  ) {
     const system = options.system ?? this.instructions;
 
     if ("prompt" in options && options.prompt !== undefined) {
-      const { system: _system, ...rest } = options;
-      const payload: WithPrompt<StreamTextParams> = {
+      const { system: _system, structuredOutput, ...rest } = options;
+      const payload = {
         ...rest,
         system,
         model: this.model,
+        ...(structuredOutput
+          ? { experimental_output: structuredOutput }
+          : {}),
+      } satisfies WithPrompt<StreamTextParams> & {
+        experimental_output?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
       };
 
       return streamText(payload);
     }
 
     if ("messages" in options && options.messages !== undefined) {
-      const { system: _system, ...rest } = options;
-      const payload: WithMessages<StreamTextParams> = {
+      const { system: _system, structuredOutput, ...rest } = options;
+      const payload = {
         ...rest,
         system,
         model: this.model,
+        ...(structuredOutput
+          ? { experimental_output: structuredOutput }
+          : {}),
+      } satisfies WithMessages<StreamTextParams> & {
+        experimental_output?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
       };
 
       return streamText(payload);
