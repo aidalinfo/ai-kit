@@ -1,1 +1,1 @@
-# AI kit (Internal framework agentic aidalinfo)
+# AI kit (Internal micro framework agentic aidalinfo)
