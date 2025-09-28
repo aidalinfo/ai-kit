@@ -24,7 +24,7 @@ import { Agent, scaleway } from "@ai-kit/core";
 const assistant = new Agent({
   name: "assistant-documentation",
   instructions: "Tu aides les developpeurs a comprendre la plateforme AI Kit.",
-  model: scaleway("hermes-2-pro"),
+  model: scaleway("gpt-oss-120b"),
 });
 ```
 
