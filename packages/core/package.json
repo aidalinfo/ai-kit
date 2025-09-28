@@ -12,7 +12,12 @@
   "packageManager": "pnpm@10.15.0",
   "dependencies": {
     "@ai-sdk/openai": "latest",
+    "@ai-sdk/provider": "^2.0.0",
+    "@ai-sdk/provider-utils": "^3.0.10",
     "@types/node": "^24.5.2",
     "ai": "latest"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
   }
 }

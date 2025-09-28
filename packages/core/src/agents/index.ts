@@ -6,34 +6,23 @@ import {
   Output,
 } from "ai";
 
+import {
+  generateWithStructuredPipeline,
+  shouldUseStructuredPipeline,
+  streamWithStructuredPipeline,
+} from "./structurePipeline";
+import {
+  type AgentGenerateOptions,
+  type AgentStreamOptions,
+  type GenerateTextParams,
+  type StreamTextParams,
+  type StructuredOutput,
+  type WithMessages,
+  type WithPrompt,
+} from "./types";
+
 export { Output } from "ai";
-
-type FirstArg<T> = T extends (arg: infer A, ...rest: any[]) => any ? A : never;
-
-type GenerateTextParams = FirstArg<typeof generateText>;
-type StreamTextParams = FirstArg<typeof streamText>;
-
-type WithPrompt<T> = Extract<T, { prompt: unknown }>;
-type WithMessages<T> = Extract<T, { messages: unknown }>;
-
-type StructuredOutput<OUTPUT, PARTIAL_OUTPUT> = Output.Output<
-  OUTPUT,
-  PARTIAL_OUTPUT
->;
-
-type BaseAgentOptions<T, OUTPUT = never, PARTIAL_OUTPUT = never> =
-  Omit<T, "model" | "system" | "experimental_output"> & {
-    system?: string;
-    structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
-  };
-
-export type AgentGenerateOptions<OUTPUT = never, PARTIAL_OUTPUT = never> =
-  | BaseAgentOptions<WithPrompt<GenerateTextParams>, OUTPUT, PARTIAL_OUTPUT>
-  | BaseAgentOptions<WithMessages<GenerateTextParams>, OUTPUT, PARTIAL_OUTPUT>;
-
-export type AgentStreamOptions<OUTPUT = never, PARTIAL_OUTPUT = never> =
-  | BaseAgentOptions<WithPrompt<StreamTextParams>, OUTPUT, PARTIAL_OUTPUT>
-  | BaseAgentOptions<WithMessages<StreamTextParams>, OUTPUT, PARTIAL_OUTPUT>;
+export type { AgentGenerateOptions, AgentStreamOptions } from "./types";
 
 export interface AgentConfig {
   name: string;
@@ -59,9 +48,24 @@ export class Agent {
     options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT>,
   ) {
     const system = options.system ?? this.instructions;
+    const structuredOutput = options.structuredOutput;
+
+    if (
+      structuredOutput &&
+      shouldUseStructuredPipeline(this.model, this.tools, structuredOutput)
+    ) {
+      return generateWithStructuredPipeline({
+        model: this.model,
+        tools: this.tools,
+        system,
+        structuredOutput,
+        options,
+      });
+    }
 
     if ("prompt" in options && options.prompt !== undefined) {
-      const { system: _system, structuredOutput, ...rest } = options;
+      const { system: _system, structuredOutput: _structuredOutput, ...rest } =
+        options;
       const payload = {
         ...rest,
         system,
@@ -78,7 +82,8 @@ export class Agent {
     }
 
     if ("messages" in options && options.messages !== undefined) {
-      const { system: _system, structuredOutput, ...rest } = options;
+      const { system: _system, structuredOutput: _structuredOutput, ...rest } =
+        options;
       const payload = {
         ...rest,
         system,
@@ -101,9 +106,24 @@ export class Agent {
     options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT>,
   ) {
     const system = options.system ?? this.instructions;
+    const structuredOutput = options.structuredOutput;
+
+    if (
+      structuredOutput &&
+      shouldUseStructuredPipeline(this.model, this.tools, structuredOutput)
+    ) {
+      return streamWithStructuredPipeline({
+        model: this.model,
+        tools: this.tools,
+        system,
+        structuredOutput,
+        options,
+      });
+    }
 
     if ("prompt" in options && options.prompt !== undefined) {
-      const { system: _system, structuredOutput, ...rest } = options;
+      const { system: _system, structuredOutput: _structuredOutput, ...rest } =
+        options;
       const payload = {
         ...rest,
         system,
@@ -120,7 +140,8 @@ export class Agent {
     }
 
     if ("messages" in options && options.messages !== undefined) {
-      const { system: _system, structuredOutput, ...rest } = options;
+      const { system: _system, structuredOutput: _structuredOutput, ...rest } =
+        options;
       const payload = {
         ...rest,
         system,
