@@ -91,9 +91,7 @@ export async function generateWithStructuredPipeline<
     schema,
   });
 
-  (textResult as GenerateTextResult<ToolSet, OUTPUT> & {
-    resolvedOutput?: OUTPUT;
-  }).resolvedOutput = objectResult.object as OUTPUT;
+  setExperimentalOutput(textResult, objectResult.object as OUTPUT);
 
   return textResult;
 }
@@ -139,9 +137,7 @@ export async function streamWithStructuredPipeline<
 
     try {
       const finalObject = await objectStream.object;
-      (streamResult as StreamTextResult<ToolSet, PARTIAL_OUTPUT> & {
-        resolvedOutput?: OUTPUT;
-      }).resolvedOutput = finalObject as OUTPUT;
+      setExperimentalOutput(streamResult, finalObject as OUTPUT);
     } catch (error) {
       pipelineError = error;
       throw error;
@@ -475,5 +471,14 @@ function overrideExperimentalOutputGetter(
       }
       return getter.call(this);
     },
+  });
+}
+
+function setExperimentalOutput<OUTPUT>(result: unknown, output: OUTPUT) {
+  Object.defineProperty(result as object, "experimental_output", {
+    configurable: true,
+    enumerable: false,
+    value: output,
+    writable: false,
   });
 }
