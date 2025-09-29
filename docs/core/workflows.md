@@ -139,6 +139,98 @@ const notifyTeam = createStep({
 - Réutilisez `cloneStep` pour décliner un même handler sur plusieurs branches.
 - Combinez workflows + agents (`docs/core/agents.md`) pour modéliser des boucles complexes.
 
+## Étapes parallèles et foreach
+
+`createParallelStep` exécute un ensemble d'étapes partageant la même entrée en concurrence et regroupe leurs sorties sous forme d'objet. `createForEachStep` applique un sous-workflow à chaque élément d'une collection et retourne les résultats agrégés (avec `collect` facultatif pour customiser la sortie).
+
+L'exemple ci-dessous illustre un pipeline de chunking : on découpe un texte, puis pour chaque chunk on calcule un embedding et on extrait des tags en parallèle.
+
+```ts
+import {
+  Chunk,
+  TChunkDocument,
+  createForEachStep,
+  createParallelStep,
+  createStep,
+  createWorkflow,
+} from "@ai-kit/core";
+import { z } from "zod";
+
+const chunkText = createStep<{ text: string }, Chunk[]>({
+  id: "chunk-text",
+  description: "Découpe le texte source en segments homogènes",
+  handler: async ({ input }) => {
+    const document = TChunkDocument.fromText(input.text);
+    return document.chunk({
+      chunkSize: 200,
+      chunkOverlap: 20,
+      metadata: { source: "raw-text" },
+    });
+  },
+});
+
+const embedChunk = createStep<Chunk, number[]>({
+  id: "embed-chunk",
+  description: "Calcule un embedding pour un chunk",
+  handler: async ({ input }) => {
+    // Remplacez par votre modèle d'embedding ; ici un stub déterministe
+    return Array.from({ length: 3 }, (_, i) => input.content.length * (i + 1));
+  },
+});
+
+const tagChunk = createStep<Chunk, string[]>({
+  id: "tag-chunk",
+  description: "Extrait des tags clés du chunk",
+  handler: async ({ input }) => {
+    return input.content
+      .split(/[^a-zA-ZÀ-ÿ]+/)
+      .filter(word => word.length > 4)
+      .slice(0, 5);
+  },
+});
+
+const processChunk = createParallelStep({
+  id: "process-chunk",
+  description: "Lance les tâches analytiques en parallèle pour un chunk",
+  steps: {
+    embedding: embedChunk,
+    tags: tagChunk,
+  },
+});
+
+const foreachChunk = createForEachStep({
+  id: "foreach-chunk",
+  description: "Traite chaque chunk en réutilisant le step parallèle",
+  items: ({ input }) => input,
+  itemStep: processChunk,
+});
+
+export const chunkingWorkflow = createWorkflow({
+  id: "chunking-parallel-pipeline",
+  description: "Chunking + traitement parallèle de chaque segment",
+  inputSchema: z.object({ text: z.string().min(1) }),
+  outputSchema: z.array(
+    z.object({
+      embedding: z.array(z.number()),
+      tags: z.array(z.string()),
+    }),
+  ),
+})
+  .then(chunkText)
+  .then(foreachChunk)
+  .commit();
+
+const result = await chunkingWorkflow.run({
+  inputData: { text: "Votre long document..." },
+});
+
+if (result.status === "success") {
+  console.log(result.result);
+}
+```
+
+`createForEachStep` retourne par défaut un tableau : utilisez l'option `collect` pour fusionner les résultats (ex. concaténation des embeddings). `TChunkDocument` assure ici un chunking homogène et la propagation de metadata (`source: "raw-text"`). Les deux helpers sont composables, vous pouvez donc imbriquer un `createParallelStep` dans un `createForEachStep` comme montré ci-dessus, ou l'inverse lorsque vous devez lancer des boucles indépendantes en parallèle.
+
 ## Exemple complet : workflow météo + agent
 
 > Ce scénario requiert un environnement qui expose `fetch` (Node.js 18+ ou polyfill).

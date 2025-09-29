@@ -195,6 +195,133 @@ export const cloneStep = <
   overrides: Partial<WorkflowStepConfig<Input, Output, Meta, RootInput>>,
 ) => step.clone(overrides);
 
+type WorkflowStepOutput<T extends WorkflowStep<any, any, any, any>> =
+  T extends WorkflowStep<any, infer Output, any, any> ? Output : never;
+
+type MaybePromise<T> = T | Promise<T>;
+
+type ParallelStepOutputs<
+  Steps extends Record<string, WorkflowStep<any, any, any, any>>,
+> = {
+  [Key in keyof Steps]: WorkflowStepOutput<Steps[Key]>;
+};
+
+export interface ParallelStepConfig<
+  Input,
+  Steps extends Record<string, WorkflowStep<Input, unknown, Meta, RootInput>>,
+  Meta extends Record<string, unknown> = Record<string, unknown>,
+  RootInput = unknown,
+> {
+  id: string;
+  description?: string;
+  inputSchema?: SchemaLike<Input>;
+  outputSchema?: SchemaLike<ParallelStepOutputs<Steps>>;
+  steps: Steps;
+}
+
+export const createParallelStep = <
+  Input,
+  Steps extends Record<string, WorkflowStep<Input, unknown, Meta, RootInput>>,
+  Meta extends Record<string, unknown> = Record<string, unknown>,
+  RootInput = unknown,
+>({ id, description, inputSchema, outputSchema, steps }: ParallelStepConfig<Input, Steps, Meta, RootInput>) =>
+  createStep<Input, ParallelStepOutputs<Steps>, Meta, RootInput>({
+    id,
+    description,
+    inputSchema,
+    outputSchema,
+    handler: async ({ input, context, signal }) => {
+      const entries = Object.entries(steps).map(async ([key, step]) => {
+        try {
+          const { output } = await step.execute({ input, context, signal });
+          return [key, output] as const;
+        } catch (error) {
+          throw new WorkflowExecutionError(`Parallel step ${id} failed during child step ${key}`, error);
+        }
+      });
+
+      const results = await Promise.all(entries);
+      return Object.fromEntries(results) as ParallelStepOutputs<Steps>;
+    },
+  });
+
+type ForEachCollectFn<ItemStep extends WorkflowStep<any, any, any, any>> = (
+  results: Array<WorkflowStepOutput<ItemStep>>,
+) => MaybePromise<unknown>;
+
+type ForEachStepOutput<
+  ItemStep extends WorkflowStep<any, any, any, any>,
+  Collect extends ForEachCollectFn<ItemStep> | undefined,
+> = Collect extends ForEachCollectFn<ItemStep>
+  ? Awaited<ReturnType<Collect>>
+  : Array<WorkflowStepOutput<ItemStep>>;
+
+export interface ForEachStepConfig<
+  Input,
+  Item,
+  ItemStep extends WorkflowStep<Item, unknown, Meta, RootInput>,
+  Meta extends Record<string, unknown> = Record<string, unknown>,
+  RootInput = unknown,
+  Collect extends ForEachCollectFn<ItemStep> | undefined = undefined,
+> {
+  id: string;
+  description?: string;
+  inputSchema?: SchemaLike<Input>;
+  outputSchema?: SchemaLike<ForEachStepOutput<ItemStep, Collect>>;
+  items: (args: StepHandlerArgs<Input, Meta, RootInput>) => MaybePromise<Iterable<Item>>;
+  itemStep: ItemStep;
+  collect?: Collect;
+}
+
+export const createForEachStep = <
+  Input,
+  Item,
+  ItemStep extends WorkflowStep<Item, unknown, Meta, RootInput>,
+  Meta extends Record<string, unknown> = Record<string, unknown>,
+  RootInput = unknown,
+  Collect extends ForEachCollectFn<ItemStep> | undefined = undefined,
+>(
+  config: ForEachStepConfig<Input, Item, ItemStep, Meta, RootInput, Collect>,
+) =>
+  createStep<Input, ForEachStepOutput<ItemStep, Collect>, Meta, RootInput>({
+    id: config.id,
+    description: config.description,
+    inputSchema: config.inputSchema,
+    outputSchema: config.outputSchema,
+    handler: async (args) => {
+      const itemsIterable = await config.items(args);
+      const items = Array.isArray(itemsIterable) ? itemsIterable : Array.from(itemsIterable);
+      const results: Array<WorkflowStepOutput<ItemStep>> = [];
+
+      for (let index = 0; index < items.length; index += 1) {
+        if (args.signal.aborted) {
+          throw args.signal.reason ?? new WorkflowAbortError();
+        }
+
+        const currentItem = items[index];
+
+        try {
+          const { output } = await config.itemStep.execute({
+            ...args,
+            input: currentItem,
+          });
+          results.push(output as WorkflowStepOutput<ItemStep>);
+        } catch (error) {
+          throw new WorkflowExecutionError(
+            `ForEach step ${config.id} failed while processing item at index ${index}`,
+            error,
+          );
+        }
+      }
+
+      if (config.collect) {
+        return (await config.collect(results)) as ForEachStepOutput<ItemStep, Collect>;
+      }
+
+      return results as ForEachStepOutput<ItemStep, Collect>;
+    },
+  });
+
 export interface WorkflowConfig<
   Input,
   Output,
@@ -703,4 +830,3 @@ const mergeSignals = (signals: AbortSignal[]): AbortSignal => {
 
   return controller.signal;
 };
-
