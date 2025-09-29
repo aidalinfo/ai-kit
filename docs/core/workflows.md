@@ -203,6 +203,7 @@ const foreachChunk = createForEachStep({
   description: "Traite chaque chunk en réutilisant le step parallèle",
   items: ({ input }) => input,
   itemStep: processChunk,
+  concurrency: 4,
 });
 
 export const chunkingWorkflow = createWorkflow({
@@ -229,7 +230,7 @@ if (result.status === "success") {
 }
 ```
 
-`createForEachStep` retourne par défaut un tableau : utilisez l'option `collect` pour fusionner les résultats (ex. concaténation des embeddings). `TChunkDocument` assure ici un chunking homogène et la propagation de metadata (`source: "raw-text"`). Les deux helpers sont composables, vous pouvez donc imbriquer un `createParallelStep` dans un `createForEachStep` comme montré ci-dessus, ou l'inverse lorsque vous devez lancer des boucles indépendantes en parallèle.
+`createForEachStep` retourne par défaut un tableau : utilisez l'option `collect` pour fusionner les résultats (ex. concaténation des embeddings). `TChunkDocument` assure ici un chunking homogène et la propagation de metadata (`source: "raw-text"`). Ajoutez `concurrency` (par défaut 1) pour traiter plusieurs items en parallèle lorsque vos handlers sont I/O bound. Les deux helpers sont composables, vous pouvez donc imbriquer un `createParallelStep` dans un `createForEachStep` comme montré ci-dessus, ou l'inverse lorsque vous devez lancer des boucles indépendantes en parallèle.
 
 ## Exemple complet : workflow météo + agent
 

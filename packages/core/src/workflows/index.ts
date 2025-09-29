@@ -271,6 +271,7 @@ export interface ForEachStepConfig<
   items: (args: StepHandlerArgs<Input, Meta, RootInput>) => MaybePromise<Iterable<Item>>;
   itemStep: ItemStep;
   collect?: Collect;
+  concurrency?: number;
 }
 
 export const createForEachStep = <
@@ -291,28 +292,48 @@ export const createForEachStep = <
     handler: async (args) => {
       const itemsIterable = await config.items(args);
       const items = Array.isArray(itemsIterable) ? itemsIterable : Array.from(itemsIterable);
-      const results: Array<WorkflowStepOutput<ItemStep>> = [];
+      const total = items.length;
+      const rawConcurrency = config.concurrency ?? 1;
+      const concurrency = Number.isFinite(rawConcurrency)
+        ? Math.max(1, Math.floor(rawConcurrency))
+        : 1;
+      const results: Array<WorkflowStepOutput<ItemStep>> = new Array(total);
 
-      for (let index = 0; index < items.length; index += 1) {
-        if (args.signal.aborted) {
-          throw args.signal.reason ?? new WorkflowAbortError();
+      let currentIndex = 0;
+
+      const worker = async () => {
+        while (true) {
+          if (args.signal.aborted) {
+            throw args.signal.reason ?? new WorkflowAbortError();
+          }
+
+          const index = currentIndex;
+          currentIndex += 1;
+
+          if (index >= total) {
+            break;
+          }
+
+          const item = items[index];
+
+          try {
+            const { output } = await config.itemStep.execute({
+              ...args,
+              input: item,
+            });
+            results[index] = output as WorkflowStepOutput<ItemStep>;
+          } catch (error) {
+            throw new WorkflowExecutionError(
+              `ForEach step ${config.id} failed while processing item at index ${index}`,
+              error,
+            );
+          }
         }
+      };
 
-        const currentItem = items[index];
+      const workers = Array.from({ length: Math.min(concurrency, total) }, () => worker());
 
-        try {
-          const { output } = await config.itemStep.execute({
-            ...args,
-            input: currentItem,
-          });
-          results.push(output as WorkflowStepOutput<ItemStep>);
-        } catch (error) {
-          throw new WorkflowExecutionError(
-            `ForEach step ${config.id} failed while processing item at index ${index}`,
-            error,
-          );
-        }
-      }
+      await Promise.all(workers);
 
       if (config.collect) {
         return (await config.collect(results)) as ForEachStepOutput<ItemStep, Collect>;
