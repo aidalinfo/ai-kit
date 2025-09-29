@@ -10,19 +10,19 @@ import {
   generateWithStructuredPipeline,
   shouldUseStructuredPipeline,
   streamWithStructuredPipeline,
-} from "./structurePipeline";
-import {
-  type AgentGenerateOptions,
-  type AgentStreamOptions,
-  type GenerateTextParams,
-  type StreamTextParams,
-  type StructuredOutput,
-  type WithMessages,
-  type WithPrompt,
-} from "./types";
+} from "./structurePipeline.js";
+import type {
+  AgentGenerateOptions,
+  AgentStreamOptions,
+  GenerateTextParams,
+  StreamTextParams,
+  StructuredOutput,
+  WithMessages,
+  WithPrompt,
+} from "./types.js";
 
 export { Output } from "ai";
-export type { AgentGenerateOptions, AgentStreamOptions } from "./types";
+export type { AgentGenerateOptions, AgentStreamOptions } from "./types.js";
 
 export interface AgentConfig {
   name: string;

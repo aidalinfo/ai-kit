@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "module": "ESNext",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "target": "es2022",
-    "moduleResolution": "node",
     "types": [
       "node",
       "vitest/globals"

@@ -11,15 +11,15 @@ import {
 import { jsonSchema } from "@ai-sdk/provider-utils";
 import type { JSONSchema7 } from "@ai-sdk/provider";
 
-import {
-  type AgentGenerateOptions,
-  type AgentStreamOptions,
-  type GenerateTextParams,
-  type StreamTextParams,
-  type StructuredOutput,
-  type WithMessages,
-  type WithPrompt,
-} from "./types";
+import type {
+  AgentGenerateOptions,
+  AgentStreamOptions,
+  GenerateTextParams,
+  StreamTextParams,
+  StructuredOutput,
+  WithMessages,
+  WithPrompt,
+} from "./types.js";
 
 const OPENAI_PROVIDER_ID = "openai";
 
@@ -256,7 +256,9 @@ function flattenPrompt(
 
   if (Array.isArray(prompt)) {
     return (prompt as ModelMessages)
-      .map((message) => flattenMessageContent(message.content))
+      .map((message: ModelMessages[number]) =>
+        flattenMessageContent(message.content),
+      )
       .filter(Boolean)
       .join("\n");
   }

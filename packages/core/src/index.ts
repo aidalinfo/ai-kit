@@ -1,4 +1,4 @@
-export * from "./agents";
-export * from './workflows';
-export * from "./shared/utils/TChunk";
-export { scaleway } from "./shared/utils/provider/scaleway";
+export * from "./agents/index.js";
+export * from "./workflows/index.js";
+export * from "./shared/utils/TChunk/index.js";
+export { scaleway } from "./shared/utils/provider/scaleway.js";

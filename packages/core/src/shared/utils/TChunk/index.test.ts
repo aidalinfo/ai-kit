@@ -5,7 +5,7 @@ import {
   splitJsonRecursively,
   TChunkDocument,
   type JsonRecursiveChunkOptions,
-} from "./index";
+} from "./index.js";
 
 describe("splitTextRecursively", () => {
   it("annotates chunks with the text type", () => {
