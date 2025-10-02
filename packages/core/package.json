@@ -1,6 +1,6 @@
 {
   "name": "@ai_kit/core",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "",
   "type": "module",
   "main": "./dist/index.js",
@@ -32,7 +32,7 @@
     "@types/node": "^24.5.2",
     "ai": "latest"
   },
-  
+
   "devDependencies": {
     "typescript": "^5.9.2",
     "vitest": "^2.1.3"
