@@ -5,7 +5,7 @@ on:
     branches: [ main ]
     paths:
       - 'packages/core/package.json'
-
+  workflow_dispatch:
 jobs:
   publish:
     runs-on: ubuntu-latest
