@@ -89,6 +89,45 @@ console.log(outcome.result);
 
 - `packages/core` : cœur du framework (agents, chunking, workflows, providers).
 - `docs/core` : documentation interne (agents, chunks, workflows, bonnes pratiques).
+- `packages/mcp-docs-server` : serveur MCP exposant la documentation AI Kit.
+
+## Serveur MCP Docs
+
+Le package `@ai_kit/mcp-docs` fournit un serveur MCP qui diffuse toute la documentation (répertoire `docs/`, `README.md` racine, et les README de packages si présents). Deux outils sont exposés :
+
+- `ai-kit-docs` : navigation dans l’arborescence, lecture des fichiers et survol des mots-clés.
+- `ai-kit-docs-search` : recherche plein texte avec extraits contextualisés.
+
+### Utilisation rapide
+
+```bash
+npx -y @ai_kit/mcp-docs
+```
+
+Le serveur écoute en STDIO. Tu peux le brancher directement dans n’importe quel client MCP (Claude Desktop, Cursor, etc.).
+
+### Exemple de configuration Claude Desktop
+
+```json
+{
+  "mcpServers": {
+    "ai-kit-docs": {
+      "command": "npx",
+      "args": ["-y", "@ai_kit/mcp-docs"],
+    }
+  },
+}
+```
+
+### Inclure d’autres README
+
+Le script de build copie automatiquement :
+
+- `docs/**` → `dist/docs/**` ;
+- `README.md` (racine) → `dist/docs/README.md` ;
+- `packages/<nom>/README.md` → `dist/docs/<nom>/README.md` (si le fichier existe).
+
+Pour exposer le README du package `@ai-kit/core`, il suffit donc de créer `packages/core/README.md`. Le prochain `pnpm --filter @ai_kit/mcp-docs build` répliquera ce fichier et il deviendra accessible via l’outil MCP.
 
 ## Contribuer
 
@@ -101,5 +140,6 @@ console.log(outcome.result);
 - [Documentation Agents](./docs/core/agents.md)
 - [Documentation Chunks](./docs/core/chunks.md)
 - [Documentation Workflows](./docs/core/workflows.md)
+- [Documentation MCP](./docs/mcp/usage.md)
 
 L’objectif est de renforcer notre autonomie technique autour des assistants et pipelines AI : n’hésitez pas à compléter ces ressources et à proposer des améliorations.

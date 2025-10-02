@@ -18,3 +18,10 @@ export class WorkflowExecutionError extends Error {
     this.name = "WorkflowExecutionError";
   }
 }
+
+export class WorkflowBranchResolutionError extends Error {
+  constructor(message: string, public readonly branchId?: unknown) {
+    super(message);
+    this.name = "WorkflowBranchResolutionError";
+  }
+}
