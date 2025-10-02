@@ -1,6 +1,5 @@
 {
   "name": "@ai_kit/core",
-  "private": false,
   "version": "1.0.1",
   "description": "",
   "type": "module",
