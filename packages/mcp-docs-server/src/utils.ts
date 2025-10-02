@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,7 +32,24 @@ export function getDocsRoot(): string {
   if (envOverride) {
     return path.resolve(envOverride);
   }
-  return path.resolve(packageRoot, "../..", "docs");
+
+  const candidates = [
+    path.resolve(packageRoot, "dist", "docs"),
+    path.resolve(packageRoot, "docs"),
+    path.resolve(packageRoot, "../..", "docs")
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.statSync(candidate).isDirectory()) {
+        return candidate;
+      }
+    } catch {
+      // Ignore missing paths; try next candidate.
+    }
+  }
+
+  return candidates[candidates.length - 1];
 }
 
 export function isWithinDocs(fullPath: string, docsRoot: string): boolean {
