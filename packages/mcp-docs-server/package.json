@@ -1,6 +1,6 @@
 {
   "name": "@ai_kit/mcp-docs",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "MCP server exposing AI Kit documentation",
   "type": "module",
   "main": "./dist/index.js",
