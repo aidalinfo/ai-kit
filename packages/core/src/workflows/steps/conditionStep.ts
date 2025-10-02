@@ -23,6 +23,6 @@ export const createConditionStep = <
 >({ handler, resolveBranch, ...config }: ConditionStepConfig<Input, Output, Meta, RootInput>) =>
   createStep<Input, Output, Meta, RootInput>({
     ...config,
-    handler: handler ?? (async ({ input }) => input as Output),
+    handler: handler ?? (async ({ input }) => input as unknown as Output),
     branchResolver: resolveBranch,
   });
