@@ -19,6 +19,10 @@ export {
 } from "./steps/forEachStep.js";
 export type { ForEachCollectFn, ForEachStepConfig, ForEachStepOutput } from "./steps/forEachStep.js";
 
+export { createConditionStep } from "./steps/conditionStep.js";
+export type { ConditionStepConfig } from "./steps/conditionStep.js";
+
 export { WorkflowBuilder, createWorkflow } from "./workflowBuilder.js";
 export { Workflow } from "./workflow.js";
 export { WorkflowRun } from "./workflowRun.js";
+export { renderWorkflowGraphJSON } from "./inspector.js";

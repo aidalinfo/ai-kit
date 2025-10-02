@@ -1,5 +1,13 @@
 import { parseWithSchema } from "../utils/validation.js";
-import type { StepHandlerArgs, WorkflowStepConfig } from "../types.js";
+import type {
+  BranchId,
+  StepHandlerArgs,
+  StepTransitionContext,
+  WorkflowStepConfig,
+  MaybePromise,
+  BranchResolver,
+  NextResolver,
+} from "../types.js";
 
 export class WorkflowStep<
   Input,
@@ -12,13 +20,25 @@ export class WorkflowStep<
   private readonly inputSchema?: WorkflowStepConfig<Input, Output, Meta, RootInput>["inputSchema"];
   private readonly outputSchema?: WorkflowStepConfig<Input, Output, Meta, RootInput>["outputSchema"];
   private readonly handler: WorkflowStepConfig<Input, Output, Meta, RootInput>["handler"];
+  private readonly next?: string | NextResolver<Input, Output, Meta, RootInput>;
+  private readonly branchResolver?: BranchResolver<Input, Output, Meta, RootInput>;
 
-  constructor({ id, description, inputSchema, outputSchema, handler }: WorkflowStepConfig<Input, Output, Meta, RootInput>) {
+  constructor({
+    id,
+    description,
+    inputSchema,
+    outputSchema,
+    handler,
+    next,
+    branchResolver,
+  }: WorkflowStepConfig<Input, Output, Meta, RootInput>) {
     this.id = id;
     this.description = description;
     this.inputSchema = inputSchema;
     this.outputSchema = outputSchema;
     this.handler = handler;
+    this.next = next;
+    this.branchResolver = branchResolver;
   }
 
   async execute(
@@ -46,7 +66,33 @@ export class WorkflowStep<
       inputSchema: overrides.inputSchema ?? this.inputSchema,
       outputSchema: overrides.outputSchema ?? this.outputSchema,
       handler: overrides.handler ?? this.handler,
+      next: overrides.next ?? this.next,
+      branchResolver: overrides.branchResolver ?? this.branchResolver,
     });
+  }
+
+  async resolveNext(
+    args: StepTransitionContext<Input, Output, Meta, RootInput>,
+  ): Promise<string | undefined> {
+    if (!this.next) {
+      return undefined;
+    }
+
+    if (typeof this.next === "string") {
+      return this.next;
+    }
+
+    return this.next(args);
+  }
+
+  resolveBranch(
+    args: StepTransitionContext<Input, Output, Meta, RootInput>,
+  ): MaybePromise<BranchId | undefined> {
+    return this.branchResolver?.(args);
+  }
+
+  getStaticNext(): string | undefined {
+    return typeof this.next === "string" ? this.next : undefined;
   }
 }
 

@@ -232,6 +232,75 @@ if (result.status === "success") {
 
 `createForEachStep` retourne par défaut un tableau : utilisez l'option `collect` pour fusionner les résultats (ex. concaténation des embeddings). `TChunkDocument` assure ici un chunking homogène et la propagation de metadata (`source: "raw-text"`). Ajoutez `concurrency` (par défaut 1) pour traiter plusieurs items en parallèle lorsque vos handlers sont I/O bound. Les deux helpers sont composables, vous pouvez donc imbriquer un `createParallelStep` dans un `createForEachStep` comme montré ci-dessus, ou l'inverse lorsque vous devez lancer des boucles indépendantes en parallèle.
 
+## Branches conditionnelles
+
+Les workflows peuvent désormais bifurquer dynamiquement avec `createConditionStep`. La méthode `.conditions()` enregistre un step décisionnel dont le `resolveBranch` retourne soit l'indice d'une branche (mode tuple), soit une clé explicite (mode objet). Lorsque le resolver renvoie `undefined`, l'exécution reprend la séquence linéaire suivante.
+
+```ts
+import {
+  createConditionStep,
+  createStep,
+  createWorkflow,
+} from "@ai-kit/core";
+
+const calculateScore = createStep<{ score: number }, { score: number }>({
+  id: "calculate-score",
+  handler: ({ input }) => ({ score: Math.max(0, Math.min(1, input.score)) }),
+});
+
+const evaluateRisk = createConditionStep<{ score: number }, { score: number }>({
+  id: "evaluate-risk",
+  resolveBranch: ({ output }) => {
+    if (output.score >= 0.8) return "high";
+    if (output.score >= 0.5) return "medium";
+    if (output.score >= 0.2) return "low";
+    return undefined;
+  },
+});
+
+const handleLow = createStep<{ score: number }, string>({
+  id: "handle-low",
+  handler: ({ input }) => `LOW:${input.score}`,
+});
+
+const handleMedium = createStep<{ score: number }, string>({
+  id: "handle-medium",
+  handler: ({ input }) => `MEDIUM:${input.score}`,
+});
+
+const handleHigh = createStep<{ score: number }, string>({
+  id: "handle-high",
+  handler: ({ input }) => `HIGH:${input.score}`,
+});
+
+export const riskWorkflow = createWorkflow({ id: "risk" })
+  .then(calculateScore)
+  .conditions(evaluateRisk)
+  .then({
+    low: handleLow,
+    medium: handleMedium,
+    high: handleHigh,
+  })
+  .commit();
+```
+
+Chaque branche apparaît dans les snapshots de run (`branchId`, `nextStepId`) et un événement `step:branch` est émis avant l'exécution de l'étape cible, permettant de tracer les décisions prises.
+
+Variante tuple :
+
+```ts
+createWorkflow({ id: "risk" })
+  .then(calculateScore)
+  .conditions(
+    createConditionStep<{ score: number }, { score: number }>({
+      id: "evaluate-risk-index",
+      resolveBranch: ({ output }) => (output.score >= 0.5 ? 0 : 1),
+    }),
+  )
+  .then(handleHigh, handleLow)
+  .commit();
+```
+
 ## Exemple complet : workflow météo + agent
 
 > Ce scénario requiert un environnement qui expose `fetch` (Node.js 18+ ou polyfill).
