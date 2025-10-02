@@ -78,5 +78,5 @@ jobs:
             ## Changes
 
             Package ${{ steps.package.outputs.name }} has been updated to version ${{ steps.package.outputs.version }}.
-        draft: false
-        prerelease: false
+          draft: false
+          prerelease: false
