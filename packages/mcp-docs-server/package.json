@@ -12,7 +12,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && tsc -p tsconfig.scripts.json && node ./dist/scripts/copy-docs.js",
     "clean": "rm -rf dist",
     "dev": "tsx src/cli.ts",
     "start": "node ./dist/cli.js"
