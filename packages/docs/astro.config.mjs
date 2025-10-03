@@ -11,9 +11,4 @@ export default defineConfig({
       external: ["sharp"],
     },
   },
-  image: {
-    service: {
-      entrypoint: "astro/assets/services/squoosh",
-    },
-  },
 });
