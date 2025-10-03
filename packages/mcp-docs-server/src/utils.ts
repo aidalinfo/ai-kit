@@ -36,7 +36,7 @@ export function getDocsRoot(): string {
   const candidates = [
     path.resolve(packageRoot, "dist", "docs"),
     path.resolve(packageRoot, "docs"),
-    path.resolve(packageRoot, "../..", "docs")
+    path.resolve(packageRoot, "../docs/src/content/docs")
   ];
 
   for (const candidate of candidates) {
