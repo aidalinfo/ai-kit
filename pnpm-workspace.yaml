@@ -2,3 +2,4 @@ packages:
   - packages/core
   - packages/types
   - packages/mcp-docs-server
+  - packages/docs

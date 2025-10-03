@@ -1,20 +1,19 @@
-# Agents
+---
+title: Agents
+description: Comment instancier et utiliser des agents avec AI Kit
+sidebar:
+  order: 1
+---
 
 Cette page explique comment instancier un agent avec `@ai_kit/core`, puis comment produire des reponses uniques (`generate`) ou en flux (`stream`). Un agent encapsule un modele et des instructions systeme reutilisables pour centraliser votre configuration.
 
-## Installation et pre-requis
+import { PackageManagers } from 'starlight-package-managers'
 
-- Installez la bibliotheque core ainsi que le SDK modele :
+## Installation
 
-```bash
-pnpm add @ai_kit/core @ai-sdk/openai ai zod
-```
+Installez la bibliotheque core ainsi que le SDK modele :
 
-- Preparez votre cle API dans une variable d'environnement. Par exemple avec Scaleway :
-
-```bash
-export SCALEWAY_API_KEY="skw-..."
-```
+<PackageManagers pkg="@ai_kit/core @ai-sdk/openai ai zod" />
 
 ## Creer un agent
 

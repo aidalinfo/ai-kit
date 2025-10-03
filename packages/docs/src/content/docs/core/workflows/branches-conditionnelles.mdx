@@ -1,0 +1,83 @@
+---
+title: Branches conditionnelles
+description: Bifurquez dynamiquement l'exécution d'un workflow.
+sidebar:
+  order: 4
+---
+
+Les workflows peuvent bifurquer avec `createConditionStep`. La méthode `.conditions()` attache un step décisionnel dont la fonction `resolveBranch` renvoie soit l'indice d'une branche (mode tuple), soit une clé explicite (mode objet). Si vous renvoyez `undefined`, l'exécution reprend la séquence linéaire suivante.
+
+```ts
+import {
+  createConditionStep,
+  createStep,
+  createWorkflow,
+} from "@ai_kit/core";
+
+const calculateScore = createStep<{ score: number }, { score: number }>({
+  id: "calculate-score",
+  handler: ({ input }) => ({ score: Math.max(0, Math.min(1, input.score)) }),
+});
+
+const evaluateRisk = createConditionStep<{ score: number }, { score: number }>({
+  id: "evaluate-risk",
+  resolveBranch: ({ output }) => {
+    if (output.score >= 0.8) return "high";
+    if (output.score >= 0.5) return "medium";
+    if (output.score >= 0.2) return "low";
+    return undefined;
+  },
+});
+
+const handleLow = createStep<{ score: number }, string>({
+  id: "handle-low",
+  handler: ({ input }) => `LOW:${input.score}`,
+});
+
+const handleMedium = createStep<{ score: number }, string>({
+  id: "handle-medium",
+  handler: ({ input }) => `MEDIUM:${input.score}`,
+});
+
+const handleHigh = createStep<{ score: number }, string>({
+  id: "handle-high",
+  handler: ({ input }) => `HIGH:${input.score}`,
+});
+
+export const riskWorkflow = createWorkflow({ id: "risk" })
+  .then(calculateScore)
+  .conditions(evaluateRisk)
+  .then({
+    low: handleLow,
+    medium: handleMedium,
+    high: handleHigh,
+  })
+  .commit();
+```
+
+Chaque branche apparaît dans les snapshots de run (`branchId`, `nextStepId`) et un événement `step:branch` est émis avant l'exécution de l'étape cible, ce qui facilite l'observabilité.
+
+## Variante tuple
+
+```ts
+createWorkflow({ id: "risk" })
+  .then(calculateScore)
+  .conditions(
+    createConditionStep<{ score: number }, { score: number }>({
+      id: "evaluate-risk-index",
+      resolveBranch: ({ output }) => (output.score >= 0.5 ? 0 : 1),
+    }),
+  )
+  .then(handleHigh, handleLow)
+  .commit();
+```
+
+Utilisez cette forme lorsque l'ordre est plus pertinent que le nommage des branches (ex. tableau d'étapes existantes).
+
+### Conseils
+
+- Faites apparaître les règles métier dans `resolveBranch` pour simplifier la maintenance.
+- Ajoutez des événements personnalisés (`context.emit`) pour tracer la logique de décision.
+- Combinez `.conditions()` avec `createParallelStep` ou `createForEachStep` pour construire des pipelines hybrides.
+
+Retour à la [page d'introduction](./) pour explorer d'autres possibilités.

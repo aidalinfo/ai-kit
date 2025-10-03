@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   const scriptDir = path.dirname(fileURLToPath(scriptUrl));
   const packageRoot = path.resolve(scriptDir);
 
-  const docsSource = path.resolve(packageRoot, "../..", "docs");
+  const docsSource = path.resolve(packageRoot, "../docs/src/content/docs");
   const docsDestination = path.resolve(packageRoot, "dist", "docs");
 
   if (!(await pathExists(docsSource))) {
