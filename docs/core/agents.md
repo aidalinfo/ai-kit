@@ -1,13 +1,13 @@
 # Agents
 
-Cette page explique comment instancier un agent avec `@ai-kit/core`, puis comment produire des reponses uniques (`generate`) ou en flux (`stream`). Un agent encapsule un modele et des instructions systeme reutilisables pour centraliser votre configuration.
+Cette page explique comment instancier un agent avec `@ai_kit/core`, puis comment produire des reponses uniques (`generate`) ou en flux (`stream`). Un agent encapsule un modele et des instructions systeme reutilisables pour centraliser votre configuration.
 
 ## Installation et pre-requis
 
 - Installez la bibliotheque core ainsi que le SDK modele :
 
 ```bash
-pnpm add @ai-kit/core @ai-sdk/openai ai zod
+pnpm add @ai_kit/core @ai-sdk/openai ai zod
 ```
 
 - Preparez votre cle API dans une variable d'environnement. Par exemple avec Scaleway :
@@ -19,7 +19,7 @@ export SCALEWAY_API_KEY="skw-..."
 ## Creer un agent
 
 ```ts
-import { Agent, scaleway } from "@ai-kit/core";
+import { Agent, scaleway } from "@ai_kit/core";
 
 const assistant = new Agent({
   name: "assistant-documentation",
@@ -37,7 +37,7 @@ const assistant = new Agent({
 Passez l'option `tools` pour que l'agent les expose automatiquement a chaque appel. Vous pouvez toujours fournir `tools` dans `generate`/`stream` pour les remplacer ponctuellement.
 
 ```ts
-import { Agent, google } from "@ai-kit/core";
+import { Agent, google } from "@ai_kit/core";
 
 const assistant = new Agent({
   name: "assistant-vie",
@@ -88,7 +88,7 @@ Vous pouvez demander au modele de respecter un schema `zod` en passant l'option 
 > Note : preferez `agent.generate` pour la generation structuree. Les flux (`stream`) peuvent rompre le parsing schema et ne sont pas encore suffisamment robustes.
 
 ```ts
-import { Output } from "@ai-kit/core/agents";
+import { Output } from "@ai_kit/core/agents";
 import { z } from "zod";
 
 const personSpec = Output.object({
@@ -119,7 +119,7 @@ console.log(structured.experimental_output);
 Pour un schema plus cible, par exemple extraire un identifiant `SIRET` de 14 chiffres :
 
 ```ts
-import { Agent, Output } from "@ai-kit/core";
+import { Agent, Output } from "@ai_kit/core";
 import { z } from "zod";
 import { google } from "@ai-sdk/google";
 

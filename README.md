@@ -10,10 +10,10 @@ AI Kit est le micro-framework agentique interne d’Aidalinfo. Son objectif est 
 
 ## Getting Started
 
-Installez directement le package `@ai-kit/core` depuis ce dépôt :
+Installez directement le package `@ai_kit/core` depuis ce dépôt :
 
 ```bash
-pnpm add @ai-kit/core@github:aidalinfo/ai-kit#path:packages/core
+pnpm add @ai_kit/core@github:aidalinfo/ai_kit#path:packages/core
 ```
 
 Configurez vos clés API (ex. Scaleway) dans l’environnement :
@@ -27,7 +27,7 @@ export SCALEWAY_API_KEY="skw-..."
 ### Créer un agent
 
 ```ts
-import { Agent, scaleway } from "@ai-kit/core";
+import { Agent, scaleway } from "@ai_kit/core";
 
 const assistant = new Agent({
   name: "assistant-internal",
@@ -47,7 +47,7 @@ console.log(result.text);
 ### Découper du contenu
 
 ```ts
-import { splitTextRecursively } from "@ai-kit/core";
+import { splitTextRecursively } from "@ai_kit/core";
 
 const chunks = splitTextRecursively(longRapport, {
   chunkSize: 400,
@@ -68,7 +68,7 @@ const passages = chunks.map((chunk) => ({
 ### Orchestrer un workflow
 
 ```ts
-import { createStep, createWorkflow } from "@ai-kit/core";
+import { createStep, createWorkflow } from "@ai_kit/core";
 
 const enrichData = createStep({
   id: "enrich-data",
@@ -95,8 +95,8 @@ console.log(outcome.result);
 
 Le package `@ai_kit/mcp-docs` fournit un serveur MCP qui diffuse toute la documentation (répertoire `docs/`, `README.md` racine, et les README de packages si présents). Deux outils sont exposés :
 
-- `ai-kit-docs` : navigation dans l’arborescence, lecture des fichiers et survol des mots-clés.
-- `ai-kit-docs-search` : recherche plein texte avec extraits contextualisés.
+- `ai_kit-docs` : navigation dans l’arborescence, lecture des fichiers et survol des mots-clés.
+- `ai_kit-docs-search` : recherche plein texte avec extraits contextualisés.
 
 ### Utilisation rapide
 
@@ -111,7 +111,7 @@ Le serveur écoute en STDIO. Tu peux le brancher directement dans n’importe qu
 ```json
 {
   "mcpServers": {
-    "ai-kit-docs": {
+    "ai_kit-docs": {
       "command": "npx",
       "args": ["-y", "@ai_kit/mcp-docs"],
     }
@@ -127,7 +127,7 @@ Le script de build copie automatiquement :
 - `README.md` (racine) → `dist/docs/README.md` ;
 - `packages/<nom>/README.md` → `dist/docs/<nom>/README.md` (si le fichier existe).
 
-Pour exposer le README du package `@ai-kit/core`, il suffit donc de créer `packages/core/README.md`. Le prochain `pnpm --filter @ai_kit/mcp-docs build` répliquera ce fichier et il deviendra accessible via l’outil MCP.
+Pour exposer le README du package `@ai_kit/core`, il suffit donc de créer `packages/core/README.md`. Le prochain `pnpm --filter @ai_kit/mcp-docs build` répliquera ce fichier et il deviendra accessible via l’outil MCP.
 
 ## Contribuer
 

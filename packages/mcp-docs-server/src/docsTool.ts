@@ -159,7 +159,7 @@ export function registerDocsTool(server: McpServer) {
   const docsToolShape = docsToolSchema.shape as ZodRawShape;
 
   server.registerTool(
-    "ai-kit-docs",
+    "ai_kit-docs",
     {
       title: "Browse AI Kit Docs",
       description:
@@ -303,7 +303,7 @@ export function registerDocsTool(server: McpServer) {
   });
 
   server.registerTool(
-    "ai-kit-docs-search",
+    "ai_kit-docs-search",
     {
       title: "Search AI Kit Docs",
       description:
