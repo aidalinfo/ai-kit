@@ -4,10 +4,10 @@ Les workflows orchestrent une suite d'étapes typées inspirées de Mastra. Chaq
 
 ## Installation
 
-Ajoutez `@ai-kit/core` et un validateur (ex. Zod) dans votre projet :
+Ajoutez `@ai_kit/core` et un validateur (ex. Zod) dans votre projet :
 
 ```bash
-pnpm add @ai-kit/core zod
+pnpm add @ai_kit/core zod
 ```
 
 ## Créer des étapes
@@ -15,7 +15,7 @@ pnpm add @ai-kit/core zod
 Une étape se décrit avec `createStep` : identifiant, schémas optionnels et fonction `handler`. Le handler reçoit l'entrée validée, le contexte partagé et un `AbortSignal`.
 
 ```ts
-import { createStep } from "@ai-kit/core";
+import { createStep } from "@ai_kit/core";
 import { z } from "zod";
 
 type WeatherInput = { city: string };
@@ -39,7 +39,7 @@ export const fetchWeather = createStep<WeatherInput, WeatherOutput>({
 Le schéma est optionnel. Un objet exposant `parse` ou `safeParse` suffit (compatible Zod). Réutilisez la même étape dans plusieurs workflows en la clonant via `cloneStep` :
 
 ```ts
-import { cloneStep } from "@ai-kit/core";
+import { cloneStep } from "@ai_kit/core";
 
 export const fetchWeatherCopy = cloneStep(fetchWeather, {
   id: "fetch-weather-copy",
@@ -52,7 +52,7 @@ export const fetchWeatherCopy = cloneStep(fetchWeather, {
 Composez vos étapes avec `createWorkflow`, enchaînez-les avec `.then()` puis finalisez avec `.commit()`.
 
 ```ts
-import { createWorkflow } from "@ai-kit/core";
+import { createWorkflow } from "@ai_kit/core";
 import { z } from "zod";
 import { fetchWeather } from "./steps/fetchWeather";
 
@@ -126,6 +126,95 @@ const notifyTeam = createStep({
 });
 ```
 
+## Étapes humaines (`.human`)
+
+Une étape humaine suspend l'exécution pour laisser un utilisateur valider ou compléter des données. Déclarez-la avec `createHuman` afin de la réutiliser dans plusieurs workflows :
+
+```ts
+import { createHuman, createStep, createWorkflow } from "@ai_kit/core";
+import { z } from "zod";
+
+const fetchDraftApplication = createStep<
+  { applicantId: string },
+  { applicantId: string; amount: number; history: string[] }
+>({
+  id: "fetch-draft-application",
+  description: "Charge un dossier à valider",
+  inputSchema: z.object({ applicantId: z.string().min(1) }),
+  handler: async ({ input }) => ({
+    applicantId: input.applicantId,
+    amount: 4200,
+    history: ["2019: ouverture", "2023: mise à jour"],
+  }),
+});
+
+export const manualReview = createHuman<
+  { applicantId: string; amount: number; history: string[] },
+  { decision: string; commentaire: string }
+>({
+  id: "manual-review",
+  output: ({ current }) => ({
+    dossier: {
+      id: current.applicantId,
+      montant: current.amount,
+      historique: current.history,
+    },
+  }),
+  input: ({ ask }) =>
+    ask.form({
+      title: "Validation manuelle du dossier",
+      fields: [
+        ask.text({ id: "commentaire", label: "Commentaire" }),
+        ask.select({ id: "decision", label: "Décision", options: ["approve", "reject"] }),
+      ],
+    }),
+});
+
+const finalizeDecision = createStep<
+  { decision: string; commentaire: string },
+  { status: string }
+>({
+  id: "finalize-decision",
+  handler: ({ input, context }) => ({
+    status: `${context.initialInput.applicantId}:${input.decision}:${input.commentaire}`,
+  }),
+});
+
+export const onboardingWorkflow = createWorkflow({ id: "onboarding" })
+  .then(fetchDraftApplication)
+  .human(manualReview)
+  .then(finalizeDecision)
+  .commit();
+```
+
+- La sortie de `fetchDraftApplication` est injectée dans `manualReview` (`output.current`) et retransmise au front via `pendingHuman.output`.
+- La réponse humaine (`{ decision, commentaire }`) devient l'entrée de `finalizeDecision`, qui peut aussi accéder aux données initiales via `context.initialInput`.
+
+Pour consommer l'interaction côté runtime :
+
+```ts
+const run = onboardingWorkflow.createRun();
+const { stream, final } = await run.stream({ inputData: { applicantId: "app-123" } });
+
+for await (const event of stream) {
+  if (event.type === "step:human:requested") {
+    const { form, output } = event.data;
+    ui.displayReviewForm(form, output.dossier);
+  }
+}
+
+const pending = await final;
+
+if (pending.status === "waiting_human") {
+  await run.resumeWithHumanInput({
+    stepId: "manual-review",
+    data: { decision: "approve", commentaire: "RAS" },
+  });
+}
+```
+
+Au moment de `run.resumeWithHumanInput`, la réponse est validée selon le schéma de l'étape humaine, puis le workflow reprend jusqu'à la fin. Ce pattern est idéal pour des revues manuelles, validations légales ou doubles saisies nécessitant une intervention humaine tracée.
+
 ## Gestion des erreurs
 
 - Toute exception levée par un handler ou un schéma est encapsulée et renvoyée via `result.error`.
@@ -153,7 +242,7 @@ import {
   createParallelStep,
   createStep,
   createWorkflow,
-} from "@ai-kit/core";
+} from "@ai_kit/core";
 import { z } from "zod";
 
 const chunkText = createStep<{ text: string }, Chunk[]>({
@@ -241,7 +330,7 @@ import {
   createConditionStep,
   createStep,
   createWorkflow,
-} from "@ai-kit/core";
+} from "@ai_kit/core";
 
 const calculateScore = createStep<{ score: number }, { score: number }>({
   id: "calculate-score",
@@ -306,7 +395,7 @@ createWorkflow({ id: "risk" })
 > Ce scénario requiert un environnement qui expose `fetch` (Node.js 18+ ou polyfill).
 
 ```ts
-import { Agent, createStep, createWorkflow, scaleway } from "@ai-kit/core";
+import { Agent, createStep, createWorkflow, scaleway } from "@ai_kit/core";
 import { z } from "zod";
 
 type WeatherInput = { city: string };

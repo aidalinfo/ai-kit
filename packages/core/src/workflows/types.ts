@@ -14,7 +14,9 @@ export type WorkflowEventType =
   | "step:success"
   | "step:error"
   | "step:event"
-  | "step:branch";
+  | "step:branch"
+  | "step:human:requested"
+  | "step:human:completed";
 
 export interface WorkflowEvent<Meta extends Record<string, unknown> = Record<string, unknown>> {
   type: WorkflowEventType;
@@ -95,7 +97,7 @@ export interface WorkflowConfig<
 }
 
 export interface WorkflowStepSnapshot {
-  status: "success" | "failed";
+  status: "success" | "failed" | "waiting_human";
   input: unknown;
   output?: unknown;
   error?: unknown;
@@ -106,7 +108,7 @@ export interface WorkflowStepSnapshot {
   nextStepId?: string;
 }
 
-export type WorkflowRunStatus = "success" | "failed" | "cancelled";
+export type WorkflowRunStatus = "success" | "failed" | "cancelled" | "waiting_human";
 
 export interface WorkflowRunResult<
   Output,
@@ -119,6 +121,7 @@ export interface WorkflowRunResult<
   metadata: Meta;
   startedAt: Date;
   finishedAt: Date;
+  pendingHuman?: PendingHumanTask;
 }
 
 export interface WorkflowRunOptions<
@@ -175,6 +178,85 @@ export interface ConditionalSequence<
 > {
   condition: WorkflowStep<Input, Current, Meta, RootInput>;
   branches: BranchDeclaration<Meta, RootInput>[];
+}
+
+export type HumanFormField =
+  | {
+      id: string;
+      label: string;
+      type: "text";
+      required?: boolean;
+      placeholder?: string;
+    }
+  | {
+      id: string;
+      label: string;
+      type: "select";
+      options: string[];
+      required?: boolean;
+    };
+
+export interface HumanFormDefinition {
+  title?: string;
+  description?: string;
+  fields: HumanFormField[];
+}
+
+export interface HumanAskBuilders {
+  text(field: {
+    id: string;
+    label: string;
+    required?: boolean;
+    placeholder?: string;
+  }): Extract<HumanFormField, { type: "text" }>;
+  select(field: {
+    id: string;
+    label: string;
+    options: string[];
+    required?: boolean;
+  }): Extract<HumanFormField, { type: "select" }>;
+  form(definition: HumanFormDefinition): HumanFormDefinition;
+}
+
+export interface HumanOutputResolverArgs<
+  Input,
+  Meta extends Record<string, unknown> = Record<string, unknown>,
+  RootInput = unknown,
+> {
+  current: Input;
+  steps: Record<string, { input: unknown; output?: unknown }>;
+  context: WorkflowStepContext<Meta, RootInput>;
+}
+
+export type HumanOutputResolver<
+  Input,
+  Meta extends Record<string, unknown> = Record<string, unknown>,
+  RootInput = unknown,
+> = (args: HumanOutputResolverArgs<Input, Meta, RootInput>) => MaybePromise<unknown>;
+
+export type HumanInputBuilder<
+  Meta extends Record<string, unknown> = Record<string, unknown>,
+  RootInput = unknown,
+> = (args: { ask: HumanAskBuilders; context: WorkflowStepContext<Meta, RootInput> }) => HumanFormDefinition;
+
+export interface HumanStepConfig<
+  Input,
+  Output,
+  Meta extends Record<string, unknown> = Record<string, unknown>,
+  RootInput = unknown,
+> extends Omit<WorkflowStepConfig<Input, Output, Meta, RootInput>, "handler" | "branchResolver"> {
+  output: HumanOutputResolver<Input, Meta, RootInput>;
+  input: HumanInputBuilder<Meta, RootInput>;
+  responseSchema?: SchemaLike<unknown>;
+}
+
+export interface PendingHumanTask {
+  runId: string;
+  stepId: string;
+  workflowId: string;
+  output: unknown;
+  form: HumanFormDefinition;
+  requestedAt: Date;
 }
 
 export interface WorkflowGraphNode {
