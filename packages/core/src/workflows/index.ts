@@ -10,6 +10,12 @@ export {
 export type { WorkflowStepOutput } from "./steps/step.js";
 
 export {
+  createHumanStep,
+  HumanWorkflowStep,
+  createHuman,
+} from "./steps/humanStep.js";
+
+export {
   createParallelStep,
 } from "./steps/parallelStep.js";
 export type { ParallelStepConfig, ParallelStepOutputs } from "./steps/parallelStep.js";

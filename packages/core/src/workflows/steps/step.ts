@@ -17,11 +17,11 @@ export class WorkflowStep<
 > {
   readonly id: string;
   readonly description?: string;
-  private readonly inputSchema?: WorkflowStepConfig<Input, Output, Meta, RootInput>["inputSchema"];
-  private readonly outputSchema?: WorkflowStepConfig<Input, Output, Meta, RootInput>["outputSchema"];
-  private readonly handler: WorkflowStepConfig<Input, Output, Meta, RootInput>["handler"];
-  private readonly next?: string | NextResolver<Input, Output, Meta, RootInput>;
-  private readonly branchResolver?: BranchResolver<Input, Output, Meta, RootInput>;
+  protected readonly inputSchema?: WorkflowStepConfig<Input, Output, Meta, RootInput>["inputSchema"];
+  protected readonly outputSchema?: WorkflowStepConfig<Input, Output, Meta, RootInput>["outputSchema"];
+  protected readonly handler: WorkflowStepConfig<Input, Output, Meta, RootInput>["handler"];
+  protected readonly next?: string | NextResolver<Input, Output, Meta, RootInput>;
+  protected readonly branchResolver?: BranchResolver<Input, Output, Meta, RootInput>;
 
   constructor({
     id,

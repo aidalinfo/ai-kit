@@ -1,6 +1,7 @@
 import { WorkflowSchemaError } from "./errors.js";
-import type { BranchDeclaration, BranchId, WorkflowConfig } from "./types.js";
+import type { BranchDeclaration, BranchId, HumanStepConfig, WorkflowConfig } from "./types.js";
 import { WorkflowStep } from "./steps/step.js";
+import { createHumanStep, HumanWorkflowStep } from "./steps/humanStep.js";
 import { Workflow } from "./workflow.js";
 
 type AnyWorkflowStep<Meta extends Record<string, unknown>, Input> = WorkflowStep<unknown, unknown, Meta, Input>;
@@ -213,6 +214,20 @@ export class WorkflowBuilder<
   }
 
   then<Next>(step: WorkflowStep<Current, Next, Meta, Input>) {
+    this.appendStep(step as WorkflowStep<unknown, unknown, Meta, Input>);
+    return this.transition<Next>();
+  }
+
+  human<Next>(
+    stepOrConfig:
+      | HumanWorkflowStep<Current, Next, Meta, Input>
+      | HumanStepConfig<Current, Next, Meta, Input>,
+  ) {
+    const step =
+      stepOrConfig instanceof HumanWorkflowStep
+        ? stepOrConfig
+        : createHumanStep<Current, Next, Meta, Input>(stepOrConfig);
+
     this.appendStep(step as WorkflowStep<unknown, unknown, Meta, Input>);
     return this.transition<Next>();
   }

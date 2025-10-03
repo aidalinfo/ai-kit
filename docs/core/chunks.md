@@ -1,4 +1,4 @@
-# Gestion des chunks avec `@ai-kit/core`
+# Gestion des chunks avec `@ai_kit/core`
 
 Ce module expose des utilitaires pour découper du texte ou des contenus JSON en morceaux cohérents, inspirés du comportement de Mastra.
 
@@ -9,7 +9,7 @@ import {
   splitTextRecursively,
   splitJsonRecursively,
   TChunkDocument,
-} from "@ai-kit/core";
+} from "@ai_kit/core";
 ```
 
 ## Découper du texte brut

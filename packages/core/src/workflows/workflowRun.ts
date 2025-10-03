@@ -1,6 +1,12 @@
-import { WorkflowAbortError, WorkflowBranchResolutionError, WorkflowExecutionError } from "./errors.js";
+import {
+  WorkflowAbortError,
+  WorkflowBranchResolutionError,
+  WorkflowExecutionError,
+  WorkflowResumeError,
+} from "./errors.js";
 import type {
   StepCustomEvent,
+  StepHandlerArgs,
   BranchId,
   WorkflowEvent,
   WorkflowRunOptions,
@@ -8,9 +14,12 @@ import type {
   WorkflowStepContext,
   WorkflowStepSnapshot,
   WorkflowWatcher,
+  PendingHumanTask,
+  HumanFormDefinition,
 } from "./types.js";
 import { cloneMetadata, mergeSignals } from "./utils/runtime.js";
 import type { Workflow } from "./workflow.js";
+import { HumanWorkflowStep, HUMAN_HISTORY_STORE_KEY } from "./steps/humanStep.js";
 
 interface WorkflowRunInit<
   Input,
@@ -82,6 +91,23 @@ class WorkflowEventStream<Meta extends Record<string, unknown>> {
   }
 }
 
+interface PendingHumanState<
+  Input,
+  Output,
+  Meta extends Record<string, unknown>,
+  RootInput,
+> {
+  step: HumanWorkflowStep<Input, Output, Meta, RootInput>;
+  stepId: string;
+  requestedAt: Date;
+  form: HumanFormDefinition;
+  payload: unknown;
+  context: WorkflowStepContext<Meta, RootInput>;
+  input: Input;
+  snapshotIndex: number;
+  occurrence: number;
+}
+
 export class WorkflowRun<
   Input,
   Output,
@@ -97,8 +123,21 @@ export class WorkflowRun<
   private readonly branchOwners = new Map<string, string>();
   private readonly watchers = new Set<WorkflowWatcher<Meta>>();
   private readonly store = new Map<string, unknown>();
+  private readonly history = new Map<string, { input: unknown; output?: unknown }>();
   private readonly controller = new AbortController();
   private executed = false;
+  private emitStream?: (event: WorkflowEvent<Meta>) => void;
+  private eventStream?: WorkflowEventStream<Meta>;
+  private runtimeMetadata!: Meta;
+  private stepsSnapshot!: Record<string, WorkflowStepSnapshot[]>;
+  private stepOccurrences!: Map<string, number>;
+  private startedAt!: Date;
+  private initialInput!: Input;
+  private current: unknown;
+  private currentStepId?: string;
+  private composedSignal!: AbortSignal;
+  private pendingHuman?: PendingHumanState<any, any, Meta, Input>;
+  private finishedAt?: Date;
 
   constructor({ workflow, runId }: WorkflowRunInit<Input, Output, Meta>) {
     this.workflow = workflow;
@@ -124,6 +163,23 @@ export class WorkflowRun<
       }
       this.branchMembers.set(conditionId, members);
     }
+  }
+
+  private emit(
+    event: Omit<WorkflowEvent<Meta>, "timestamp" | "workflowId" | "runId" | "metadata"> & { metadata?: Meta },
+  ) {
+    const payload: WorkflowEvent<Meta> = {
+      type: event.type,
+      data: event.data,
+      stepId: event.stepId,
+      workflowId: this.workflowId,
+      runId: this.runId,
+      timestamp: Date.now(),
+      metadata: event.metadata ?? this.runtimeMetadata,
+    };
+
+    this.watchers.forEach(listener => listener(payload));
+    this.emitStream?.(payload);
   }
 
   private findPostConditionalNext(stepId: string): string | undefined {
@@ -175,7 +231,22 @@ export class WorkflowRun<
 
   async stream(options: WorkflowRunOptions<Input, Meta>) {
     const stream = new WorkflowEventStream<Meta>();
-    const final = this.execute(options, event => stream.push(event)).finally(() => stream.end());
+    this.eventStream = stream;
+
+    const final = this.execute(options, event => stream.push(event)).then(
+      result => {
+        if (result.status !== "waiting_human") {
+          stream.end();
+          this.eventStream = undefined;
+        }
+        return result;
+      },
+      error => {
+        stream.end();
+        this.eventStream = undefined;
+        throw error;
+      },
+    );
 
     return {
       stream: stream.iterator(),
@@ -193,124 +264,192 @@ export class WorkflowRun<
     }
 
     this.executed = true;
+    this.emitStream = emitStream;
 
     if (signal?.aborted || this.controller.signal.aborted) {
       throw new WorkflowAbortError();
     }
 
-    const composedSignal = mergeSignals(
+    this.composedSignal = mergeSignals(
       [this.controller.signal, ...(signal ? [signal] : [])],
     );
 
-    const runtimeMetadata = cloneMetadata(metadata ?? this.workflow.getInitialMetadata());
-    const stepsSnapshot: Record<string, WorkflowStepSnapshot[]> = {};
-    const stepOccurrences = new Map<string, number>();
-    const startedAt = new Date();
-
-    const emit = (
-      event: Omit<WorkflowEvent<Meta>, "timestamp" | "workflowId" | "runId" | "metadata"> & { metadata?: Meta },
-    ) => {
-      const payload: WorkflowEvent<Meta> = {
-        type: event.type,
-        data: event.data,
-        stepId: event.stepId,
-        workflowId: this.workflowId,
-        runId: this.runId,
-        timestamp: Date.now(),
-        metadata: event.metadata ?? runtimeMetadata,
-      };
-
-      this.watchers.forEach(listener => listener(payload));
-      emitStream?.(payload);
-    };
-
-    emit({ type: "workflow:start" });
-
-    let current: unknown;
-    let currentStepId: string | undefined = this.graph.entryId;
+    this.runtimeMetadata = cloneMetadata(metadata ?? this.workflow.getInitialMetadata());
+    this.stepsSnapshot = {};
+    this.stepOccurrences = new Map();
+    this.startedAt = new Date();
+    this.finishedAt = undefined;
+    this.pendingHuman = undefined;
+    this.history.clear();
+    this.store.set(HUMAN_HISTORY_STORE_KEY, this.history);
 
     try {
-      current = this.workflow.validateInput(inputData);
+      this.current = this.workflow.validateInput(inputData);
     } catch (error) {
+      this.emit({ type: "workflow:error", data: error });
       const finishedAt = new Date();
-      emit({ type: "workflow:error", data: error });
       return {
         status: "failed",
         error,
-        steps: stepsSnapshot,
-        metadata: runtimeMetadata,
-        startedAt,
+        steps: this.stepsSnapshot,
+        metadata: this.runtimeMetadata,
+        startedAt: this.startedAt,
         finishedAt,
       };
     }
 
-    const initialInput = current;
+    this.initialInput = this.current as Input;
+    this.currentStepId = this.graph.entryId;
 
-    while (currentStepId) {
-      const step = this.graph.steps.get(currentStepId);
+    this.emit({ type: "workflow:start" });
+
+    return this.runLoop();
+  }
+
+  private async handleHumanStep(
+    step: HumanWorkflowStep<any, any, Meta, Input>,
+    context: WorkflowStepContext<Meta, Input>,
+    started: Date,
+  ): Promise<WorkflowRunResult<Output, Meta>> {
+    if (!this.stepsSnapshot) {
+      throw new WorkflowExecutionError("Workflow run is not initialized");
+    }
+
+    const args = {
+      input: this.current,
+      context,
+      signal: this.composedSignal,
+    } as StepHandlerArgs<unknown, Meta, Input>;
+
+    const { input, form, payload } = await step.buildHumanRequest(args);
+
+    const occurrence = (this.stepOccurrences.get(step.id) ?? 0) + 1;
+    this.stepOccurrences.set(step.id, occurrence);
+
+    this.stepsSnapshot[step.id] ??= [];
+    const snapshotIndex = this.stepsSnapshot[step.id].push({
+      status: "waiting_human",
+      input,
+      startedAt: started,
+      finishedAt: started,
+      occurrence,
+      nextStepId: undefined,
+    }) - 1;
+
+    this.currentStepId = step.id;
+    this.current = input;
+
+    const pending: PendingHumanTask = {
+      runId: this.runId,
+      stepId: step.id,
+      workflowId: this.workflowId,
+      output: payload,
+      form,
+      requestedAt: started,
+    };
+
+    this.pendingHuman = {
+      step,
+      stepId: step.id,
+      requestedAt: started,
+      form,
+      payload,
+      context,
+      input,
+      snapshotIndex,
+      occurrence,
+    };
+
+    this.emit({
+      type: "step:human:requested",
+      stepId: step.id,
+      data: pending,
+    });
+
+    this.finishedAt = new Date();
+
+    return {
+      status: "waiting_human",
+      steps: this.stepsSnapshot,
+      metadata: this.runtimeMetadata,
+      startedAt: this.startedAt,
+      finishedAt: this.finishedAt,
+      pendingHuman: pending,
+    };
+  }
+
+  private async runLoop(): Promise<WorkflowRunResult<Output, Meta>> {
+    while (this.currentStepId) {
+      const stepId = this.currentStepId;
+      const step = this.graph.steps.get(stepId);
       if (!step) {
-        const error = new WorkflowExecutionError(`Unknown step ${currentStepId}`);
-        emit({ type: "workflow:error", data: error });
+        const error = new WorkflowExecutionError(`Unknown step ${stepId}`);
+        this.emit({ type: "workflow:error", data: error });
+        const finishedAt = new Date();
         return {
           status: "failed",
           error,
-          steps: stepsSnapshot,
-          metadata: runtimeMetadata,
-          startedAt,
-          finishedAt: new Date(),
+          steps: this.stepsSnapshot,
+          metadata: this.runtimeMetadata,
+          startedAt: this.startedAt,
+          finishedAt,
         };
       }
 
-      if (composedSignal.aborted) {
+      if (this.composedSignal.aborted) {
         const error = new WorkflowAbortError();
         const finishedAt = new Date();
-        emit({ type: "workflow:cancelled", data: error });
+        this.emit({ type: "workflow:cancelled", data: error });
         return {
           status: "cancelled",
           error,
-          steps: stepsSnapshot,
-          metadata: runtimeMetadata,
-          startedAt,
+          steps: this.stepsSnapshot,
+          metadata: this.runtimeMetadata,
+          startedAt: this.startedAt,
           finishedAt,
         };
       }
 
       const started = new Date();
-      emit({ type: "step:start", stepId: step.id });
+      this.emit({ type: "step:start", stepId });
 
       const context: WorkflowStepContext<Meta, Input> = {
         workflowId: this.workflowId,
         runId: this.runId,
-        initialInput: initialInput as Input,
+        initialInput: this.initialInput,
         store: this.store,
-        getMetadata: () => runtimeMetadata,
+        getMetadata: () => this.runtimeMetadata,
         updateMetadata: (updater: (currentMeta: Meta) => Meta) => {
-          const next = updater(runtimeMetadata);
-          Object.assign(runtimeMetadata, next);
+          const next = updater(this.runtimeMetadata);
+          Object.assign(this.runtimeMetadata, next);
         },
         emit: (event: StepCustomEvent<Meta>) => {
-          emit({
+          this.emit({
             type: "step:event",
-            stepId: step.id,
+            stepId,
             data: {
               name: event.type,
               payload: event.data,
             },
-            metadata: event.metadata ?? runtimeMetadata,
+            metadata: event.metadata ?? this.runtimeMetadata,
           });
         },
       };
 
+      if (step instanceof HumanWorkflowStep) {
+        return this.handleHumanStep(step, context, started);
+      }
+
       try {
         const { input, output } = await step.execute({
-          input: current,
+          input: this.current,
           context,
-          signal: composedSignal,
+          signal: this.composedSignal,
         });
 
         const finished = new Date();
-        const occurrence = (stepOccurrences.get(step.id) ?? 0) + 1;
-        stepOccurrences.set(step.id, occurrence);
+        const occurrence = (this.stepOccurrences.get(step.id) ?? 0) + 1;
+        this.stepOccurrences.set(step.id, occurrence);
 
         const transitionContext = { input, output, context };
 
@@ -332,7 +471,7 @@ export class WorkflowRun<
             );
           }
 
-          emit({
+          this.emit({
             type: "step:branch",
             stepId: step.id,
             data: {
@@ -352,8 +491,8 @@ export class WorkflowRun<
 
         const nextStepId = branchNext ?? resolvedNext ?? this.resolveDefaultNext(step.id, branchId !== undefined);
 
-        stepsSnapshot[step.id] ??= [];
-        stepsSnapshot[step.id].push({
+        this.stepsSnapshot[step.id] ??= [];
+        this.stepsSnapshot[step.id].push({
           status: "success",
           input,
           output,
@@ -364,18 +503,20 @@ export class WorkflowRun<
           nextStepId,
         });
 
-        emit({ type: "step:success", stepId: step.id, data: output });
-        current = output;
-        currentStepId = nextStepId;
+        this.history.set(step.id, { input, output });
+
+        this.emit({ type: "step:success", stepId: step.id, data: output });
+        this.current = output;
+        this.currentStepId = nextStepId;
       } catch (error) {
         const finished = new Date();
-        const occurrence = (stepOccurrences.get(step.id) ?? 0) + 1;
-        stepOccurrences.set(step.id, occurrence);
+        const occurrence = (this.stepOccurrences.get(step.id) ?? 0) + 1;
+        this.stepOccurrences.set(step.id, occurrence);
 
-        stepsSnapshot[step.id] ??= [];
-        stepsSnapshot[step.id].push({
+        this.stepsSnapshot[step.id] ??= [];
+        this.stepsSnapshot[step.id].push({
           status: "failed",
-          input: current,
+          input: this.current,
           error,
           startedAt: started,
           finishedAt: finished,
@@ -383,56 +524,137 @@ export class WorkflowRun<
           nextStepId: undefined,
         });
 
-        emit({ type: "step:error", stepId: step.id, data: error });
-        emit({ type: "workflow:error", data: error });
+        this.emit({ type: "step:error", stepId: step.id, data: error });
+        this.emit({ type: "workflow:error", data: error });
         return {
           status: "failed",
           error,
-          steps: stepsSnapshot,
-          metadata: runtimeMetadata,
-          startedAt,
+          steps: this.stepsSnapshot,
+          metadata: this.runtimeMetadata,
+          startedAt: this.startedAt,
           finishedAt: finished,
         };
       }
     }
 
-    if (composedSignal.aborted) {
+    if (this.composedSignal.aborted) {
       const error = new WorkflowAbortError();
       const finishedAt = new Date();
-      emit({ type: "workflow:cancelled", data: error });
+      this.emit({ type: "workflow:cancelled", data: error });
       return {
         status: "cancelled",
         error,
-        steps: stepsSnapshot,
-        metadata: runtimeMetadata,
-        startedAt,
+        steps: this.stepsSnapshot,
+        metadata: this.runtimeMetadata,
+        startedAt: this.startedAt,
         finishedAt,
       };
     }
 
     try {
-      const output = this.workflow.validateOutput(current);
+      const output = this.workflow.validateOutput(this.current);
       const finishedAt = new Date();
-      emit({ type: "workflow:success", data: output });
+      this.emit({ type: "workflow:success", data: output });
+      this.finishedAt = finishedAt;
       return {
         status: "success",
         result: output,
-        steps: stepsSnapshot,
-        metadata: runtimeMetadata,
-        startedAt,
+        steps: this.stepsSnapshot,
+        metadata: this.runtimeMetadata,
+        startedAt: this.startedAt,
         finishedAt,
       };
     } catch (error) {
       const finishedAt = new Date();
-      emit({ type: "workflow:error", data: error });
+      this.emit({ type: "workflow:error", data: error });
+      this.finishedAt = finishedAt;
       return {
         status: "failed",
         error,
-        steps: stepsSnapshot,
-        metadata: runtimeMetadata,
-        startedAt,
+        steps: this.stepsSnapshot,
+        metadata: this.runtimeMetadata,
+        startedAt: this.startedAt,
         finishedAt,
       };
     }
+  }
+
+  async resumeWithHumanInput(args: { runId?: string; stepId: string; data: unknown }): Promise<WorkflowRunResult<Output, Meta>> {
+    if (!this.executed) {
+      throw new WorkflowResumeError("Workflow run has not been started");
+    }
+
+    if (!this.pendingHuman) {
+      throw new WorkflowResumeError("No human interaction is pending for this run");
+    }
+
+    if (args.runId && args.runId !== this.runId) {
+      throw new WorkflowResumeError(`Cannot resume run ${args.runId} with id ${this.runId}`);
+    }
+
+    if (this.pendingHuman.stepId !== args.stepId) {
+      throw new WorkflowResumeError(
+        `Pending human interaction is for step ${this.pendingHuman.stepId}, received ${args.stepId}`,
+      );
+    }
+
+    const { step, input, context, snapshotIndex, occurrence } = this.pendingHuman;
+    const response = step.parseResponse(args.data);
+
+    const finished = new Date();
+
+    const snapshots = this.stepsSnapshot[step.id];
+    if (snapshots && snapshots[snapshotIndex]) {
+      snapshots[snapshotIndex] = {
+        status: "success",
+        input,
+        output: response,
+        startedAt: snapshots[snapshotIndex].startedAt,
+        finishedAt: finished,
+        occurrence,
+        nextStepId: undefined,
+      };
+    }
+
+    this.history.set(step.id, { input, output: response });
+
+    const transitionContext = { input, output: response, context };
+
+    const resolvedNext = await step.resolveNext(transitionContext);
+    if (resolvedNext && !this.graph.steps.has(resolvedNext)) {
+      throw new WorkflowExecutionError(`Step ${step.id} resolved next to unknown step ${resolvedNext}`);
+    }
+
+    const nextStepId = resolvedNext ?? this.resolveDefaultNext(step.id, false);
+
+    if (snapshots && snapshots[snapshotIndex]) {
+      snapshots[snapshotIndex] = {
+        ...snapshots[snapshotIndex],
+        nextStepId,
+      };
+    }
+
+    this.emit({
+      type: "step:human:completed",
+      stepId: step.id,
+      data: {
+        response,
+        nextStepId,
+      },
+    });
+
+    this.emit({ type: "step:success", stepId: step.id, data: response });
+
+    this.current = response;
+    this.currentStepId = nextStepId;
+    this.pendingHuman = undefined;
+
+    const result = await this.runLoop();
+    if (result.status !== "waiting_human") {
+      this.eventStream?.end();
+      this.eventStream = undefined;
+    }
+
+    return result;
   }
 }

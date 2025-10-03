@@ -25,3 +25,10 @@ export class WorkflowBranchResolutionError extends Error {
     this.name = "WorkflowBranchResolutionError";
   }
 }
+
+export class WorkflowResumeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WorkflowResumeError";
+  }
+}

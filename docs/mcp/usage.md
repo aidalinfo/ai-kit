@@ -9,7 +9,7 @@ Add the server to your client configuration. For example, using the Claude Deskt
 ```json
 {
   "mcpServers": {
-    "ai-kit-docs": {
+    "ai_kit-docs": {
       "command": "npx",
       "args": ["-y", "@ai_kit/mcp-docs@latest"]
     }
@@ -20,7 +20,7 @@ Add the server to your client configuration. For example, using the Claude Deskt
 For Codex, configure the server through TOML:
 
 ```toml
-[mcp_servers."ai-kit-docs"]
+[mcp_servers."ai_kit-docs"]
 command = "npx"
 args = ["-y", "@ai_kit/mcp-docs@latest"]
 env = { }
@@ -32,7 +32,7 @@ For Claude Code, define the server the same way:
 ```json
 {
   "mcpServers": {
-    "ai-kit-docs": {
+    "ai_kit-docs": {
       "command": "npx",
       "args": ["-y", "@ai_kit/mcp-docs@latest"]
     }
@@ -42,7 +42,7 @@ For Claude Code, define the server the same way:
 
 The server registers two tools:
 
-- `ai-kit-docs` lists directories or reads Markdown/MDX files from the `docs/` tree. Pass `path` (relative to `docs/`) to open a file or directory, and optionally supply `keywords` to highlight matches.
-- `ai-kit-docs-search` performs a keyword search across the docs and returns paginated snippets. Use this when you want targeted references without loading entire files.
+- `ai_kit-docs` lists directories or reads Markdown/MDX files from the `docs/` tree. Pass `path` (relative to `docs/`) to open a file or directory, and optionally supply `keywords` to highlight matches.
+- `ai_kit-docs-search` performs a keyword search across the docs and returns paginated snippets. Use this when you want targeted references without loading entire files.
 
 Request `core/quickstart.md`, for example, to receive the rendered Markdown content ready for your agent.
