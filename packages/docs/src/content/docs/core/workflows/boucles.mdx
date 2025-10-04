@@ -1,0 +1,68 @@
+---
+title: Boucles while
+description: Répétez des étapes tant qu'une condition reste vraie.
+sidebar:
+  order: 5
+---
+
+`createWhileStep` encapsule une boucle `while` dans un seul nœud de workflow. Vous fournissez un step `condition` (qui renvoie un booléen) et un step `body` (qui produit la sortie de chaque itération). Les deux steps reçoivent un `WhileLoopState` contenant l'entrée initiale, l'index courant et la dernière sortie calculée.
+
+## Exemple : polling d'un job externe
+
+Le fragment suivant interroge une API jusqu'à ce qu'un job passe à l'état `done`. La dernière réponse du corps est renvoyée par défaut, mais vous pouvez agréger toutes les sorties via l'option `collect`.
+
+```ts
+import {
+  createStep,
+  createWhileStep,
+  type WhileLoopState,
+} from "@ai_kit/core";
+
+interface PollInput {
+  jobId: string;
+  maxAttempts: number;
+}
+
+interface PollResponse {
+  status: "pending" | "done" | "failed";
+  payload?: unknown;
+}
+
+const checkStatus = createStep<WhileLoopState<PollInput, PollResponse>, boolean>({
+  id: "check-status",
+  description: "Arrête la boucle quand le job est résolu",
+  handler: async ({ input, signal }) => {
+    if (signal.aborted) throw new Error("Polling annulé");
+    if (input.iteration >= input.initialInput.maxAttempts) {
+      return false;
+    }
+
+    const last = input.lastOutput;
+    return last?.status !== "done" && last?.status !== "failed";
+  },
+});
+
+const fetchStatus = createStep<WhileLoopState<PollInput, PollResponse>, PollResponse>({
+  id: "fetch-status",
+  handler: async ({ input }) => {
+    const response = await fetch(`https://api.example.com/jobs/${input.initialInput.jobId}`);
+    return (await response.json()) as PollResponse;
+  },
+});
+
+export const waitForJob = createWhileStep<PollInput, PollResponse, typeof checkStatus, typeof fetchStatus>({
+  id: "wait-for-job",
+  description: "Boucle jusqu'à la complétion d'un job externe",
+  condition: checkStatus,
+  body: fetchStatus,
+  collect: (responses) => responses.at(-1),
+});
+```
+
+## Points clés
+
+- `maxIterations` force une limite dure et lève `WorkflowExecutionError` si elle est dépassée.
+- L'option `collect` agrège toutes les sorties (par défaut, la dernière sortie du corps est renvoyée).
+- Le `AbortSignal` partagé est vérifié à chaque itération pour interrompre rapidement la boucle.
+
+Combinez `createWhileStep` avec des steps parallèles ou conditionnels pour bâtir des pipelines dynamiques qui restent lisibles.
