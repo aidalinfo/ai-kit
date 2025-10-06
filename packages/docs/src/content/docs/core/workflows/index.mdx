@@ -1,0 +1,92 @@
+---
+title: Workflows
+description: Panorama des workflows AI Kit et de leurs capacités principales.
+sidebar:
+  order: 2
+---
+
+Les workflows d'AI Kit orchestrent des suites d'étapes typées inspirées de Mastra. Chaque étape dispose de schémas de validation en entrée/sortie, partage un contexte commun et peut émettre des événements temps réel pour suivre l'exécution.
+
+## Pourquoi utiliser les workflows ?
+
+- Structurer un processus métier en étapes testables et réutilisables.
+- Enrichir vos scénarios IA avec validation stricte, métadonnées partagées et annulation par `AbortSignal`.
+- Superviser l'exécution via `run.watch()` ou `run.stream()` pour bâtir des UI temps réel.
+- Introduire facilement de la collaboration humaine ou du parallélisme contrôlé.
+
+## Pages principales
+
+- [`Introduction`](./introduction) : installez le package, créez vos premières étapes et exécutez un workflow complet.
+- [`Étapes humaines`](./etapes-humaines) : mettez un humain dans la boucle et gérez le cycle `request → resume`.
+- [`Parallèle & foreach`](./parallele-et-foreach) : mappez vos données avec contrôle de la concurrence et combinez des tâches en parallèle.
+- [`Branches conditionnelles`](./branches-conditionnelles) : faites bifurquer l'exécution selon vos règles métier.
+
+## Concepts clés
+
+### Étapes typées
+
+Un step est déclaré via `createStep` : vous décrivez son `id`, les schémas optionnels et la fonction `handler` qui reçoit l'entrée validée, le contexte partagé et un `AbortSignal`.
+
+```ts
+import { createStep } from "@ai_kit/core";
+import { z } from "zod";
+
+export const fetchWeather = createStep({
+  id: "fetch-weather",
+  description: "Récupère la météo courante",
+  inputSchema: z.object({ city: z.string().min(1) }),
+  handler: async ({ input, signal }) => {
+    if (signal.aborted) throw new Error("Requête annulée");
+    return { forecast: `Il fait beau à ${input.city}` };
+  },
+});
+```
+
+Réutilisez un step sans dupliquer le handler grâce à `cloneStep` :
+
+```ts
+import { cloneStep } from "@ai_kit/core";
+
+export const fetchWeatherCopy = cloneStep(fetchWeather, {
+  id: "fetch-weather-copy",
+  description: "Météo pour une autre ville",
+});
+```
+
+### Contexte et événements
+
+Chaque run partage des métadonnées accessibles via `context.getMetadata()` et modifiables avec `context.updateMetadata()`. Un espace clé/valeur (`context.store`) permet de stocker des références intermédiaires.
+
+Les handlers peuvent émettre leurs propres événements pour enrichir le flux observé par `run.watch()` :
+
+```ts
+const notifyTeam = createStep({
+  id: "notify-team",
+  handler: async ({ context }) => {
+    context.emit({ type: "notification", data: { channel: "slack" } });
+    return { status: "sent" };
+  },
+});
+```
+
+### Instrumentation
+
+- `workflow.createRun()` instancie un run réutilisable.
+- `run.watch(listener)` écoute les événements (`workflow:start`, `step:success`, `step:event`, etc.).
+- `run.stream()` retourne un itérateur asynchrone pour consommer les événements en direct tout en attendant la résolution finale.
+- `run.cancel()` annule l'exécution via l'`AbortSignal` propagé aux steps.
+
+### Gestion des erreurs
+
+- Toute exception levée par un handler ou une validation est renvoyée dans `result.error`.
+- Les erreurs de schéma utilisent `WorkflowSchemaError` pour simplifier le diagnostic.
+- Une annulation (signal externe ou `run.cancel()`) produit un statut `cancelled`.
+
+### Bonnes pratiques
+
+- Rendez les schémas explicites pour réduire les incohérences.
+- Composez des steps courts, testables et bien décrits.
+- Enregistrez les événements clés pour tracer vos runs et alimenter l'observabilité.
+- Combinez workflows et agents (`/docs/core/agents`) pour modéliser des boucles plus complexes.
+
+Prêt à écrire votre premier workflow ? Rendez-vous sur la page [`Introduction`](./introduction).
