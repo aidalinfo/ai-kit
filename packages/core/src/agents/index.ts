@@ -4,7 +4,10 @@ import {
   type LanguageModel,
   type ToolSet,
   Output,
+  type StreamTextResult,
 } from "ai";
+
+import { RuntimeStore, type RuntimeState } from "../runtime/store.js";
 
 import {
   generateWithStructuredPipeline,
@@ -44,119 +47,318 @@ export class Agent {
     this.tools = tools;
   }
 
-  async generate<OUTPUT = never, PARTIAL_OUTPUT = never>(
-    options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT>,
+  async generate<
+    OUTPUT = never,
+    PARTIAL_OUTPUT = never,
+    STATE extends RuntimeState = RuntimeState,
+  >(
+    options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>,
   ) {
     const system = options.system ?? this.instructions;
     const structuredOutput = options.structuredOutput;
+    const runtime = options.runtime;
 
-    if (
-      structuredOutput &&
-      shouldUseStructuredPipeline(this.model, this.tools, structuredOutput)
-    ) {
-      return generateWithStructuredPipeline({
-        model: this.model,
-        tools: this.tools,
-        system,
-        structuredOutput,
-        options,
-      });
+    const callGenerate = async (runtimeForCall?: RuntimeStore<STATE>) => {
+      if (
+        structuredOutput &&
+        shouldUseStructuredPipeline(this.model, this.tools, structuredOutput)
+      ) {
+        const preparedOptions = prepareOptionsForRuntime(options, runtimeForCall);
+        return generateWithStructuredPipeline({
+          model: this.model,
+          tools: this.tools,
+          system,
+          structuredOutput,
+          options: preparedOptions,
+        });
+      }
+
+      if ("prompt" in options && options.prompt !== undefined) {
+        const {
+          system: _system,
+          structuredOutput: _structured,
+          runtime: _runtime,
+          ...rest
+        } = options;
+        const { experimental_context, ...restWithoutContext } = rest;
+        const payload: WithPrompt<GenerateTextParams> & {
+          experimental_output?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
+          experimental_context?: unknown;
+        } = {
+          ...restWithoutContext,
+          system,
+          model: this.model,
+          ...(this.tools ? { tools: this.tools } : {}),
+          ...(structuredOutput
+            ? { experimental_output: structuredOutput }
+            : {}),
+        };
+
+        const mergedContext = RuntimeStore.mergeExperimentalContext(
+          experimental_context,
+          runtimeForCall,
+        );
+
+        if (mergedContext !== undefined) {
+          payload.experimental_context = mergedContext;
+        }
+
+        return generateText(payload);
+      }
+
+      if ("messages" in options && options.messages !== undefined) {
+        const {
+          system: _system,
+          structuredOutput: _structured,
+          runtime: _runtime,
+          ...rest
+        } = options;
+        const { experimental_context, ...restWithoutContext } = rest;
+        const payload: WithMessages<GenerateTextParams> & {
+          experimental_output?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
+          experimental_context?: unknown;
+        } = {
+          ...restWithoutContext,
+          system,
+          model: this.model,
+          ...(this.tools ? { tools: this.tools } : {}),
+          ...(structuredOutput
+            ? { experimental_output: structuredOutput }
+            : {}),
+        };
+
+        const mergedContext = RuntimeStore.mergeExperimentalContext(
+          experimental_context,
+          runtimeForCall,
+        );
+
+        if (mergedContext !== undefined) {
+          payload.experimental_context = mergedContext;
+        }
+
+        return generateText(payload);
+      }
+
+      throw new Error("Agent.generate requires a prompt or messages option");
+    };
+
+    if (!runtime) {
+      return callGenerate();
     }
 
-    if ("prompt" in options && options.prompt !== undefined) {
-      const { system: _system, structuredOutput: _structuredOutput, ...rest } =
-        options;
-      const payload = {
-        ...rest,
-        system,
-        model: this.model,
-        ...(this.tools ? { tools: this.tools } : {}),
-        ...(structuredOutput
-          ? { experimental_output: structuredOutput }
-          : {}),
-      } satisfies WithPrompt<GenerateTextParams> & {
-        experimental_output?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
-      };
-
-      return generateText(payload);
-    }
-
-    if ("messages" in options && options.messages !== undefined) {
-      const { system: _system, structuredOutput: _structuredOutput, ...rest } =
-        options;
-      const payload = {
-        ...rest,
-        system,
-        model: this.model,
-        ...(this.tools ? { tools: this.tools } : {}),
-        ...(structuredOutput
-          ? { experimental_output: structuredOutput }
-          : {}),
-      } satisfies WithMessages<GenerateTextParams> & {
-        experimental_output?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
-      };
-
-      return generateText(payload);
-    }
-
-    throw new Error("Agent.generate requires a prompt or messages option");
+    const scopedRuntime = runtime.snapshot();
+    return scopedRuntime.run(async () => {
+      try {
+        return await callGenerate(scopedRuntime);
+      } finally {
+        await scopedRuntime.dispose();
+      }
+    });
   }
 
-  stream<OUTPUT = never, PARTIAL_OUTPUT = never>(
-    options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT>,
+  async stream<
+    OUTPUT = never,
+    PARTIAL_OUTPUT = never,
+    STATE extends RuntimeState = RuntimeState,
+  >(
+    options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>,
   ) {
     const system = options.system ?? this.instructions;
     const structuredOutput = options.structuredOutput;
+    const runtime = options.runtime;
 
-    if (
-      structuredOutput &&
-      shouldUseStructuredPipeline(this.model, this.tools, structuredOutput)
-    ) {
-      return streamWithStructuredPipeline({
-        model: this.model,
-        tools: this.tools,
-        system,
-        structuredOutput,
-        options,
-      });
+    const callStream = async (runtimeForCall?: RuntimeStore<STATE>) => {
+      if (
+        structuredOutput &&
+        shouldUseStructuredPipeline(this.model, this.tools, structuredOutput)
+      ) {
+        const preparedOptions = prepareOptionsForRuntime(options, runtimeForCall);
+        const streamResult = await streamWithStructuredPipeline({
+          model: this.model,
+          tools: this.tools,
+          system,
+          structuredOutput,
+          options: preparedOptions,
+        });
+
+        attachRuntimeToStream(streamResult, runtimeForCall);
+        return streamResult;
+      }
+
+      if ("prompt" in options && options.prompt !== undefined) {
+        const {
+          system: _system,
+          structuredOutput: _structured,
+          runtime: _runtime,
+          ...rest
+        } = options;
+        const { experimental_context, ...restWithoutContext } = rest;
+        const payload: WithPrompt<StreamTextParams> & {
+          experimental_output?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
+          experimental_context?: unknown;
+        } = {
+          ...restWithoutContext,
+          system,
+          model: this.model,
+          ...(this.tools ? { tools: this.tools } : {}),
+          ...(structuredOutput
+            ? { experimental_output: structuredOutput }
+            : {}),
+        };
+
+        const mergedContext = RuntimeStore.mergeExperimentalContext(
+          experimental_context,
+          runtimeForCall,
+        );
+
+        if (mergedContext !== undefined) {
+          payload.experimental_context = mergedContext;
+        }
+
+        const streamResult = await streamText(payload);
+        attachRuntimeToStream(streamResult, runtimeForCall);
+        return streamResult;
+      }
+
+      if ("messages" in options && options.messages !== undefined) {
+        const {
+          system: _system,
+          structuredOutput: _structured,
+          runtime: _runtime,
+          ...rest
+        } = options;
+        const { experimental_context, ...restWithoutContext } = rest;
+        const payload: WithMessages<StreamTextParams> & {
+          experimental_output?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
+          experimental_context?: unknown;
+        } = {
+          ...restWithoutContext,
+          system,
+          model: this.model,
+          ...(this.tools ? { tools: this.tools } : {}),
+          ...(structuredOutput
+            ? { experimental_output: structuredOutput }
+            : {}),
+        };
+
+        const mergedContext = RuntimeStore.mergeExperimentalContext(
+          experimental_context,
+          runtimeForCall,
+        );
+
+        if (mergedContext !== undefined) {
+          payload.experimental_context = mergedContext;
+        }
+
+        const streamResult = await streamText(payload);
+        attachRuntimeToStream(streamResult, runtimeForCall);
+        return streamResult;
+      }
+
+      throw new Error("Agent.stream requires a prompt or messages option");
+    };
+
+    if (!runtime) {
+      return callStream();
     }
 
-    if ("prompt" in options && options.prompt !== undefined) {
-      const { system: _system, structuredOutput: _structuredOutput, ...rest } =
-        options;
-      const payload = {
-        ...rest,
-        system,
-        model: this.model,
-        ...(this.tools ? { tools: this.tools } : {}),
-        ...(structuredOutput
-          ? { experimental_output: structuredOutput }
-          : {}),
-      } satisfies WithPrompt<StreamTextParams> & {
-        experimental_output?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
-      };
+    const scopedRuntime = runtime.snapshot();
 
-      return streamText(payload);
-    }
-
-    if ("messages" in options && options.messages !== undefined) {
-      const { system: _system, structuredOutput: _structuredOutput, ...rest } =
-        options;
-      const payload = {
-        ...rest,
-        system,
-        model: this.model,
-        ...(this.tools ? { tools: this.tools } : {}),
-        ...(structuredOutput
-          ? { experimental_output: structuredOutput }
-          : {}),
-      } satisfies WithMessages<StreamTextParams> & {
-        experimental_output?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
-      };
-
-      return streamText(payload);
-    }
-
-    throw new Error("Agent.stream requires a prompt or messages option");
+    return scopedRuntime.run(async () => {
+      try {
+        return await callStream(scopedRuntime);
+      } catch (error) {
+        await scopedRuntime.dispose();
+        throw error;
+      }
+    });
   }
+}
+
+function prepareOptionsForRuntime<
+  OUTPUT,
+  PARTIAL_OUTPUT,
+  STATE extends RuntimeState,
+>(
+  options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>,
+  runtime: RuntimeStore<STATE> | undefined,
+): AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
+function prepareOptionsForRuntime<
+  OUTPUT,
+  PARTIAL_OUTPUT,
+  STATE extends RuntimeState,
+>(
+  options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>,
+  runtime: RuntimeStore<STATE> | undefined,
+): AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
+function prepareOptionsForRuntime<
+  OUTPUT,
+  PARTIAL_OUTPUT,
+  STATE extends RuntimeState,
+>(
+  options:
+    | AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>
+    | AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>,
+  runtime: RuntimeStore<STATE> | undefined,
+) {
+  if (!runtime) {
+    return options;
+  }
+
+  const { runtime: _runtime, experimental_context, ...rest } =
+    options as typeof options & { experimental_context?: unknown };
+
+  const mergedContext = RuntimeStore.mergeExperimentalContext(
+    experimental_context,
+    runtime,
+  );
+
+  return {
+    ...rest,
+    runtime,
+    ...(mergedContext !== undefined
+      ? { experimental_context: mergedContext }
+      : {}),
+  } as typeof options;
+}
+
+function attachRuntimeToStream<STATE extends RuntimeState>(
+  streamResult: StreamTextResult<ToolSet, unknown>,
+  runtime: RuntimeStore<STATE> | undefined,
+) {
+  if (!runtime) {
+    return;
+  }
+
+  let disposed = false;
+
+  const disposeOnce = async () => {
+    if (disposed) {
+      return;
+    }
+
+    disposed = true;
+    await runtime.dispose();
+  };
+
+  const originalClose = (streamResult as unknown as { closeStream?: () => void })
+    .closeStream;
+  if (typeof originalClose === "function") {
+    (streamResult as unknown as { closeStream: () => void }).closeStream = () => {
+      try {
+        originalClose.call(streamResult);
+      } finally {
+        void disposeOnce();
+      }
+    };
+  }
+
+  const originalConsume = streamResult.consumeStream.bind(streamResult);
+  streamResult.consumeStream = async (...args) => {
+    try {
+      return await originalConsume(...args);
+    } finally {
+      await disposeOnce();
+    }
+  };
 }

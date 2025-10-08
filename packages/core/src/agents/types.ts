@@ -5,6 +5,8 @@ import {
   type ToolSet,
 } from "ai";
 
+import type { RuntimeState, RuntimeStore } from "../runtime/store.js";
+
 type FirstArg<T> = T extends (arg: infer A, ...rest: any[]) => any ? A : never;
 
 export type GenerateTextParams = FirstArg<typeof generateText>;
@@ -18,18 +20,51 @@ export type StructuredOutput<OUTPUT, PARTIAL_OUTPUT> = Output.Output<
   PARTIAL_OUTPUT
 >;
 
-export type BaseAgentOptions<T, OUTPUT = never, PARTIAL_OUTPUT = never> =
-  Omit<T, "model" | "system" | "experimental_output" | "tools"> & {
-    system?: string;
-    structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
-  };
+export type BaseAgentOptions<
+  T,
+  OUTPUT = never,
+  PARTIAL_OUTPUT = never,
+  STATE extends RuntimeState = RuntimeState,
+> = Omit<T, "model" | "system" | "experimental_output" | "tools"> & {
+  system?: string;
+  structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
+  runtime?: RuntimeStore<STATE>;
+};
 
-export type AgentGenerateOptions<OUTPUT = never, PARTIAL_OUTPUT = never> =
-  | BaseAgentOptions<WithPrompt<GenerateTextParams>, OUTPUT, PARTIAL_OUTPUT>
-  | BaseAgentOptions<WithMessages<GenerateTextParams>, OUTPUT, PARTIAL_OUTPUT>;
+export type AgentGenerateOptions<
+  OUTPUT = never,
+  PARTIAL_OUTPUT = never,
+  STATE extends RuntimeState = RuntimeState,
+> =
+  | BaseAgentOptions<
+      WithPrompt<GenerateTextParams>,
+      OUTPUT,
+      PARTIAL_OUTPUT,
+      STATE
+    >
+  | BaseAgentOptions<
+      WithMessages<GenerateTextParams>,
+      OUTPUT,
+      PARTIAL_OUTPUT,
+      STATE
+    >;
 
-export type AgentStreamOptions<OUTPUT = never, PARTIAL_OUTPUT = never> =
-  | BaseAgentOptions<WithPrompt<StreamTextParams>, OUTPUT, PARTIAL_OUTPUT>
-  | BaseAgentOptions<WithMessages<StreamTextParams>, OUTPUT, PARTIAL_OUTPUT>;
+export type AgentStreamOptions<
+  OUTPUT = never,
+  PARTIAL_OUTPUT = never,
+  STATE extends RuntimeState = RuntimeState,
+> =
+  | BaseAgentOptions<
+      WithPrompt<StreamTextParams>,
+      OUTPUT,
+      PARTIAL_OUTPUT,
+      STATE
+    >
+  | BaseAgentOptions<
+      WithMessages<StreamTextParams>,
+      OUTPUT,
+      PARTIAL_OUTPUT,
+      STATE
+    >;
 
 export type AgentTools = ToolSet | undefined;

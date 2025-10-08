@@ -11,6 +11,8 @@ import {
 import { jsonSchema } from "@ai-sdk/provider-utils";
 import type { JSONSchema7 } from "@ai-sdk/provider";
 
+import { RuntimeStore, type RuntimeState } from "../runtime/store.js";
+
 import type {
   AgentGenerateOptions,
   AgentStreamOptions,
@@ -25,20 +27,28 @@ const OPENAI_PROVIDER_ID = "openai";
 
 type ModelMessages = NonNullable<GenerateTextParams["messages"]>;
 
-interface StructuredGeneratePipelineParams<OUTPUT, PARTIAL_OUTPUT> {
+interface StructuredGeneratePipelineParams<
+  OUTPUT,
+  PARTIAL_OUTPUT,
+  STATE extends RuntimeState = RuntimeState,
+> {
   model: LanguageModel;
   system?: string;
   tools?: ToolSet;
   structuredOutput: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
-  options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT>;
+  options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
 }
 
-interface StructuredStreamPipelineParams<OUTPUT, PARTIAL_OUTPUT> {
+interface StructuredStreamPipelineParams<
+  OUTPUT,
+  PARTIAL_OUTPUT,
+  STATE extends RuntimeState = RuntimeState,
+> {
   model: LanguageModel;
   system?: string;
   tools?: ToolSet;
   structuredOutput: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
-  options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT>;
+  options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
 }
 
 export function shouldUseStructuredPipeline<OUTPUT, PARTIAL_OUTPUT>(
@@ -59,20 +69,21 @@ export function shouldUseStructuredPipeline<OUTPUT, PARTIAL_OUTPUT>(
 export async function generateWithStructuredPipeline<
   OUTPUT,
   PARTIAL_OUTPUT,
+  STATE extends RuntimeState = RuntimeState,
 >(
-  params: StructuredGeneratePipelineParams<OUTPUT, PARTIAL_OUTPUT>,
+  params: StructuredGeneratePipelineParams<OUTPUT, PARTIAL_OUTPUT, STATE>,
 ) {
   const { model, system, tools, structuredOutput, options } = params;
 
   const originalPrompt = "prompt" in options ? options.prompt : undefined;
   const originalMessages = "messages" in options ? options.messages : undefined;
 
-  const textResult = await callGenerateText<OUTPUT, PARTIAL_OUTPUT>({
-    model,
-    system,
-    tools,
-    options,
-  });
+    const textResult = await callGenerateText<OUTPUT, PARTIAL_OUTPUT, STATE>({
+      model,
+      system,
+      tools,
+      options,
+    });
 
   const schema = createSchemaFromStructuredOutput(structuredOutput);
   const structuringMessages = buildStructuringMessages({
@@ -99,15 +110,16 @@ export async function generateWithStructuredPipeline<
 export async function streamWithStructuredPipeline<
   OUTPUT,
   PARTIAL_OUTPUT,
+  STATE extends RuntimeState = RuntimeState,
 >(
-  params: StructuredStreamPipelineParams<OUTPUT, PARTIAL_OUTPUT>,
+  params: StructuredStreamPipelineParams<OUTPUT, PARTIAL_OUTPUT, STATE>,
 ) {
   const { model, system, tools, structuredOutput, options } = params;
 
   const originalPrompt = "prompt" in options ? options.prompt : undefined;
   const originalMessages = "messages" in options ? options.messages : undefined;
 
-  const streamResult = await callStreamText<OUTPUT, PARTIAL_OUTPUT>({
+  const streamResult = await callStreamText<OUTPUT, PARTIAL_OUTPUT, STATE>({
     model,
     system,
     tools,
@@ -283,7 +295,11 @@ function flattenMessageContent(
   return undefined;
 }
 
-async function callGenerateText<OUTPUT, PARTIAL_OUTPUT>({
+async function callGenerateText<
+  OUTPUT,
+  PARTIAL_OUTPUT,
+  STATE extends RuntimeState,
+>({
   model,
   system,
   tools,
@@ -292,24 +308,40 @@ async function callGenerateText<OUTPUT, PARTIAL_OUTPUT>({
   model: LanguageModel;
   system?: string;
   tools?: ToolSet;
-  options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT>;
+  options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
 }): Promise<GenerateTextResult<ToolSet, OUTPUT>> {
   if ("prompt" in options && options.prompt !== undefined) {
     const {
       system: _system,
       structuredOutput: _structured,
+      runtime,
       experimental_output: _experimental,
       ...rest
     } =
       options as WithPrompt<GenerateTextParams> & {
         structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
+        runtime?: RuntimeStore<STATE>;
       };
+    const { experimental_context, ...restWithoutContext } = rest as {
+      experimental_context?: unknown;
+    } & typeof rest;
     const payload = {
-      ...rest,
+      ...restWithoutContext,
       model,
       system,
       ...(tools ? { tools } : {}),
-    } satisfies WithPrompt<GenerateTextParams>;
+    } as Omit<WithPrompt<GenerateTextParams>, "experimental_output"> & {
+      experimental_context?: unknown;
+    };
+
+    const mergedContext = RuntimeStore.mergeExperimentalContext(
+      experimental_context,
+      runtime,
+    );
+
+    if (mergedContext !== undefined) {
+      payload.experimental_context = mergedContext;
+    }
 
     return generateText<ToolSet, OUTPUT>(payload);
   }
@@ -318,18 +350,34 @@ async function callGenerateText<OUTPUT, PARTIAL_OUTPUT>({
     const {
       system: _system,
       structuredOutput: _structured,
+      runtime,
       experimental_output: _experimental,
       ...rest
     } =
       options as WithMessages<GenerateTextParams> & {
         structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
+        runtime?: RuntimeStore<STATE>;
       };
+    const { experimental_context, ...restWithoutContext } = rest as {
+      experimental_context?: unknown;
+    } & typeof rest;
     const payload = {
-      ...rest,
+      ...restWithoutContext,
       model,
       system,
       ...(tools ? { tools } : {}),
-    } satisfies WithMessages<GenerateTextParams>;
+    } as Omit<WithMessages<GenerateTextParams>, "experimental_output"> & {
+      experimental_context?: unknown;
+    };
+
+    const mergedContext = RuntimeStore.mergeExperimentalContext(
+      experimental_context,
+      runtime,
+    );
+
+    if (mergedContext !== undefined) {
+      payload.experimental_context = mergedContext;
+    }
 
     return generateText<ToolSet, OUTPUT>(payload);
   }
@@ -337,7 +385,11 @@ async function callGenerateText<OUTPUT, PARTIAL_OUTPUT>({
   throw new Error("Structured pipeline requires prompt or messages.");
 }
 
-async function callStreamText<OUTPUT, PARTIAL_OUTPUT>({
+async function callStreamText<
+  OUTPUT,
+  PARTIAL_OUTPUT,
+  STATE extends RuntimeState,
+>({
   model,
   system,
   tools,
@@ -346,24 +398,40 @@ async function callStreamText<OUTPUT, PARTIAL_OUTPUT>({
   model: LanguageModel;
   system?: string;
   tools?: ToolSet;
-  options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT>;
+  options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
 }): Promise<StreamTextResult<ToolSet, PARTIAL_OUTPUT>> {
   if ("prompt" in options && options.prompt !== undefined) {
     const {
       system: _system,
       structuredOutput: _structured,
+      runtime,
       experimental_output: _experimental,
       ...rest
     } =
       options as WithPrompt<StreamTextParams> & {
         structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
+        runtime?: RuntimeStore<STATE>;
       };
+    const { experimental_context, ...restWithoutContext } = rest as {
+      experimental_context?: unknown;
+    } & typeof rest;
     const payload = {
-      ...rest,
+      ...restWithoutContext,
       model,
       system,
       ...(tools ? { tools } : {}),
-    } satisfies WithPrompt<StreamTextParams>;
+    } as Omit<WithPrompt<StreamTextParams>, "experimental_output"> & {
+      experimental_context?: unknown;
+    };
+    const mergedContext = RuntimeStore.mergeExperimentalContext(
+      experimental_context,
+      runtime,
+    );
+
+    if (mergedContext !== undefined) {
+      payload.experimental_context = mergedContext;
+    }
+
     return streamText<ToolSet, OUTPUT, PARTIAL_OUTPUT>(payload);
   }
 
@@ -371,18 +439,34 @@ async function callStreamText<OUTPUT, PARTIAL_OUTPUT>({
     const {
       system: _system,
       structuredOutput: _structured,
+      runtime,
       experimental_output: _experimental,
       ...rest
     } =
       options as WithMessages<StreamTextParams> & {
         structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
+        runtime?: RuntimeStore<STATE>;
       };
+    const { experimental_context, ...restWithoutContext } = rest as {
+      experimental_context?: unknown;
+    } & typeof rest;
     const payload = {
-      ...rest,
+      ...restWithoutContext,
       model,
       system,
       ...(tools ? { tools } : {}),
-    } satisfies WithMessages<StreamTextParams>;
+    } as Omit<WithMessages<StreamTextParams>, "experimental_output"> & {
+      experimental_context?: unknown;
+    };
+
+    const mergedContext = RuntimeStore.mergeExperimentalContext(
+      experimental_context,
+      runtime,
+    );
+
+    if (mergedContext !== undefined) {
+      payload.experimental_context = mergedContext;
+    }
 
     return streamText<ToolSet, OUTPUT, PARTIAL_OUTPUT>(payload);
   }
