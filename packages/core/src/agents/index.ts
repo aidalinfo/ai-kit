@@ -23,6 +23,7 @@ import type {
   WithMessages,
   WithPrompt,
 } from "./types.js";
+import { applyDefaultStopWhen } from "./toolDefaults.js";
 
 export { Output } from "ai";
 export type { AgentGenerateOptions, AgentStreamOptions } from "./types.js";
@@ -94,6 +95,8 @@ export class Agent {
             : {}),
         };
 
+        applyDefaultStopWhen(payload, this.tools);
+
         const mergedContext = RuntimeStore.mergeExperimentalContext(
           experimental_context,
           runtimeForCall,
@@ -126,6 +129,8 @@ export class Agent {
             ? { experimental_output: structuredOutput }
             : {}),
         };
+
+        applyDefaultStopWhen(payload, this.tools);
 
         const mergedContext = RuntimeStore.mergeExperimentalContext(
           experimental_context,
@@ -206,6 +211,8 @@ export class Agent {
             : {}),
         };
 
+        applyDefaultStopWhen(payload, this.tools);
+
         const mergedContext = RuntimeStore.mergeExperimentalContext(
           experimental_context,
           runtimeForCall,
@@ -240,6 +247,8 @@ export class Agent {
             ? { experimental_output: structuredOutput }
             : {}),
         };
+
+        applyDefaultStopWhen(payload, this.tools);
 
         const mergedContext = RuntimeStore.mergeExperimentalContext(
           experimental_context,
