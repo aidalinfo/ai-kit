@@ -230,6 +230,24 @@ console.log({ lastPartial, parsedOutput });
 
 `experimental_partialOutputStream` diffuse des mises a jour incrementales respectant le schema `zod`. Conservez le dernier fragment pour afficher un resultat provisoire, puis parsez la reponse complete avec `parseOutput` pour obtenir un objet valide en fin de flux.
 
+## Partager des ressources avec le runtime
+
+Lorsque les outils doivent acceder a des fichiers binaires ou a un cache en memoire, passez un `RuntimeStore` a chaque appel :
+
+```ts
+import { RuntimeStore } from "@ai_kit/core";
+
+const runtime = new RuntimeStore();
+runtime.set("pdf", await loadPdf(buffer));
+
+await assistant.stream({
+  runtime,
+  prompt: "Resume le document PDF joint en trois bullet points.",
+});
+```
+
+Le runtime est expose automatiquement aux outils definis avec `createRuntimeTool`. Consultez la page [Runtime des agents](./runtime) pour decouvrir le chargement declaratif de ressources, les hooks de nettoyage et la gestion des types.
+
 ## Aller plus loin
 
 - Surchargez `system` dans chaque appel pour modifier ponctuellement les instructions.
