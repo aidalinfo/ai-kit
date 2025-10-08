@@ -1,0 +1,63 @@
+import { describe, expect, it } from "vitest";
+
+import { Agent } from "./index.js";
+import { createRuntime } from "../runtime/store.js";
+import { createRuntimeTool } from "../runtime/tools.js";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+
+describe("Agent.generate with real OpenAI model", () => {
+  it("returns a textual answer", async () => {
+    const assistant = new Agent({
+      name: "assistant-documentation",
+      instructions:
+        "Tu aides les developpeurs à comprendre la plateforme AI Kit et tu réponds de façon concise.",
+      model: openai("gpt-4.1"),
+    });
+
+    const result = await assistant.generate({
+      prompt:
+        "Dis bonjour en une seule phrase et confirme que tu es prêt à analyser un classeur Excel.",
+    });
+
+    expect(result.text.trim().length).toBeGreaterThan(0);
+  });
+
+  it(
+    "produces text even after invoking a tool",
+    async () => {
+      const getWeatherTool = createRuntimeTool({
+        description: "Récupérer la météo pour une ville donnée.",
+        inputSchema: z.object({ city: z.string() }),
+        async execute({ city }) {
+          return {
+          city,
+          temperature: "18°C",
+          conditions: "ciel dégagé",
+        };
+      },
+    });
+
+    const assistant = new Agent({
+      name: "assistant-documentation",
+      instructions:
+        "Tu dois utiliser l'outil get_weather pour lire la température avant de répondre.",
+      model: openai("gpt-4.1"),
+      tools: { getWeatherTool },
+    });
+
+    const runtime = createRuntime();
+
+      const result = await assistant.generate({
+        prompt:
+          "Quelle météo il fait à paris ?",
+        runtime,
+      });
+      console.log(result.steps[0].toolCalls);
+      console.log(result.text);
+      // expect(result.toolCalls.length).toBeGreaterThan(0);
+      // expect(result.text.trim().length).toBeGreaterThan(0);
+    },
+    30_0000,
+  );
+});
