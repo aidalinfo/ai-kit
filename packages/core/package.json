@@ -1,6 +1,6 @@
 {
   "name": "@ai_kit/core",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "",
   "type": "module",
   "main": "./dist/index.js",
@@ -37,7 +37,7 @@
     "@ai-sdk/provider-utils": "^3.0.10",
     "@types/node": "^24.5.2",
     "ai": "latest",
-    "zod": "^3.25.76"
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "typescript": "^5.9.2",
