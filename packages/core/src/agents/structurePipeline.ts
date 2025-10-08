@@ -12,6 +12,7 @@ import { jsonSchema } from "@ai-sdk/provider-utils";
 import type { JSONSchema7 } from "@ai-sdk/provider";
 
 import { RuntimeStore, type RuntimeState } from "../runtime/store.js";
+import { applyDefaultStopWhen } from "./toolDefaults.js";
 
 import type {
   AgentGenerateOptions,
@@ -343,6 +344,8 @@ async function callGenerateText<
       payload.experimental_context = mergedContext;
     }
 
+    applyDefaultStopWhen(payload, tools);
+
     return generateText<ToolSet, OUTPUT>(payload);
   }
 
@@ -378,6 +381,8 @@ async function callGenerateText<
     if (mergedContext !== undefined) {
       payload.experimental_context = mergedContext;
     }
+
+    applyDefaultStopWhen(payload, tools);
 
     return generateText<ToolSet, OUTPUT>(payload);
   }
@@ -432,6 +437,8 @@ async function callStreamText<
       payload.experimental_context = mergedContext;
     }
 
+    applyDefaultStopWhen(payload, tools);
+
     return streamText<ToolSet, OUTPUT, PARTIAL_OUTPUT>(payload);
   }
 
@@ -467,6 +474,8 @@ async function callStreamText<
     if (mergedContext !== undefined) {
       payload.experimental_context = mergedContext;
     }
+
+    applyDefaultStopWhen(payload, tools);
 
     return streamText<ToolSet, OUTPUT, PARTIAL_OUTPUT>(payload);
   }
