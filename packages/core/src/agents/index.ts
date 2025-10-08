@@ -341,24 +341,38 @@ function attachRuntimeToStream<STATE extends RuntimeState>(
     await runtime.dispose();
   };
 
+  const runWithinRuntime = <Result>(
+    callback: () => Result | Promise<Result>,
+  ): Result | Promise<Result> => {
+    if (disposed || runtime.isDisposed()) {
+      return callback();
+    }
+
+    return runtime.run(callback);
+  };
+
   const originalClose = (streamResult as unknown as { closeStream?: () => void })
     .closeStream;
   if (typeof originalClose === "function") {
     (streamResult as unknown as { closeStream: () => void }).closeStream = () => {
-      try {
-        originalClose.call(streamResult);
-      } finally {
-        void disposeOnce();
-      }
+      return runWithinRuntime(() => {
+        try {
+          originalClose.call(streamResult);
+        } finally {
+          void disposeOnce();
+        }
+      });
     };
   }
 
   const originalConsume = streamResult.consumeStream.bind(streamResult);
   streamResult.consumeStream = async (...args) => {
-    try {
-      return await originalConsume(...args);
-    } finally {
-      await disposeOnce();
-    }
+    return runWithinRuntime(async () => {
+      try {
+        return await originalConsume(...args);
+      } finally {
+        await disposeOnce();
+      }
+    });
   };
 }
