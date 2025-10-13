@@ -1,30 +1,36 @@
 import { WorkflowAbortError, WorkflowExecutionError } from "../errors.js";
 import type { MaybePromise, SchemaLike, StepHandlerArgs } from "../types.js";
-import { createStep, WorkflowStep, WorkflowStepOutput } from "./step.js";
+import { createStep, WorkflowStep } from "./step.js";
 
-export type ForEachCollectFn<ItemStep extends WorkflowStep<any, any, any, any>> = (
-  results: Array<WorkflowStepOutput<ItemStep>>,
-) => MaybePromise<unknown>;
+export type ForEachCollectFn<ItemOutput, CollectOutput = unknown> = (
+  results: Array<ItemOutput>,
+) => MaybePromise<CollectOutput>;
 
 export type ForEachStepOutput<
-  ItemStep extends WorkflowStep<any, any, any, any>,
-  Collect extends ForEachCollectFn<ItemStep> | undefined,
-> = Collect extends ForEachCollectFn<ItemStep>
+  ItemOutput,
+  Collect extends ForEachCollectFn<ItemOutput, any> | undefined,
+> = Collect extends ForEachCollectFn<ItemOutput, any>
   ? Awaited<ReturnType<Collect>>
-  : Array<WorkflowStepOutput<ItemStep>>;
+  : Array<ItemOutput>;
 
 export interface ForEachStepConfig<
   Input,
   Item,
-  ItemStep extends WorkflowStep<Item, unknown, Meta, RootInput>,
+  ItemOutput = unknown,
   Meta extends Record<string, unknown> = Record<string, unknown>,
   RootInput = unknown,
-  Collect extends ForEachCollectFn<ItemStep> | undefined = undefined,
+  ItemStep extends WorkflowStep<Item, ItemOutput, Meta, RootInput> = WorkflowStep<
+    Item,
+    ItemOutput,
+    Meta,
+    RootInput
+  >,
+  Collect extends ForEachCollectFn<ItemOutput, any> | undefined = undefined,
 > {
   id: string;
   description?: string;
   inputSchema?: SchemaLike<Input>;
-  outputSchema?: SchemaLike<ForEachStepOutput<ItemStep, Collect>>;
+  outputSchema?: SchemaLike<ForEachStepOutput<ItemOutput, Collect>>;
   items: (args: StepHandlerArgs<Input, Meta, RootInput>) => MaybePromise<Iterable<Item>>;
   itemStep: ItemStep;
   collect?: Collect;
@@ -34,14 +40,20 @@ export interface ForEachStepConfig<
 export const createForEachStep = <
   Input,
   Item,
-  ItemStep extends WorkflowStep<Item, unknown, Meta, RootInput>,
+  ItemOutput = unknown,
   Meta extends Record<string, unknown> = Record<string, unknown>,
   RootInput = unknown,
-  Collect extends ForEachCollectFn<ItemStep> | undefined = undefined,
+  ItemStep extends WorkflowStep<Item, ItemOutput, Meta, RootInput> = WorkflowStep<
+    Item,
+    ItemOutput,
+    Meta,
+    RootInput
+  >,
+  Collect extends ForEachCollectFn<ItemOutput, any> | undefined = undefined,
 >(
-  config: ForEachStepConfig<Input, Item, ItemStep, Meta, RootInput, Collect>,
+  config: ForEachStepConfig<Input, Item, ItemOutput, Meta, RootInput, ItemStep, Collect>,
 ) =>
-  createStep<Input, ForEachStepOutput<ItemStep, Collect>, Meta, RootInput>({
+  createStep<Input, ForEachStepOutput<ItemOutput, Collect>, Meta, RootInput>({
     id: config.id,
     description: config.description,
     inputSchema: config.inputSchema,
@@ -54,7 +66,7 @@ export const createForEachStep = <
       const concurrency = Number.isFinite(rawConcurrency)
         ? Math.max(1, Math.floor(rawConcurrency))
         : 1;
-      const results: Array<WorkflowStepOutput<ItemStep>> = new Array(total);
+      const results: Array<ItemOutput> = new Array(total);
 
       let currentIndex = 0;
 
@@ -78,7 +90,7 @@ export const createForEachStep = <
               ...args,
               input: item,
             });
-            results[index] = output as WorkflowStepOutput<ItemStep>;
+            results[index] = output as ItemOutput;
           } catch (error) {
             throw new WorkflowExecutionError(
               `ForEach step ${config.id} failed while processing item at index ${index}`,
@@ -93,9 +105,9 @@ export const createForEachStep = <
       await Promise.all(workers);
 
       if (config.collect) {
-        return (await config.collect(results)) as ForEachStepOutput<ItemStep, Collect>;
+        return (await config.collect(results)) as ForEachStepOutput<ItemOutput, Collect>;
       }
 
-      return results as ForEachStepOutput<ItemStep, Collect>;
+      return results as ForEachStepOutput<ItemOutput, Collect>;
     },
   });
