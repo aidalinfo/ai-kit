@@ -1,5 +1,5 @@
 import { WorkflowExecutionError } from "../errors.js";
-import type { SchemaLike, StepHandlerArgs } from "../types.js";
+import type { SchemaLike, StepHandlerArgs, WorkflowStepLike } from "../types.js";
 import { createStep, WorkflowStep, WorkflowStepOutput } from "./step.js";
 
 export type ParallelStepOutputs<
@@ -10,7 +10,7 @@ export type ParallelStepOutputs<
 
 export interface ParallelStepConfig<
   Input,
-  Steps extends Record<string, WorkflowStep<Input, unknown, Meta, RootInput>>,
+  Steps extends Record<string, WorkflowStepLike<Meta, RootInput>>,
   Meta extends Record<string, unknown> = Record<string, unknown>,
   RootInput = unknown,
 > {
@@ -23,7 +23,7 @@ export interface ParallelStepConfig<
 
 export const createParallelStep = <
   Input,
-  Steps extends Record<string, WorkflowStep<Input, unknown, Meta, RootInput>>,
+  Steps extends Record<string, WorkflowStepLike<Meta, RootInput>>,
   Meta extends Record<string, unknown> = Record<string, unknown>,
   RootInput = unknown,
 >({ id, description, inputSchema, outputSchema, steps }: ParallelStepConfig<Input, Steps, Meta, RootInput>) =>

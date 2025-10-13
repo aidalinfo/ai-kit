@@ -1,5 +1,13 @@
 import { WorkflowAbortError, WorkflowExecutionError } from "../errors.js";
-import type { MaybePromise, SchemaLike, StepHandlerArgs } from "../types.js";
+import type {
+  MaybePromise,
+  SchemaLike,
+  StepHandlerArgs,
+  WorkflowStepInput,
+  WorkflowStepMeta,
+  WorkflowStepOutput,
+  WorkflowStepRootInput,
+} from "../types.js";
 import { createStep, WorkflowStep } from "./step.js";
 
 export type ForEachCollectFn<ItemOutput, CollectOutput = unknown> = (
@@ -15,23 +23,16 @@ export type ForEachStepOutput<
 
 export interface ForEachStepConfig<
   Input,
-  Item,
-  ItemOutput = unknown,
-  Meta extends Record<string, unknown> = Record<string, unknown>,
-  RootInput = unknown,
-  ItemStep extends WorkflowStep<Item, ItemOutput, Meta, RootInput> = WorkflowStep<
-    Item,
-    ItemOutput,
-    Meta,
-    RootInput
-  >,
-  Collect extends ForEachCollectFn<ItemOutput, any> | undefined = undefined,
+  ItemStep extends WorkflowStep<any, any, any, any>,
+  Collect extends ForEachCollectFn<WorkflowStepOutput<ItemStep>, any> | undefined = undefined,
 > {
   id: string;
   description?: string;
   inputSchema?: SchemaLike<Input>;
-  outputSchema?: SchemaLike<ForEachStepOutput<ItemOutput, Collect>>;
-  items: (args: StepHandlerArgs<Input, Meta, RootInput>) => MaybePromise<Iterable<Item>>;
+  outputSchema?: SchemaLike<ForEachStepOutput<WorkflowStepOutput<ItemStep>, Collect>>;
+  items: (
+    args: StepHandlerArgs<Input, WorkflowStepMeta<ItemStep>, WorkflowStepRootInput<ItemStep>>,
+  ) => MaybePromise<Iterable<WorkflowStepInput<ItemStep>>>;
   itemStep: ItemStep;
   collect?: Collect;
   concurrency?: number;
@@ -39,26 +40,24 @@ export interface ForEachStepConfig<
 
 export const createForEachStep = <
   Input,
-  Item,
-  ItemOutput = unknown,
-  Meta extends Record<string, unknown> = Record<string, unknown>,
-  RootInput = unknown,
-  ItemStep extends WorkflowStep<Item, ItemOutput, Meta, RootInput> = WorkflowStep<
-    Item,
-    ItemOutput,
-    Meta,
-    RootInput
-  >,
-  Collect extends ForEachCollectFn<ItemOutput, any> | undefined = undefined,
+  ItemStep extends WorkflowStep<any, any, any, any>,
+  Collect extends ForEachCollectFn<WorkflowStepOutput<ItemStep>, any> | undefined = undefined,
 >(
-  config: ForEachStepConfig<Input, Item, ItemOutput, Meta, RootInput, ItemStep, Collect>,
+  config: ForEachStepConfig<Input, ItemStep, Collect>,
 ) =>
-  createStep<Input, ForEachStepOutput<ItemOutput, Collect>, Meta, RootInput>({
+  createStep<
+    Input,
+    ForEachStepOutput<WorkflowStepOutput<ItemStep>, Collect>,
+    WorkflowStepMeta<ItemStep>,
+    WorkflowStepRootInput<ItemStep>
+  >({
     id: config.id,
     description: config.description,
     inputSchema: config.inputSchema,
     outputSchema: config.outputSchema,
-    handler: async (args: StepHandlerArgs<Input, Meta, RootInput>) => {
+    handler: async (
+      args: StepHandlerArgs<Input, WorkflowStepMeta<ItemStep>, WorkflowStepRootInput<ItemStep>>,
+    ) => {
       const itemsIterable = await config.items(args);
       const items = Array.isArray(itemsIterable) ? itemsIterable : Array.from(itemsIterable);
       const total = items.length;
@@ -66,7 +65,7 @@ export const createForEachStep = <
       const concurrency = Number.isFinite(rawConcurrency)
         ? Math.max(1, Math.floor(rawConcurrency))
         : 1;
-      const results: Array<ItemOutput> = new Array(total);
+      const results: Array<WorkflowStepOutput<ItemStep>> = new Array(total);
 
       let currentIndex = 0;
 
@@ -83,14 +82,14 @@ export const createForEachStep = <
             break;
           }
 
-          const item = items[index];
+          const item = items[index] as WorkflowStepInput<ItemStep>;
 
           try {
             const { output } = await config.itemStep.execute({
               ...args,
               input: item,
             });
-            results[index] = output as ItemOutput;
+            results[index] = output as WorkflowStepOutput<ItemStep>;
           } catch (error) {
             throw new WorkflowExecutionError(
               `ForEach step ${config.id} failed while processing item at index ${index}`,
@@ -105,9 +104,9 @@ export const createForEachStep = <
       await Promise.all(workers);
 
       if (config.collect) {
-        return (await config.collect(results)) as ForEachStepOutput<ItemOutput, Collect>;
+        return (await config.collect(results)) as ForEachStepOutput<WorkflowStepOutput<ItemStep>, Collect>;
       }
 
-      return results as ForEachStepOutput<ItemOutput, Collect>;
+      return results as ForEachStepOutput<WorkflowStepOutput<ItemStep>, Collect>;
     },
   });

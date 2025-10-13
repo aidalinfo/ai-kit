@@ -5,6 +5,28 @@ export type SchemaLike<T> = {
   safeParse?: (data: unknown) => { success: true; data: T } | { success: false; error: unknown };
 };
 
+export type WorkflowStepLike<
+  Meta extends Record<string, unknown>,
+  RootInput,
+> = WorkflowStep<any, any, Meta, RootInput> | WorkflowStep<any, any, Meta, any>;
+
+export type WorkflowStepInput<T extends WorkflowStep<any, any, any, any>> =
+  T extends WorkflowStep<infer Input, any, any, any> ? Input : never;
+
+export type WorkflowStepOutput<T extends WorkflowStep<any, any, any, any>> =
+  T extends WorkflowStep<any, infer Output, any, any> ? Output : never;
+
+export type WorkflowStepMeta<T extends WorkflowStep<any, any, any, any>> =
+  T extends WorkflowStep<any, any, infer Meta, any> ? Meta : never;
+
+export type WorkflowStepRootInput<T extends WorkflowStep<any, any, any, any>> =
+  T extends WorkflowStep<any, any, any, infer RootInput> ? RootInput : never;
+
+export type AnyWorkflowStep<
+  Meta extends Record<string, unknown>,
+  RootInput,
+> = WorkflowStep<any, any, Meta, RootInput> | WorkflowStep<any, any, Meta, any>;
+
 export type WorkflowEventType =
   | "workflow:start"
   | "workflow:success"
