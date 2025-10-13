@@ -3,3 +3,4 @@ packages:
   - packages/types
   - packages/mcp-docs-server
   - packages/docs
+  - packages/server

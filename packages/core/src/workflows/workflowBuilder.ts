@@ -1,13 +1,11 @@
 import { WorkflowSchemaError } from "./errors.js";
-import type { BranchDeclaration, BranchId, HumanStepConfig, WorkflowConfig } from "./types.js";
+import type { BranchId, HumanStepConfig, WorkflowConfig } from "./types.js";
 import { WorkflowStep } from "./steps/step.js";
 import { createHumanStep, HumanWorkflowStep } from "./steps/humanStep.js";
 import { Workflow } from "./workflow.js";
 
-type AnyWorkflowStep<Meta extends Record<string, unknown>, Input> = WorkflowStep<unknown, unknown, Meta, Input>;
-
 interface WorkflowBuilderStore<Meta extends Record<string, unknown>, Input> {
-  steps: Map<string, AnyWorkflowStep<Meta, Input>>;
+  steps: Map<string, WorkflowStep<any, any, Meta, any>>;
   sequence: string[];
   branchLookup: Map<string, Map<BranchId, string>>;
   conditionSteps: Set<string>;
@@ -112,10 +110,15 @@ class ConditionalWorkflowBuilder<
     private readonly conditionId: string,
   ) {}
 
+  private normalizeStep(step: WorkflowStep<any, any, Meta, any>) {
+    return step as WorkflowStep<any, any, Meta, Input>;
+  }
+
   then(
     ...branches: [
-      WorkflowStep<unknown, unknown, Meta, Input> | Record<string, WorkflowStep<unknown, unknown, Meta, Input>>,
-      ...WorkflowStep<unknown, unknown, Meta, Input>[]
+      | WorkflowStep<any, any, Meta, any>
+        | Record<string, WorkflowStep<any, any, Meta, any>>,
+      ...Array<WorkflowStep<any, any, Meta, any>>
     ]
   ): WorkflowBuilder<Input, unknown, Output, Meta> {
     if (branches.length === 0) {
@@ -130,7 +133,10 @@ class ConditionalWorkflowBuilder<
         throw new WorkflowSchemaError("Conditional builder requires at least one branch step");
       }
 
-      const declarations = steps.map((step, index) => ({ id: index as BranchId, step }));
+      const declarations = steps.map((step, index) => ({
+        id: index as BranchId,
+        step: this.normalizeStep(step),
+      }));
       return this.parent.registerBranches(this.conditionId, declarations);
     }
 
@@ -143,10 +149,19 @@ class ConditionalWorkflowBuilder<
       throw new WorkflowSchemaError("Conditional builder requires at least one branch step");
     }
 
-    const declarations = entries.map(([id, step]) => ({ id, step }));
+    const declarations = entries.map(([id, step]) => ({
+      id,
+      step: this.normalizeStep(step),
+    }));
     return this.parent.registerBranches(this.conditionId, declarations);
   }
 }
+
+type CompatibleStep<
+  Current,
+  Meta extends Record<string, unknown>,
+  RootInput,
+> = WorkflowStep<Current, any, Meta, RootInput> | WorkflowStep<Current, any, Meta, any>;
 
 export class WorkflowBuilder<
   Input,
@@ -176,7 +191,7 @@ export class WorkflowBuilder<
     );
   }
 
-  private appendStep(step: WorkflowStep<unknown, unknown, Meta, Input>, options?: { condition?: boolean }) {
+  private appendStep(step: WorkflowStep<any, any, Meta, any>, options?: { condition?: boolean }) {
     if (this.store.steps.has(step.id)) {
       throw new WorkflowSchemaError(`Duplicate workflow step id ${step.id}`);
     }
@@ -195,7 +210,7 @@ export class WorkflowBuilder<
 
   registerBranches(
     conditionId: string,
-    declarations: BranchDeclaration<Meta, Input>[],
+    declarations: Array<{ id: BranchId; step: WorkflowStep<any, any, Meta, any> }>,
   ): WorkflowBuilder<Input, unknown, Output, Meta> {
     ensureBranchLookup(this.store, conditionId);
 
@@ -213,8 +228,10 @@ export class WorkflowBuilder<
     return this.transition<unknown>();
   }
 
-  then<Next>(step: WorkflowStep<Current, Next, Meta, Input>) {
-    this.appendStep(step as WorkflowStep<unknown, unknown, Meta, Input>);
+  then<StepInput extends Current, Next>(
+    step: WorkflowStep<StepInput, Next, Meta, Input> | WorkflowStep<StepInput, Next, Meta, any>,
+  ) {
+    this.appendStep(step);
     return this.transition<Next>();
   }
 
@@ -228,12 +245,14 @@ export class WorkflowBuilder<
         ? stepOrConfig
         : createHumanStep<Current, Next, Meta, Input>(stepOrConfig);
 
-    this.appendStep(step as WorkflowStep<unknown, unknown, Meta, Input>);
+    this.appendStep(step as WorkflowStep<any, any, Meta, any>);
     return this.transition<Next>();
   }
 
-  conditions(step: WorkflowStep<Current, unknown, Meta, Input>) {
-    this.appendStep(step as WorkflowStep<unknown, unknown, Meta, Input>, { condition: true });
+  conditions<StepInput extends Current, StepOutput>(
+    step: WorkflowStep<StepInput, StepOutput, Meta, Input> | WorkflowStep<StepInput, StepOutput, Meta, any>,
+  ) {
+    this.appendStep(step, { condition: true });
     return new ConditionalWorkflowBuilder<Input, Output, Meta>(
       this as unknown as WorkflowBuilder<Input, unknown, Output, Meta>,
       step.id,
