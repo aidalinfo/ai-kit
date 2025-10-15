@@ -3,13 +3,14 @@ import {
   generateText,
   streamObject,
   streamText,
+  jsonSchema,
+  type JSONSchema7,
   type LanguageModel,
   type ToolSet,
   type GenerateTextResult,
   type StreamTextResult,
 } from "ai";
-import { jsonSchema } from "@ai-sdk/provider-utils";
-import type { JSONSchema7 } from "@ai-sdk/provider";
+// import { jsonSchema } from "@ai-sdk/provider-utils";
 
 import { RuntimeStore, type RuntimeState } from "../runtime/store.js";
 import { applyDefaultStopWhen } from "./toolDefaults.js";
