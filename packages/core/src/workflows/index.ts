@@ -25,6 +25,17 @@ export {
 } from "./steps/forEachStep.js";
 export type { ForEachCollectFn, ForEachStepConfig, ForEachStepOutput } from "./steps/forEachStep.js";
 
+export {
+  createWhileStep,
+} from "./steps/whileStep.js";
+export type {
+  WhileConditionFn,
+  WhileIterationContext,
+  WhileStepCollectFn,
+  WhileStepConfig,
+  WhileStepOutput,
+} from "./steps/whileStep.js";
+
 export { createConditionStep } from "./steps/conditionStep.js";
 export type { ConditionStepConfig } from "./steps/conditionStep.js";
 
