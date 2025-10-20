@@ -19,58 +19,67 @@ import {
 } from "@ai_kit/core";
 import { z } from "zod";
 
-const checkStatus = createMapStep<{ jobId: string; attempt: number }, { done: boolean }>({
+const pollingStateSchema = z.object({
+  jobId: z.string().min(1),
+  attempt: z.number().int().min(0),
+  done: z.boolean().optional(),
+});
+
+type PollingState = z.infer<typeof pollingStateSchema>;
+type PollingResult = PollingState & { done: boolean };
+
+const checkStatus = createMapStep<PollingState, PollingResult>({
   id: "check-status",
-  inputSchema: z.object({
-    jobId: z.string().min(1),
-    attempt: z.number().int().min(0),
+  inputSchema: pollingStateSchema,
+  outputSchema: pollingStateSchema.extend({
+    done: z.boolean(),
   }),
-  outputSchema: z.object({ done: z.boolean() }),
   handler: async ({ input }) => {
-    const done = await fetch(`/jobs/${input.jobId}/status?attempt=${input.attempt}`)
+    const attempt = input.attempt;
+
+    const done = await fetch(`/jobs/${input.jobId}/status?attempt=${attempt}`)
       .then(res => res.json())
       .then(body => body.done === true);
 
-    return { done };
+    return {
+      jobId: input.jobId,
+      attempt: attempt + 1,
+      done,
+    };
   },
 });
 
 const pollUntilDone = createWhileStep({
   id: "poll-job",
   description: "Relance checkStatus jusqu'à completion ou timeout",
-  inputSchema: z.object({ jobId: z.string().min(1) }),
+  inputSchema: z.object({
+    jobId: z.string().min(1),
+    attempt: z.number().int().min(0).default(0),
+  }),
   loopStep: checkStatus,
   maxIterations: 12,
-  condition: ({ iteration, input, lastOutput }) => {
-    const done = lastOutput?.done ?? false;
-    // Tant que le job n'est pas done, on continue (12 tentatives max)
-    return !done || iteration === 0;
+  condition: ({ lastOutput }) => {
+    // Continue tant que le service n'est pas prêt (12 tentatives max)
+    return lastOutput?.done !== true;
   },
-  prepareNextInput: ({ iteration, input }) => ({
-    jobId: input.jobId,
-    attempt: iteration,
-  }),
-  collect: ({ results }) => ({
-    lastResult: results.at(-1) ?? null,
-    attempts: results.length,
-    history: results,
-  }),
 });
 
 export const pollWorkflow = createWorkflow({
   id: "polling",
-  inputSchema: z.object({ jobId: z.string().min(1) }),
+  inputSchema: z.object({
+    jobId: z.string().min(1),
+    attempt: z.number().int().min(0).default(0),
+  }),
   outputSchema: z.object({
-    lastResult: z.object({ done: z.boolean() }).nullable(),
-    attempts: z.number().int(),
-    history: z.array(z.object({ done: z.boolean() })),
+    lastResult: pollingStateSchema.extend({ done: z.boolean() }).optional(),
+    allResults: z.array(pollingStateSchema.extend({ done: z.boolean() })),
   }),
 })
   .while(pollUntilDone)
   .commit();
 ```
 
-Par défaut, le step retourne `{ lastResult, allResults }` avec `lastResult` potentiellement `undefined` si aucune itération n'a eu lieu. Ici nous passons un `collect` personnalisé pour enrichir la sortie. `maxIterations` reste obligatoire et déclenche un `WorkflowExecutionError` si la condition voudrait poursuivre au-delà de la limite : l'UI peut ainsi afficher un message explicite.
+Par défaut, le step retourne `{ lastResult, allResults }` avec `lastResult` potentiellement `undefined` si aucune itération n'a eu lieu. Ici nous nous appuyons sur ce comportement standard, ce qui suffit pour exposer l'état final et l'historique complet. `maxIterations` reste obligatoire et déclenche un `WorkflowExecutionError` si la condition voudrait poursuivre au-delà de la limite : l'UI peut ainsi afficher un message explicite.
 
 ## Condition & garde-fous
 
@@ -80,8 +89,8 @@ Par défaut, le step retourne `{ lastResult, allResults }` avec `lastResult` pot
 
 ## Préparer l'input et collecter les résultats
 
-- `prepareNextInput` est optionnel. Sans lui, l'input initial est passé lors de la première itération puis chaque output devient l'input suivant. Utilisez ce hook pour injecter des métadonnées supplémentaires (ex. compteur d'essais).
-- `collect` reçoit `{ input, results, lastResult, iterations, context }` et vous laisse façonner la sortie (aggrégation, mapping vers une structure métier).
+- `prepareNextInput` est optionnel. Sans lui, l'input initial est passé lors de la première itération puis chaque output devient l'input suivant, comme dans l'exemple ci-dessus. Utilisez ce hook uniquement si vous devez transformer explicitement l'input.
+- `collect` reçoit `{ input, results, lastResult, iterations, context }` et vous laisse façonner la sortie (aggregation, mapping vers une structure métier). Si vous ne le fournissez pas, `createWhileStep` renvoie `{ lastResult, allResults }`.
 
 ## ForEach ou While ?
 
