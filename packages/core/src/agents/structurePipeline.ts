@@ -3,25 +3,27 @@ import {
   generateText,
   streamObject,
   streamText,
+  jsonSchema,
+  type JSONSchema7,
   type LanguageModel,
   type ToolSet,
   type GenerateTextResult,
   type StreamTextResult,
 } from "ai";
-import { jsonSchema } from "@ai-sdk/provider-utils";
-import type { JSONSchema7 } from "@ai-sdk/provider";
 
 import { RuntimeStore, type RuntimeState } from "../runtime/store.js";
 import { applyDefaultStopWhen } from "./toolDefaults.js";
 
-import type {
-  AgentGenerateOptions,
-  AgentStreamOptions,
-  GenerateTextParams,
-  StreamTextParams,
-  StructuredOutput,
-  WithMessages,
-  WithPrompt,
+import {
+  toToolSet,
+  type AgentGenerateOptions,
+  type AgentStreamOptions,
+  type AgentTools,
+  type GenerateTextParams,
+  type StreamTextParams,
+  type StructuredOutput,
+  type WithMessages,
+  type WithPrompt,
 } from "./types.js";
 
 const OPENAI_PROVIDER_ID = "openai";
@@ -35,7 +37,7 @@ interface StructuredGeneratePipelineParams<
 > {
   model: LanguageModel;
   system?: string;
-  tools?: ToolSet;
+  tools?: AgentTools;
   structuredOutput: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
   options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
 }
@@ -47,14 +49,14 @@ interface StructuredStreamPipelineParams<
 > {
   model: LanguageModel;
   system?: string;
-  tools?: ToolSet;
+  tools?: AgentTools;
   structuredOutput: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
   options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
 }
 
 export function shouldUseStructuredPipeline<OUTPUT, PARTIAL_OUTPUT>(
   model: LanguageModel,
-  tools: ToolSet | undefined,
+  tools: AgentTools,
   structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>,
 ): structuredOutput is StructuredOutput<OUTPUT, PARTIAL_OUTPUT> {
   if (!structuredOutput || structuredOutput.type !== "object") {
@@ -183,7 +185,7 @@ export async function streamWithStructuredPipeline<
   return streamResult;
 }
 
-function hasTools(tools: ToolSet | undefined): boolean {
+function hasTools(tools: AgentTools): boolean {
   return !!tools && Object.keys(tools).length > 0;
 }
 
@@ -308,7 +310,7 @@ async function callGenerateText<
 }: {
   model: LanguageModel;
   system?: string;
-  tools?: ToolSet;
+  tools?: AgentTools;
   options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
 }): Promise<GenerateTextResult<ToolSet, OUTPUT>> {
   if ("prompt" in options && options.prompt !== undefined) {
@@ -326,11 +328,12 @@ async function callGenerateText<
     const { experimental_context, ...restWithoutContext } = rest as {
       experimental_context?: unknown;
     } & typeof rest;
+    const toolSet = toToolSet(tools);
     const payload = {
       ...restWithoutContext,
       model,
       system,
-      ...(tools ? { tools } : {}),
+      ...(toolSet ? { tools: toolSet } : {}),
     } as Omit<WithPrompt<GenerateTextParams>, "experimental_output"> & {
       experimental_context?: unknown;
     };
@@ -364,11 +367,12 @@ async function callGenerateText<
     const { experimental_context, ...restWithoutContext } = rest as {
       experimental_context?: unknown;
     } & typeof rest;
+    const toolSet = toToolSet(tools);
     const payload = {
       ...restWithoutContext,
       model,
       system,
-      ...(tools ? { tools } : {}),
+      ...(toolSet ? { tools: toolSet } : {}),
     } as Omit<WithMessages<GenerateTextParams>, "experimental_output"> & {
       experimental_context?: unknown;
     };
@@ -402,7 +406,7 @@ async function callStreamText<
 }: {
   model: LanguageModel;
   system?: string;
-  tools?: ToolSet;
+  tools?: AgentTools;
   options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
 }): Promise<StreamTextResult<ToolSet, PARTIAL_OUTPUT>> {
   if ("prompt" in options && options.prompt !== undefined) {
@@ -420,11 +424,12 @@ async function callStreamText<
     const { experimental_context, ...restWithoutContext } = rest as {
       experimental_context?: unknown;
     } & typeof rest;
+    const toolSet = toToolSet(tools);
     const payload = {
       ...restWithoutContext,
       model,
       system,
-      ...(tools ? { tools } : {}),
+      ...(toolSet ? { tools: toolSet } : {}),
     } as Omit<WithPrompt<StreamTextParams>, "experimental_output"> & {
       experimental_context?: unknown;
     };
@@ -457,11 +462,12 @@ async function callStreamText<
     const { experimental_context, ...restWithoutContext } = rest as {
       experimental_context?: unknown;
     } & typeof rest;
+    const toolSet = toToolSet(tools);
     const payload = {
       ...restWithoutContext,
       model,
       system,
-      ...(tools ? { tools } : {}),
+      ...(toolSet ? { tools: toolSet } : {}),
     } as Omit<WithMessages<StreamTextParams>, "experimental_output"> & {
       experimental_context?: unknown;
     };

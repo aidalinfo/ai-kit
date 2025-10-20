@@ -2,6 +2,7 @@ import {
   generateText,
   streamText,
   Output,
+  type Tool,
   type ToolSet,
 } from "ai";
 
@@ -67,4 +68,14 @@ export type AgentStreamOptions<
       STATE
     >;
 
-export type AgentTools = ToolSet | undefined;
+type ProviderToolSet = Record<string, Tool<unknown, unknown>>;
+
+export type AgentTools = ToolSet | ProviderToolSet | undefined;
+
+export function toToolSet(tools: AgentTools): ToolSet | undefined {
+  if (!tools) {
+    return undefined;
+  }
+
+  return tools as ToolSet;
+}

@@ -14,14 +14,16 @@ import {
   shouldUseStructuredPipeline,
   streamWithStructuredPipeline,
 } from "./structurePipeline.js";
-import type {
-  AgentGenerateOptions,
-  AgentStreamOptions,
-  GenerateTextParams,
-  StreamTextParams,
-  StructuredOutput,
-  WithMessages,
-  WithPrompt,
+import {
+  toToolSet,
+  type AgentGenerateOptions,
+  type AgentStreamOptions,
+  type AgentTools,
+  type GenerateTextParams,
+  type StreamTextParams,
+  type StructuredOutput,
+  type WithMessages,
+  type WithPrompt,
 } from "./types.js";
 import { applyDefaultStopWhen } from "./toolDefaults.js";
 
@@ -32,14 +34,14 @@ export interface AgentConfig {
   name: string;
   instructions?: string;
   model: LanguageModel;
-  tools?: ToolSet;
+  tools?: AgentTools;
 }
 
 export class Agent {
   readonly name: string;
   readonly instructions?: string;
   readonly model: LanguageModel;
-  readonly tools?: ToolSet;
+  readonly tools?: AgentTools;
 
   constructor({ name, instructions, model, tools }: AgentConfig) {
     this.name = name;
@@ -60,6 +62,7 @@ export class Agent {
     const runtime = options.runtime;
 
     const callGenerate = async (runtimeForCall?: RuntimeStore<STATE>) => {
+      const toolSet = toToolSet(this.tools);
       if (
         structuredOutput &&
         shouldUseStructuredPipeline(this.model, this.tools, structuredOutput)
@@ -89,7 +92,7 @@ export class Agent {
           ...restWithoutContext,
           system,
           model: this.model,
-          ...(this.tools ? { tools: this.tools } : {}),
+          ...(toolSet ? { tools: toolSet } : {}),
           ...(structuredOutput
             ? { experimental_output: structuredOutput }
             : {}),
@@ -124,7 +127,7 @@ export class Agent {
           ...restWithoutContext,
           system,
           model: this.model,
-          ...(this.tools ? { tools: this.tools } : {}),
+          ...(toolSet ? { tools: toolSet } : {}),
           ...(structuredOutput
             ? { experimental_output: structuredOutput }
             : {}),
@@ -173,6 +176,7 @@ export class Agent {
     const runtime = options.runtime;
 
     const callStream = async (runtimeForCall?: RuntimeStore<STATE>) => {
+      const toolSet = toToolSet(this.tools);
       if (
         structuredOutput &&
         shouldUseStructuredPipeline(this.model, this.tools, structuredOutput)
@@ -205,7 +209,7 @@ export class Agent {
           ...restWithoutContext,
           system,
           model: this.model,
-          ...(this.tools ? { tools: this.tools } : {}),
+          ...(toolSet ? { tools: toolSet } : {}),
           ...(structuredOutput
             ? { experimental_output: structuredOutput }
             : {}),
@@ -242,7 +246,7 @@ export class Agent {
           ...restWithoutContext,
           system,
           model: this.model,
-          ...(this.tools ? { tools: this.tools } : {}),
+          ...(toolSet ? { tools: toolSet } : {}),
           ...(structuredOutput
             ? { experimental_output: structuredOutput }
             : {}),

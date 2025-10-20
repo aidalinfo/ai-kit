@@ -1,7 +1,21 @@
 import { WorkflowSchemaError } from "./errors.js";
-import type { BranchId, HumanStepConfig, WorkflowConfig } from "./types.js";
+import type {
+  BranchId,
+  HumanStepConfig,
+  WorkflowConfig,
+  WorkflowStepMeta,
+  WorkflowStepInput,
+  WorkflowStepOutput,
+  WorkflowStepRootInput,
+} from "./types.js";
 import { WorkflowStep } from "./steps/step.js";
 import { createHumanStep, HumanWorkflowStep } from "./steps/humanStep.js";
+import {
+  createWhileStep,
+  type WhileStepCollectFn,
+  type WhileStepConfig,
+  type WhileStepOutput,
+} from "./steps/whileStep.js";
 import { Workflow } from "./workflow.js";
 
 interface WorkflowBuilderStore<Meta extends Record<string, unknown>, Input> {
@@ -247,6 +261,31 @@ export class WorkflowBuilder<
 
     this.appendStep(step as WorkflowStep<any, any, Meta, any>);
     return this.transition<Next>();
+  }
+
+  while<
+    LoopStep extends WorkflowStep<any, any, Meta, any>,
+    StepInput extends Current & WorkflowStepInput<LoopStep>,
+    Collect extends WhileStepCollectFn<
+      StepInput,
+      WorkflowStepOutput<LoopStep>,
+      any,
+      WorkflowStepMeta<LoopStep>,
+      WorkflowStepRootInput<LoopStep>
+    > | undefined = undefined,
+    StepOutput = WhileStepOutput<WorkflowStepOutput<LoopStep>, Collect>,
+  >(
+    stepOrConfig:
+      | WorkflowStep<StepInput, StepOutput, Meta, Input>
+      | WhileStepConfig<StepInput, LoopStep, Collect>,
+  ) {
+    const step =
+      stepOrConfig instanceof WorkflowStep
+        ? stepOrConfig
+        : createWhileStep<StepInput, LoopStep, Collect>(stepOrConfig);
+
+    this.appendStep(step as WorkflowStep<any, any, Meta, any>);
+    return this.transition<StepOutput>();
   }
 
   conditions<StepInput extends Current, StepOutput>(

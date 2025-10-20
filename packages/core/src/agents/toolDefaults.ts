@@ -1,6 +1,4 @@
-import type { ToolSet } from "ai";
-
-import type { GenerateTextParams } from "./types.js";
+import type { AgentTools, GenerateTextParams } from "./types.js";
 
 /**
  * When tools are available, disable the AI SDK default stop condition so the
@@ -9,7 +7,7 @@ import type { GenerateTextParams } from "./types.js";
  */
 export function applyDefaultStopWhen<T extends { stopWhen?: GenerateTextParams["stopWhen"] }>(
   payload: T,
-  tools: ToolSet | undefined,
+  tools: AgentTools,
 ) {
   if (!tools || payload.stopWhen !== undefined) {
     return;
