@@ -29,9 +29,15 @@ export {
   createWhileStep,
 } from "./steps/whileStep.js";
 export type {
+  ConfidenceIterationResult,
+  ConfidencePromptArgs,
+  ConfidenceWhileOutput,
+  ConfidenceWhileStepConfig,
+  StandardWhileStepConfig,
   WhileConditionFn,
   WhileIterationContext,
   WhileStepCollectFn,
+  WhileConfidenceConfig,
   WhileStepConfig,
   WhileStepOutput,
 } from "./steps/whileStep.js";
@@ -43,3 +49,15 @@ export { WorkflowBuilder, createWorkflow } from "./workflowBuilder.js";
 export { Workflow } from "./workflow.js";
 export { WorkflowRun } from "./workflowRun.js";
 export { renderWorkflowGraphJSON } from "./inspector.js";
+
+export {
+  attachConfidenceStructuredOutput,
+  CONFIDENCE_STRUCTURED_OUTPUT,
+  createConfidenceAgent,
+  DEFAULT_CONFIDENCE_PROMPT,
+} from "./utils/confidenceAgent.js";
+export type {
+  ConfidenceAgentOptions,
+  ConfidenceAgentRunResult,
+  ConfidenceStructuredOutput,
+} from "./utils/confidenceAgent.js";

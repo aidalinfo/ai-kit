@@ -12,7 +12,7 @@ describe("Agent.generate with real OpenAI model", () => {
       name: "assistant-documentation",
       instructions:
         "Tu aides les developpeurs à comprendre la plateforme AI Kit et tu réponds de façon concise.",
-      model: openai("gpt-4.1"),
+      model: openai("gpt-4o-mini"),
     });
 
     const result = await assistant.generate({
@@ -42,7 +42,7 @@ describe("Agent.generate with real OpenAI model", () => {
       name: "assistant-documentation",
       instructions:
         "Tu dois utiliser l'outil get_weather pour lire la température avant de répondre.",
-      model: openai("gpt-4.1"),
+      model: openai("gpt-4o-mini"),
       tools: { getWeatherTool },
     });
 

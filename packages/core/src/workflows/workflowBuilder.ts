@@ -12,8 +12,10 @@ import { WorkflowStep } from "./steps/step.js";
 import { createHumanStep, HumanWorkflowStep } from "./steps/humanStep.js";
 import {
   createWhileStep,
+  type ConfidenceWhileOutput,
+  type ConfidenceWhileStepConfig,
+  type StandardWhileStepConfig,
   type WhileStepCollectFn,
-  type WhileStepConfig,
   type WhileStepOutput,
 } from "./steps/whileStep.js";
 import { Workflow } from "./workflow.js";
@@ -277,15 +279,30 @@ export class WorkflowBuilder<
   >(
     stepOrConfig:
       | WorkflowStep<StepInput, StepOutput, Meta, Input>
-      | WhileStepConfig<StepInput, LoopStep, Collect>,
-  ) {
+      | StandardWhileStepConfig<StepInput, LoopStep, Collect>,
+  ): WorkflowBuilder<Input, StepOutput, Output, Meta>;
+  while<
+    StepInput extends Current,
+    Result,
+    StepOutput extends ConfidenceWhileOutput<Result> = ConfidenceWhileOutput<Result>,
+  >(
+    stepOrConfig:
+      | WorkflowStep<StepInput, StepOutput, Meta, Input>
+      | ConfidenceWhileStepConfig<StepInput, Result, Meta, Input>,
+  ): WorkflowBuilder<Input, StepOutput, Output, Meta>;
+  while(
+    stepOrConfig:
+      | WorkflowStep<any, any, Meta, Input>
+      | StandardWhileStepConfig<any, WorkflowStep<any, any, Meta, any>, any>
+      | ConfidenceWhileStepConfig<any, any, Meta, Input>,
+  ): WorkflowBuilder<Input, any, Output, Meta> {
     const step =
       stepOrConfig instanceof WorkflowStep
         ? stepOrConfig
-        : createWhileStep<StepInput, LoopStep, Collect>(stepOrConfig);
+        : createWhileStep(stepOrConfig);
 
     this.appendStep(step as WorkflowStep<any, any, Meta, any>);
-    return this.transition<StepOutput>();
+    return this.transition<any>();
   }
 
   conditions<StepInput extends Current, StepOutput>(

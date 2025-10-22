@@ -1,0 +1,111 @@
+---
+title: Boucles while avec confiance
+description: Arrêtez une boucle dès qu'un agent fait grimper la confiance au-dessus d'un seuil.
+sidebar:
+  order: 5
+---
+
+Le mode `confidence` étend `createWhileStep` pour déléguer l'évaluation à un agent. Plus besoin d'écrire une condition ni un `loopStep` : vous fournissez un agent, un prompt et un seuil, la boucle s'arrête automatiquement quand la confiance est atteinte ou que `maxIterations` est dépassé.
+
+## Activer le mode `confidence`
+
+```ts
+import {
+  createConfidenceAgent,
+  createWhileStep,
+  type ConfidenceWhileOutput,
+} from "@ai_kit/core/workflows";
+import { createOpenAIModel } from "@ai-sdk/openai";
+
+const scoringAgent = createConfidenceAgent(
+  createOpenAIModel({ id: "gpt-4o-mini" }),
+);
+
+export const answerWithConfidence = createWhileStep({
+  id: "answer-with-confidence",
+  maxIterations: 3,
+  confidence: {
+    agent: scoringAgent,
+    minConfidence: 0.85,
+    prompt: ({ input, lastOutput }) => [
+      "Tu rédiges la meilleure réponse possible.",
+      `Question: ${input.question}`,
+      lastOutput ? `Réponse précédente: ${lastOutput.result}` : "Première tentative.",
+    ].join("\n"),
+  },
+});
+
+type AnswerPayload = ConfidenceWhileOutput<string>;
+```
+
+Le handler du step n'expose plus de condition : `confidence.agent.generate` est appelé à chaque itération avec un `structuredOutput` imposé (`{ confidence: number }`). Le résultat retourné est un `ConfidenceWhileOutput` :
+
+- `result` : la dernière réponse textuelle produite par l'agent (accès direct via `run.text`).
+- `confidence` : la valeur de confiance de la dernière itération.
+- `iterations` : nombre d'appels effectués.
+- `history` : tableau `{ result, confidence, raw }` conservant les runs successifs (`raw` contient l'objet `GenerateTextResult` complet).
+
+À chaque boucle, un événement `step:event` de type `confidence:iteration` est émis, pratique pour tracer le score depuis `run.watch()`.
+
+> ⚠️ Lorsque `confidence` est défini, `loopStep`, `condition`, `prepareNextInput` et `collect` sont interdits et lèvent un `WorkflowSchemaError`.
+
+## Construire rapidement un agent
+
+`createConfidenceAgent` installe les bonnes instructions (prompt par défaut + structured output). Vous pouvez l'adapter en changeant de modèle grâce à `withModel` :
+
+```ts
+import { createGroqModel } from "@ai-sdk/groq";
+import {
+  attachConfidenceStructuredOutput,
+  DEFAULT_CONFIDENCE_PROMPT,
+} from "@ai_kit/core/workflows";
+
+// supportAgent : agent métier déclaré ailleurs
+const baseAgent = attachConfidenceStructuredOutput(supportAgent);
+const groqAgent = baseAgent.withModel(createGroqModel({ id: "llama3-70b-8192" }));
+
+export const triageTicket = createWhileStep({
+  id: "triage-ticket",
+  maxIterations: 4,
+  confidence: {
+    agent: groqAgent,
+    minConfidence: 0.8,
+    prompt: ({ input, iteration }) =>
+      (
+        `Tu es un agent analyste de données spécialisé dans l'exploration de classeurs Excel au service des développeurs.
+Ta mission est de comprendre la structure des feuilles, d'évaluer leur pertinence pour un tableau de bord et de repérer les colonnes clés avec leurs plages utiles.
+Utilise systématiquement les tools Excel fournis via le runtime store sans demander de chemin explicite; si le classeur n'est pas disponible, explique-le clairement.
+Réponds en français avec un ton professionnel, propose des résumés structurés et suggère, lorsque pertinent, les prochaines étapes d'analyse.
+Assure-toi que chaque réponse reste cohérente avec les contraintes et les schémas de sortie demandés dans les prompts reçus.
+
+Iteration ${iteration + 1}
+Analyse le ticket suivant :
+${input.body}`
+      ).trim(),
+  },
+});
+```
+
+- `attachConfidenceStructuredOutput(agent)` clone votre agent et force l'injection du schéma `{ confidence }` pour chaque `generate`.
+- `DEFAULT_CONFIDENCE_PROMPT` fournit un canevas prêt à l'emploi que vous pouvez compléter avant l'appel.
+- `runtimeContext` vous laisse transmettre un payload (statique ou calculé par itération) qui sera injecté dans `experimental_context` côté agent : idéal pour propager des métadonnées de workflow.
+- `runtime` accepte directement un `RuntimeStore` (ou une fonction qui le retourne) pour profiter des snapshots et du cleanup automatique de l'agent.
+
+```ts
+const step = createWhileStep({
+  id: "confidence-meta",
+  maxIterations: 4,
+  confidence: {
+    agent: scoringAgent,
+    prompt: "Synthétise la demande",
+    minConfidence: 0.75,
+    runtimeContext: ({ iteration, context }) => ({
+      iteration,
+      metadata: context.getMetadata(),
+    }),
+    runtime: ({ context }) => context.getMetadata().sharedRuntimeStore,
+  },
+});
+```
+
+Exposez le `RuntimeStore` où vous le souhaitez (métadonnées workflow, conteneur DI, etc.) puis retournez-le dans `runtime`.

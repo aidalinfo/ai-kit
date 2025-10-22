@@ -50,6 +50,15 @@ export class Agent {
     this.tools = tools;
   }
 
+  withModel(model: LanguageModel) {
+    return new Agent({
+      name: this.name,
+      instructions: this.instructions,
+      model,
+      tools: this.tools,
+    });
+  }
+
   async generate<
     OUTPUT = never,
     PARTIAL_OUTPUT = never,
