@@ -41,7 +41,7 @@
   },
   "peerDependencies": {
     "@langfuse/otel": "^4.2.0",
-    "@opentelemetry/sdk-trace-node": "^0.207.0"
+    "@opentelemetry/sdk-trace-node": "^2.2.0"
   },
   "peerDependenciesMeta": {
     "@langfuse/otel": {
