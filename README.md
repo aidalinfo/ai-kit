@@ -44,6 +44,23 @@ console.log(result.text);
 
 👉 Guides détaillés : [Agents](./docs/core/agents.md)
 
+### Activer la télémétrie Langfuse
+
+```ts
+import { ensureLangfuseTelemetry, Agent } from "@ai_kit/core";
+import { openai } from "@ai-sdk/openai";
+
+await ensureLangfuseTelemetry(); // enregistre le LangfuseSpanProcessor
+
+const agent = new Agent({
+  name: "support",
+  model: openai("gpt-4.1-mini"),
+  telemetry: true,
+});
+```
+
+👉 Configuration complète : [Télémétrie Langfuse](./docs/core/telemetry.md)
+
 ### Découper du contenu
 
 ```ts
