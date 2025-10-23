@@ -8,6 +8,13 @@ import {
 
 import type { RuntimeState, RuntimeStore } from "../runtime/store.js";
 
+export interface AgentTelemetryOverrides {
+  functionId?: string;
+  metadata?: Record<string, unknown>;
+  recordInputs?: boolean;
+  recordOutputs?: boolean;
+}
+
 type FirstArg<T> = T extends (arg: infer A, ...rest: any[]) => any ? A : never;
 
 export type GenerateTextParams = FirstArg<typeof generateText>;
@@ -30,6 +37,7 @@ export type BaseAgentOptions<
   system?: string;
   structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
   runtime?: RuntimeStore<STATE>;
+  telemetry?: AgentTelemetryOverrides;
 };
 
 export type AgentGenerateOptions<
