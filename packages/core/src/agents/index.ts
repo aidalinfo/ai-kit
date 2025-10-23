@@ -26,15 +26,17 @@ import {
   type WithPrompt,
 } from "./types.js";
 import { applyDefaultStopWhen } from "./toolDefaults.js";
+import { mergeTelemetryConfig } from "./telemetry.js";
 
 export { Output } from "ai";
-export type { AgentGenerateOptions, AgentStreamOptions } from "./types.js";
+export type { AgentGenerateOptions, AgentStreamOptions, AgentTelemetryOverrides } from "./types.js";
 
 export interface AgentConfig {
   name: string;
   instructions?: string;
   model: LanguageModel;
   tools?: AgentTools;
+  telemetry?: boolean;
 }
 
 export class Agent {
@@ -42,12 +44,19 @@ export class Agent {
   readonly instructions?: string;
   readonly model: LanguageModel;
   readonly tools?: AgentTools;
+  private telemetryEnabled: boolean;
 
-  constructor({ name, instructions, model, tools }: AgentConfig) {
+  constructor({ name, instructions, model, tools, telemetry }: AgentConfig) {
     this.name = name;
     this.instructions = instructions;
     this.model = model;
     this.tools = tools;
+    this.telemetryEnabled = telemetry ?? false;
+  }
+
+  withTelemetry(enabled: boolean = true) {
+    this.telemetryEnabled = enabled;
+    return this;
   }
 
   async generate<
@@ -74,6 +83,7 @@ export class Agent {
           system,
           structuredOutput,
           options: preparedOptions,
+          telemetryEnabled: this.telemetryEnabled,
         });
       }
 
@@ -84,10 +94,16 @@ export class Agent {
           runtime: _runtime,
           ...rest
         } = options;
-        const { experimental_context, ...restWithoutContext } = rest;
+        const {
+          experimental_context,
+          telemetry: telemetryOverrides,
+          experimental_telemetry,
+          ...restWithoutContext
+        } = rest;
         const payload: WithPrompt<GenerateTextParams> & {
           experimental_output?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
           experimental_context?: unknown;
+          experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
         } = {
           ...restWithoutContext,
           system,
@@ -109,6 +125,16 @@ export class Agent {
           payload.experimental_context = mergedContext;
         }
 
+        const mergedTelemetry = mergeTelemetryConfig({
+          agentTelemetryEnabled: this.telemetryEnabled,
+          overrides: telemetryOverrides,
+          existing: experimental_telemetry,
+        });
+
+        if (mergedTelemetry !== undefined) {
+          payload.experimental_telemetry = mergedTelemetry;
+        }
+
         return generateText(payload);
       }
 
@@ -119,10 +145,16 @@ export class Agent {
           runtime: _runtime,
           ...rest
         } = options;
-        const { experimental_context, ...restWithoutContext } = rest;
+        const {
+          experimental_context,
+          telemetry: telemetryOverrides,
+          experimental_telemetry,
+          ...restWithoutContext
+        } = rest;
         const payload: WithMessages<GenerateTextParams> & {
           experimental_output?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
           experimental_context?: unknown;
+          experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
         } = {
           ...restWithoutContext,
           system,
@@ -142,6 +174,16 @@ export class Agent {
 
         if (mergedContext !== undefined) {
           payload.experimental_context = mergedContext;
+        }
+
+        const mergedTelemetry = mergeTelemetryConfig({
+          agentTelemetryEnabled: this.telemetryEnabled,
+          overrides: telemetryOverrides,
+          existing: experimental_telemetry,
+        });
+
+        if (mergedTelemetry !== undefined) {
+          payload.experimental_telemetry = mergedTelemetry;
         }
 
         return generateText(payload);
@@ -188,6 +230,7 @@ export class Agent {
           system,
           structuredOutput,
           options: preparedOptions,
+          telemetryEnabled: this.telemetryEnabled,
         });
 
         attachRuntimeToStream(streamResult, runtimeForCall);
@@ -201,10 +244,16 @@ export class Agent {
           runtime: _runtime,
           ...rest
         } = options;
-        const { experimental_context, ...restWithoutContext } = rest;
+        const {
+          experimental_context,
+          telemetry: telemetryOverrides,
+          experimental_telemetry,
+          ...restWithoutContext
+        } = rest;
         const payload: WithPrompt<StreamTextParams> & {
           experimental_output?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
           experimental_context?: unknown;
+          experimental_telemetry?: StreamTextParams["experimental_telemetry"];
         } = {
           ...restWithoutContext,
           system,
@@ -226,6 +275,16 @@ export class Agent {
           payload.experimental_context = mergedContext;
         }
 
+        const mergedTelemetry = mergeTelemetryConfig({
+          agentTelemetryEnabled: this.telemetryEnabled,
+          overrides: telemetryOverrides,
+          existing: experimental_telemetry,
+        });
+
+        if (mergedTelemetry !== undefined) {
+          payload.experimental_telemetry = mergedTelemetry;
+        }
+
         const streamResult = await streamText(payload);
         attachRuntimeToStream(streamResult, runtimeForCall);
         return streamResult;
@@ -238,10 +297,16 @@ export class Agent {
           runtime: _runtime,
           ...rest
         } = options;
-        const { experimental_context, ...restWithoutContext } = rest;
+        const {
+          experimental_context,
+          telemetry: telemetryOverrides,
+          experimental_telemetry,
+          ...restWithoutContext
+        } = rest;
         const payload: WithMessages<StreamTextParams> & {
           experimental_output?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
           experimental_context?: unknown;
+          experimental_telemetry?: StreamTextParams["experimental_telemetry"];
         } = {
           ...restWithoutContext,
           system,
@@ -261,6 +326,16 @@ export class Agent {
 
         if (mergedContext !== undefined) {
           payload.experimental_context = mergedContext;
+        }
+
+        const mergedTelemetry = mergeTelemetryConfig({
+          agentTelemetryEnabled: this.telemetryEnabled,
+          overrides: telemetryOverrides,
+          existing: experimental_telemetry,
+        });
+
+        if (mergedTelemetry !== undefined) {
+          payload.experimental_telemetry = mergedTelemetry;
         }
 
         const streamResult = await streamText(payload);

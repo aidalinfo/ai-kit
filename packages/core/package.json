@@ -39,6 +39,18 @@
     "ai": "latest",
     "zod": "^4.1.12"
   },
+  "peerDependencies": {
+    "@langfuse/otel": "^4.2.0",
+    "@opentelemetry/sdk-trace-node": "^0.207.0"
+  },
+  "peerDependenciesMeta": {
+    "@langfuse/otel": {
+      "optional": true
+    },
+    "@opentelemetry/sdk-trace-node": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "typescript": "^5.9.2",
     "vitest": "^2.1.3"
