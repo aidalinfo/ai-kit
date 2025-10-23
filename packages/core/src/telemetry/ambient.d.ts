@@ -29,3 +29,13 @@ declare module "@opentelemetry/sdk-trace-node" {
     shutdown(): Promise<void>;
   }
 }
+
+declare module "@opentelemetry/sdk-trace-base" {
+  export class BasicTracerProvider {
+    constructor(options?: Record<string, unknown>);
+    addSpanProcessor?(processor: {
+      forceFlush(): Promise<void>;
+      shutdown(): Promise<void>;
+    }): void;
+  }
+}

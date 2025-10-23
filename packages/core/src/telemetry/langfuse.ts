@@ -48,6 +48,14 @@ type GlobalWithLangfuseState = typeof globalThis & {
   [GLOBAL_KEY]?: LangfuseGlobalState;
 };
 
+type SpanProcessorContainer = {
+  addSpanProcessor?: (processor: LangfuseSpanProcessorLike) => void;
+  _activeSpanProcessor?: {
+    addSpanProcessor?: (processor: LangfuseSpanProcessorLike) => void;
+    _spanProcessors?: LangfuseSpanProcessorLike[];
+  };
+};
+
 function getGlobalState(): LangfuseGlobalState {
   const globalObject = globalThis as GlobalWithLangfuseState;
   if (!globalObject[GLOBAL_KEY]) {
@@ -113,6 +121,67 @@ function registerProcessHooks(
       removeListener(event as any, handler as any);
     }
   };
+}
+
+function ensureAddSpanProcessorCompatibility(
+  target: SpanProcessorContainer | undefined,
+): void {
+  if (!target || typeof target.addSpanProcessor === "function") {
+    return;
+  }
+
+  const compatAddSpanProcessor = function addSpanProcessor(
+    this: SpanProcessorContainer,
+    spanProcessor: LangfuseSpanProcessorLike,
+  ) {
+    const activeProcessor = this._activeSpanProcessor;
+
+    if (!activeProcessor) {
+      throw new Error(
+        "Unable to register the Langfuse span processor: OpenTelemetry tracer provider does not expose an active span processor.",
+      );
+    }
+
+    if (typeof activeProcessor.addSpanProcessor === "function") {
+      activeProcessor.addSpanProcessor(spanProcessor);
+      return;
+    }
+
+    const spanProcessors = (activeProcessor as {
+      _spanProcessors?: LangfuseSpanProcessorLike[];
+    })._spanProcessors;
+
+    if (Array.isArray(spanProcessors)) {
+      spanProcessors.push(spanProcessor);
+      return;
+    }
+
+    throw new Error(
+      "Unable to register the Langfuse span processor: OpenTelemetry internals have changed.",
+    );
+  };
+
+  Object.defineProperty(target, "addSpanProcessor", {
+    configurable: true,
+    enumerable: false,
+    writable: true,
+    value: compatAddSpanProcessor,
+  });
+}
+
+async function restoreAddSpanProcessorCompatibility(): Promise<void> {
+  try {
+    const sdkTraceBaseModule = (await import(
+      "@opentelemetry/sdk-trace-base"
+    )) as {
+      BasicTracerProvider?: { prototype?: SpanProcessorContainer };
+    };
+
+    const basicProviderPrototype = sdkTraceBaseModule.BasicTracerProvider?.prototype;
+    ensureAddSpanProcessorCompatibility(basicProviderPrototype);
+  } catch {
+    // The dependency is optional at runtime; ignore if it cannot be resolved.
+  }
 }
 
 export async function ensureLangfuseTelemetry(
@@ -186,6 +255,8 @@ async function initializeLangfuseTelemetry(
     NodeTracerProvider: NodeTracerProviderConstructor;
   };
 
+  await restoreAddSpanProcessorCompatibility();
+
   const processor = new LangfuseSpanProcessor({
     publicKey,
     secretKey,
@@ -194,6 +265,7 @@ async function initializeLangfuseTelemetry(
   });
 
   const provider = new NodeTracerProvider();
+  ensureAddSpanProcessorCompatibility(provider as unknown as SpanProcessorContainer);
   provider.addSpanProcessor(processor);
   provider.register();
 
