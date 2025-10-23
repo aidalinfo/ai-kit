@@ -110,6 +110,46 @@ await supportAgent.generate({
 - `metadata` est fusionné superficiellement : les clés définies directement dans `experimental_telemetry.metadata` restent prioritaires.
 - Lorsque l'agent n'est pas en mode télémétrie, les overrides de `telemetry` sont ignorés, excepté si vous activez vous-même `experimental_telemetry.isEnabled`.
 
+## Exemple Nitro/Nuxt
+
+Depuis `@ai_kit/core` v1.0.12, `ensureLangfuseTelemetry` restaure automatiquement `addSpanProcessor` supprimé par OpenTelemetry v2. Vous pouvez donc initialiser Langfuse depuis un plugin Nitro sans patch manuel :
+
+```ts
+// server/plugins/langfuse-telemetry.ts
+import { ensureLangfuseTelemetry } from "@ai_kit/core";
+
+type LangfuseTelemetryHandle = Awaited<ReturnType<typeof ensureLangfuseTelemetry>>;
+
+let telemetryPromise: Promise<LangfuseTelemetryHandle> | undefined;
+
+const getTelemetry = () => {
+  telemetryPromise ||= ensureLangfuseTelemetry({
+    // Ignore les spans internes Nuxt/Nitro pour garder uniquement vos traces applicatives.
+    shouldExportSpan: ({ otelSpan }) => {
+      const scopeName = otelSpan?.instrumentationScope?.name;
+      return scopeName !== "nuxt" && scopeName !== "nitro";
+    },
+  });
+
+  return telemetryPromise;
+};
+
+export const flushLangfuse = async () => {
+  const telemetry = await getTelemetry();
+  await telemetry.flush();
+};
+
+export default defineNitroPlugin(async (nitroApp) => {
+  const telemetry = await getTelemetry();
+
+  nitroApp.hooks.hook("close", async () => {
+    await telemetry.shutdown();
+  });
+});
+```
+
+Dans vos handlers `eventHandler`/`defineEventHandler`, importez `flushLangfuse` et appelez-le via `event.node.res.on("finish", flushLangfuse)` ou avec `after` pour vider les spans à la fin de chaque requête.
+
 ## Ressources utiles
 
 - [Langfuse TypeScript SDK – Setup](https://langfuse.com/docs/observability/sdk/typescript/setup)
