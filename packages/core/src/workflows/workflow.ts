@@ -3,6 +3,7 @@ import { createRunId } from "./utils/runtime.js";
 import type {
   BranchId,
   WorkflowConfig,
+  WorkflowTelemetryOption,
   WorkflowGraphInspection,
   WorkflowRunOptions,
   WorkflowRunResult,
@@ -40,6 +41,7 @@ export class Workflow<
   private readonly outputSchema?: WorkflowConfig<Input, Output, Meta>["outputSchema"];
   private readonly finalize: (value: unknown) => Output;
   private readonly metadata?: Meta;
+  private telemetry?: WorkflowTelemetryOption;
   private readonly graph: WorkflowGraph<Input, Meta>;
 
   constructor(
@@ -52,6 +54,7 @@ export class Workflow<
     this.outputSchema = config.outputSchema;
     this.metadata = config.metadata;
     this.finalize = config.finalize;
+    this.telemetry = config.telemetry;
     this.graph = graph;
   }
 
@@ -77,6 +80,22 @@ export class Workflow<
 
   getInitialMetadata(): Meta | undefined {
     return this.metadata;
+  }
+
+  getTelemetryConfig(): WorkflowTelemetryOption | undefined {
+    return this.telemetry;
+  }
+
+  withTelemetry(option: WorkflowTelemetryOption = true) {
+    if (option === true) {
+      if (this.telemetry === undefined || this.telemetry === false) {
+        this.telemetry = true;
+      }
+      return this;
+    }
+
+    this.telemetry = option;
+    return this;
   }
 
   inspect(): WorkflowGraphInspection {
@@ -117,4 +136,16 @@ export class Workflow<
   getGraph(): WorkflowGraph<Input, Meta> {
     return this.graph;
   }
+}
+
+export function withTelemetry<
+  Input,
+  Output,
+  Meta extends Record<string, unknown> = Record<string, unknown>,
+>(
+  workflow: Workflow<Input, Output, Meta>,
+  option: WorkflowTelemetryOption = true,
+): Workflow<Input, Output, Meta> {
+  workflow.withTelemetry(option);
+  return workflow;
 }

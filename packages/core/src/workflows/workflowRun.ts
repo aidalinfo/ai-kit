@@ -16,10 +16,17 @@ import type {
   WorkflowWatcher,
   PendingHumanTask,
   HumanFormDefinition,
+  WorkflowTelemetryOption,
+  WorkflowTelemetryOverrides,
 } from "./types.js";
 import { cloneMetadata, mergeSignals } from "./utils/runtime.js";
 import type { Workflow } from "./workflow.js";
 import { HumanWorkflowStep, HUMAN_HISTORY_STORE_KEY } from "./steps/humanStep.js";
+import {
+  WorkflowRunTelemetry,
+  resolveWorkflowTelemetryConfig,
+  type StepTelemetryHandle,
+} from "./telemetry.js";
 
 interface WorkflowRunInit<
   Input,
@@ -106,6 +113,7 @@ interface PendingHumanState<
   input: Input;
   snapshotIndex: number;
   occurrence: number;
+  telemetry?: StepTelemetryHandle;
 }
 
 export class WorkflowRun<
@@ -138,6 +146,9 @@ export class WorkflowRun<
   private composedSignal!: AbortSignal;
   private pendingHuman?: PendingHumanState<any, any, Meta, Input>;
   private finishedAt?: Date;
+  private telemetry?: WorkflowRunTelemetry<Meta>;
+  private telemetryOverrides?: WorkflowTelemetryOverrides;
+  private activeStepTelemetry?: StepTelemetryHandle;
 
   constructor({ workflow, runId }: WorkflowRunInit<Input, Output, Meta>) {
     this.workflow = workflow;
@@ -163,6 +174,33 @@ export class WorkflowRun<
       }
       this.branchMembers.set(conditionId, members);
     }
+  }
+
+  private configureTelemetry(option?: WorkflowTelemetryOption) {
+    const resolved = resolveWorkflowTelemetryConfig({
+      workflowId: this.workflowId,
+      baseOption: this.workflow.getTelemetryConfig(),
+      overrideOption: option,
+    });
+
+    if (!resolved) {
+      this.telemetry = undefined;
+      this.telemetryOverrides = undefined;
+      return;
+    }
+
+    this.telemetry = new WorkflowRunTelemetry<Meta>({
+      workflowId: this.workflowId,
+      runId: this.runId,
+      description: this.workflow.description,
+      config: resolved,
+    });
+
+    this.telemetryOverrides = this.telemetry.getResolvedOverrides();
+  }
+
+  getTelemetrySelection(): WorkflowTelemetryOption | undefined {
+    return this.telemetryOverrides;
   }
 
   private emit(
@@ -256,7 +294,7 @@ export class WorkflowRun<
   }
 
   private async execute(
-    { inputData, metadata, signal }: WorkflowRunOptions<Input, Meta>,
+    { inputData, metadata, signal, telemetry }: WorkflowRunOptions<Input, Meta>,
     emitStream: ((event: WorkflowEvent<Meta>) => void) | undefined,
   ): Promise<WorkflowRunResult<Output, Meta>> {
     if (this.executed) {
@@ -265,6 +303,7 @@ export class WorkflowRun<
 
     this.executed = true;
     this.emitStream = emitStream;
+    this.configureTelemetry(telemetry);
 
     if (signal?.aborted || this.controller.signal.aborted) {
       throw new WorkflowAbortError();
@@ -282,12 +321,21 @@ export class WorkflowRun<
     this.pendingHuman = undefined;
     this.history.clear();
     this.store.set(HUMAN_HISTORY_STORE_KEY, this.history);
+    this.telemetry?.startWorkflow({
+      startedAt: this.startedAt,
+      input: inputData,
+    });
 
     try {
       this.current = this.workflow.validateInput(inputData);
     } catch (error) {
       this.emit({ type: "workflow:error", data: error });
       const finishedAt = new Date();
+      this.telemetry?.finishWorkflow({
+        status: "error",
+        finishedAt,
+        error,
+      });
       return {
         status: "failed",
         error,
@@ -310,6 +358,8 @@ export class WorkflowRun<
     step: HumanWorkflowStep<any, any, Meta, Input>,
     context: WorkflowStepContext<Meta, Input>,
     started: Date,
+    stepHandle: StepTelemetryHandle | undefined,
+    occurrence: number,
   ): Promise<WorkflowRunResult<Output, Meta>> {
     if (!this.stepsSnapshot) {
       throw new WorkflowExecutionError("Workflow run is not initialized");
@@ -321,9 +371,13 @@ export class WorkflowRun<
       signal: this.composedSignal,
     } as StepHandlerArgs<unknown, Meta, Input>;
 
-    const { input, form, payload } = await step.buildHumanRequest(args);
+    const buildHumanRequest = () => step.buildHumanRequest(args);
+    const { input, form, payload } = await (
+      this.telemetry
+        ? this.telemetry.runWithStepContext(stepHandle, buildHumanRequest)
+        : buildHumanRequest()
+    );
 
-    const occurrence = (this.stepOccurrences.get(step.id) ?? 0) + 1;
     this.stepOccurrences.set(step.id, occurrence);
 
     this.stepsSnapshot[step.id] ??= [];
@@ -358,7 +412,16 @@ export class WorkflowRun<
       input,
       snapshotIndex,
       occurrence,
+      telemetry: stepHandle,
     };
+
+    this.telemetry?.attachStepInput(stepHandle, input);
+    this.telemetry?.recordHumanRequest(stepHandle, {
+      requestedAt: started,
+      form,
+      payload,
+    });
+    this.telemetry?.markWaitingForHuman(step.id, occurrence, started);
 
     this.emit({
       type: "step:human:requested",
@@ -367,6 +430,7 @@ export class WorkflowRun<
     });
 
     this.finishedAt = new Date();
+    this.activeStepTelemetry = undefined;
 
     return {
       status: "waiting_human",
@@ -386,6 +450,11 @@ export class WorkflowRun<
         const error = new WorkflowExecutionError(`Unknown step ${stepId}`);
         this.emit({ type: "workflow:error", data: error });
         const finishedAt = new Date();
+        this.telemetry?.finishWorkflow({
+          status: "error",
+          finishedAt,
+          error,
+        });
         return {
           status: "failed",
           error,
@@ -400,6 +469,11 @@ export class WorkflowRun<
         const error = new WorkflowAbortError();
         const finishedAt = new Date();
         this.emit({ type: "workflow:cancelled", data: error });
+        this.telemetry?.finishWorkflow({
+          status: "cancelled",
+          finishedAt,
+          error,
+        });
         return {
           status: "cancelled",
           error,
@@ -411,6 +485,15 @@ export class WorkflowRun<
       }
 
       const started = new Date();
+      const occurrence = (this.stepOccurrences.get(step.id) ?? 0) + 1;
+      const stepHandle = this.telemetry?.startStep({
+        step,
+        stepId,
+        occurrence,
+        startedAt: started,
+      });
+      this.activeStepTelemetry = stepHandle;
+
       this.emit({ type: "step:start", stepId });
 
       const context: WorkflowStepContext<Meta, Input> = {
@@ -437,23 +520,34 @@ export class WorkflowRun<
       };
 
       if (step instanceof HumanWorkflowStep) {
-        return this.handleHumanStep(step, context, started);
+        return this.handleHumanStep(step, context, started, stepHandle, occurrence);
       }
 
-      try {
-        const { input, output } = await step.execute({
+      const executeStep = () =>
+        step.execute({
           input: this.current,
           context,
           signal: this.composedSignal,
         });
 
+      try {
+        const { input, output } = await (
+          this.telemetry
+            ? this.telemetry.runWithStepContext(stepHandle, executeStep)
+            : executeStep()
+        );
+
         const finished = new Date();
-        const occurrence = (this.stepOccurrences.get(step.id) ?? 0) + 1;
         this.stepOccurrences.set(step.id, occurrence);
 
         const transitionContext = { input, output, context };
 
-        const resolvedBranchId = await step.resolveBranch(transitionContext);
+        const resolveBranch = () => step.resolveBranch(transitionContext);
+        const resolvedBranchId = await (
+          this.telemetry
+            ? this.telemetry.runWithStepContext(stepHandle, resolveBranch)
+            : resolveBranch()
+        );
         let branchId: BranchId | undefined;
         let branchNext: string | undefined;
 
@@ -482,14 +576,20 @@ export class WorkflowRun<
           });
         }
 
-        const resolvedNext = await step.resolveNext(transitionContext);
+        const resolveNext = () => step.resolveNext(transitionContext);
+        const resolvedNext = await (
+          this.telemetry
+            ? this.telemetry.runWithStepContext(stepHandle, resolveNext)
+            : resolveNext()
+        );
         if (resolvedNext && !this.graph.steps.has(resolvedNext)) {
           throw new WorkflowExecutionError(
             `Step ${step.id} resolved next to unknown step ${resolvedNext}`,
           );
         }
 
-        const nextStepId = branchNext ?? resolvedNext ?? this.resolveDefaultNext(step.id, branchId !== undefined);
+        const nextStepId =
+          branchNext ?? resolvedNext ?? this.resolveDefaultNext(step.id, branchId !== undefined);
 
         this.stepsSnapshot[step.id] ??= [];
         this.stepsSnapshot[step.id].push({
@@ -505,12 +605,20 @@ export class WorkflowRun<
 
         this.history.set(step.id, { input, output });
 
+        this.telemetry?.recordStepSuccess(stepHandle, {
+          finishedAt: finished,
+          input,
+          output,
+          branchId,
+          nextStepId,
+        });
+
         this.emit({ type: "step:success", stepId: step.id, data: output });
         this.current = output;
         this.currentStepId = nextStepId;
+        this.activeStepTelemetry = undefined;
       } catch (error) {
         const finished = new Date();
-        const occurrence = (this.stepOccurrences.get(step.id) ?? 0) + 1;
         this.stepOccurrences.set(step.id, occurrence);
 
         this.stepsSnapshot[step.id] ??= [];
@@ -524,8 +632,20 @@ export class WorkflowRun<
           nextStepId: undefined,
         });
 
+        this.telemetry?.recordStepError(stepHandle, {
+          finishedAt: finished,
+          input: this.current,
+          error,
+        });
+
         this.emit({ type: "step:error", stepId: step.id, data: error });
         this.emit({ type: "workflow:error", data: error });
+        this.telemetry?.finishWorkflow({
+          status: "error",
+          finishedAt: finished,
+          error,
+        });
+        this.activeStepTelemetry = undefined;
         return {
           status: "failed",
           error,
@@ -537,10 +657,17 @@ export class WorkflowRun<
       }
     }
 
+    this.activeStepTelemetry = undefined;
+
     if (this.composedSignal.aborted) {
       const error = new WorkflowAbortError();
       const finishedAt = new Date();
       this.emit({ type: "workflow:cancelled", data: error });
+      this.telemetry?.finishWorkflow({
+        status: "cancelled",
+        finishedAt,
+        error,
+      });
       return {
         status: "cancelled",
         error,
@@ -556,6 +683,11 @@ export class WorkflowRun<
       const finishedAt = new Date();
       this.emit({ type: "workflow:success", data: output });
       this.finishedAt = finishedAt;
+      this.telemetry?.finishWorkflow({
+        status: "success",
+        finishedAt,
+        output,
+      });
       return {
         status: "success",
         result: output,
@@ -568,6 +700,11 @@ export class WorkflowRun<
       const finishedAt = new Date();
       this.emit({ type: "workflow:error", data: error });
       this.finishedAt = finishedAt;
+      this.telemetry?.finishWorkflow({
+        status: "error",
+        finishedAt,
+        error,
+      });
       return {
         status: "failed",
         error,
@@ -598,8 +735,13 @@ export class WorkflowRun<
       );
     }
 
-    const { step, input, context, snapshotIndex, occurrence } = this.pendingHuman;
-    const response = step.parseResponse(args.data);
+    const { step, input, context, snapshotIndex, occurrence, telemetry: stepHandle } = this.pendingHuman;
+    const parseResponse = () => step.parseResponse(args.data);
+    const response = await Promise.resolve(
+      this.telemetry
+        ? this.telemetry.runWithStepContext(stepHandle, parseResponse)
+        : parseResponse(),
+    );
 
     const finished = new Date();
 
@@ -620,7 +762,12 @@ export class WorkflowRun<
 
     const transitionContext = { input, output: response, context };
 
-    const resolvedNext = await step.resolveNext(transitionContext);
+    const resolveNext = () => step.resolveNext(transitionContext);
+    const resolvedNext = await (
+      this.telemetry
+        ? this.telemetry.runWithStepContext(stepHandle, resolveNext)
+        : resolveNext()
+    );
     if (resolvedNext && !this.graph.steps.has(resolvedNext)) {
       throw new WorkflowExecutionError(`Step ${step.id} resolved next to unknown step ${resolvedNext}`);
     }
@@ -644,6 +791,19 @@ export class WorkflowRun<
     });
 
     this.emit({ type: "step:success", stepId: step.id, data: response });
+
+    this.telemetry?.recordHumanCompletion(stepHandle, {
+      finishedAt: finished,
+      input,
+      output: response,
+      nextStepId,
+    });
+    this.telemetry?.recordStepSuccess(stepHandle, {
+      finishedAt: finished,
+      input,
+      output: response,
+      nextStepId,
+    });
 
     this.current = response;
     this.currentStepId = nextStepId;
