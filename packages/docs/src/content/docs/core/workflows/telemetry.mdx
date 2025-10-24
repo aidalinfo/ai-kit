@@ -9,7 +9,28 @@ Les workflows émettent désormais des spans OpenTelemetry : un span racine pour
 
 ## Activer la télémétrie dès la construction
 
-Déclarez vos options directement dans `createWorkflow`. Placez `telemetry: true` pour un opt-in rapide, ou passez des overrides pour personnaliser le `traceName`, l'enregistrement des entrées/sorties et les métadonnées.
+Déclarez vos options directement dans `createWorkflow`.
+
+```ts
+import { createWorkflow } from "@ai_kit/core";
+import { normalizeInput, fetchForecast } from "./steps";
+
+export const weatherWorkflow = createWorkflow({
+  id: "weather-run",
+  telemetry: true,
+})
+  .then(normalizeInput)
+  .then(fetchForecast)
+  .commit();
+```
+
+Avec `telemetry: true`, la bibliothèque :
+
+- crée un span racine nommé comme l’`id` du workflow (`"weather-run"` ici) ;
+- capture automatiquement les entrées (`recordInputs: true`) et les sorties (`recordOutputs: true`) ;
+- expose les attributs standards `input`, `output`, `metadata` pour l’UI Langfuse.
+
+Passez ensuite un objet si vous devez personnaliser le `traceName`, ajouter des métadonnées ou désactiver l’enregistrement d’une partie des données :
 
 ```ts
 import { createStep, createWorkflow } from "@ai_kit/core";
@@ -41,7 +62,7 @@ export const weatherWorkflow = createWorkflow({
   .commit();
 ```
 
-Chaque exécution héritera de cette configuration. Les attributs sont écrits avec le préfixe `ai_kit.workflow.*`, ce qui facilite la recherche dans vos backends OTEL ou Langfuse.
+Chaque exécution héritera de cette configuration. Les attributs sont écrits avec le préfixe `ai_kit.workflow.*` en plus des clés génériques (`input`, `output`, `metadata`, `name`), ce qui facilite la recherche dans vos backends OTEL ou Langfuse.
 
 ## Modifier une instance existante
 
@@ -92,7 +113,7 @@ await weatherWorkflow.run({
 });
 ```
 
-Les overrides sont fusionnés avec la configuration globale : les métadonnées sont combinées, et les drapeaux `recordInputs` / `recordOutputs` du run priment sur ceux du workflow.
+Les overrides sont fusionnés avec la configuration globale. Par défaut (`telemetry: true`), les entrées et sorties sont capturées ; vous pouvez les désactiver (`recordInputs: false`, `recordOutputs: false`) au niveau du workflow ou d’un run, et les métadonnées sont combinées superficiellement.
 
 ## Coupler avec Langfuse
 

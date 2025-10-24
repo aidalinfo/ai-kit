@@ -112,11 +112,16 @@ await supportAgent.generate({
 
 ## Instrumenter les workflows
 
-Les workflows utilisent désormais la même pile OpenTelemetry. Activez-les via `telemetry` dans `createWorkflow`, la méthode `workflow.withTelemetry()` ou le décorateur `withTelemetry(workflow, config)`. Chaque run produit :
+Les workflows utilisent désormais la même pile OpenTelemetry. Un simple `telemetry: true` dans `createWorkflow` (ou `workflow.withTelemetry(true)`) suffit pour :
 
-- un span racine `workflow.<id>` (override possible avec `traceName`)
-- un span par étape (`automatic` ou `human`) avec les attributs `ai_kit.workflow.step.*`
-- des événements `human.requested` / `human.completed` lors des interactions manuelles
+- nommer le span racine comme l’`id` du workflow ;
+- enregistrer automatiquement les entrées et sorties du run ;
+- exposer les attributs `input`, `output`, `metadata`, `name` en plus des clés `ai_kit.workflow.*`.
+
+Passez un objet si vous voulez personnaliser `traceName`, ajouter des métadonnées ou désactiver l’enregistrement des données confidentielles. Chaque run produit également :
+
+- un span par étape (`automatic` ou `human`) avec les attributs `ai_kit.workflow.step.*` ;
+- des événements `human.requested` / `human.completed` lors des interactions manuelles.
 
 Vous pouvez enrichir un run à la volée en passant `telemetry: { metadata: { ... } }` dans `workflow.run({ ... })`, ou le désactiver ponctuellement avec `telemetry: false`. Consultez la page [`/docs/core/workflows/telemetry`](../workflows/telemetry) pour un guide complet et des exemples Langfuse.
 

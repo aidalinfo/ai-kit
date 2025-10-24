@@ -89,8 +89,6 @@ export interface StepTelemetryHandle {
   readonly isHuman: boolean;
 }
 
-const DEFAULT_TRACE_NAME_PREFIX = "workflow";
-
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
@@ -128,18 +126,24 @@ export const resolveWorkflowTelemetryConfig = ({
   const baseOverrides = toMetadataOverrides(baseOption);
   const overrideOverrides = toMetadataOverrides(overrideOption);
 
-  const metadata = {
+  const metadata: Record<string, unknown> = {
     ...(baseOverrides?.metadata ?? {}),
     ...(overrideOverrides?.metadata ?? {}),
   };
 
   const hasMetadata = Object.keys(metadata).length > 0;
+  const resolvedTraceName = overrideOverrides?.traceName ?? baseOverrides?.traceName ?? workflowId;
+
+  const resolvedRecordInputs =
+    overrideOverrides?.recordInputs ?? baseOverrides?.recordInputs ?? true;
+  const resolvedRecordOutputs =
+    overrideOverrides?.recordOutputs ?? baseOverrides?.recordOutputs ?? true;
 
   return {
-    traceName: overrideOverrides?.traceName ?? baseOverrides?.traceName ?? `${DEFAULT_TRACE_NAME_PREFIX}.${workflowId}`,
+    traceName: resolvedTraceName,
     metadata: hasMetadata ? metadata : undefined,
-    recordInputs: overrideOverrides?.recordInputs ?? baseOverrides?.recordInputs ?? false,
-    recordOutputs: overrideOverrides?.recordOutputs ?? baseOverrides?.recordOutputs ?? false,
+    recordInputs: resolvedRecordInputs,
+    recordOutputs: resolvedRecordOutputs,
   };
 };
 
@@ -228,7 +232,7 @@ export class WorkflowRunTelemetry<
   getResolvedOverrides(): WorkflowTelemetryOverrides | undefined {
     const overrides: WorkflowTelemetryOverrides = {};
 
-    if (this.config.traceName && !this.config.traceName.startsWith(`${DEFAULT_TRACE_NAME_PREFIX}.`)) {
+    if (this.config.traceName && this.config.traceName !== this.workflowId) {
       overrides.traceName = this.config.traceName;
     }
 
@@ -236,12 +240,12 @@ export class WorkflowRunTelemetry<
       overrides.metadata = { ...this.config.metadata };
     }
 
-    if (this.config.recordInputs) {
-      overrides.recordInputs = true;
+    if (this.config.recordInputs === false) {
+      overrides.recordInputs = false;
     }
 
-    if (this.config.recordOutputs) {
-      overrides.recordOutputs = true;
+    if (this.config.recordOutputs === false) {
+      overrides.recordOutputs = false;
     }
 
     return Object.keys(overrides).length > 0 ? overrides : undefined;
@@ -255,6 +259,7 @@ export class WorkflowRunTelemetry<
         attributes: {
           "ai_kit.workflow.id": this.workflowId,
           "ai_kit.workflow.run_id": this.runId,
+          "name": this.config.traceName,
         },
       },
     );
@@ -265,10 +270,13 @@ export class WorkflowRunTelemetry<
 
     if (this.config.metadata) {
       assignMetadataAttributes(this.rootSpan, "ai_kit.workflow.metadata.", this.config.metadata);
+      this.rootSpan.setAttribute("metadata", JSON.stringify(this.config.metadata));
     }
 
     if (this.config.recordInputs) {
-      this.rootSpan.setAttribute("ai_kit.workflow.input", toAttributeValue(args.input));
+      const serializedInput = toAttributeValue(args.input);
+      this.rootSpan.setAttribute("ai_kit.workflow.input", serializedInput);
+      this.rootSpan.setAttribute("input", serializedInput);
     }
 
     this.rootContext = trace.setSpan(otelContext.active(), this.rootSpan);
@@ -281,7 +289,9 @@ export class WorkflowRunTelemetry<
 
     if (args.status === "success") {
       if (this.config.recordOutputs && args.output !== undefined) {
-        this.rootSpan.setAttribute("ai_kit.workflow.output", toAttributeValue(args.output));
+        const serializedOutput = toAttributeValue(args.output);
+        this.rootSpan.setAttribute("ai_kit.workflow.output", serializedOutput);
+        this.rootSpan.setAttribute("output", serializedOutput);
       }
       this.rootSpan.setStatus({ code: SpanStatusCode.OK });
     } else if (args.status === "error") {
