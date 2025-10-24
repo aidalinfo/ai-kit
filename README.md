@@ -47,7 +47,7 @@ console.log(result.text);
 ### Activer la télémétrie Langfuse
 
 ```ts
-import { ensureLangfuseTelemetry, Agent } from "@ai_kit/core";
+import { ensureLangfuseTelemetry, Agent, createWorkflow, createStep } from "@ai_kit/core";
 import { openai } from "@ai-sdk/openai";
 
 await ensureLangfuseTelemetry(); // enregistre le LangfuseSpanProcessor
@@ -56,6 +56,15 @@ const agent = new Agent({
   name: "support",
   model: openai("gpt-4.1-mini"),
   telemetry: true,
+});
+
+const workflow = createWorkflow({ id: "demo", telemetry: true })
+  .then(createStep({ id: "noop", handler: ({ input }) => input }))
+  .commit();
+
+await workflow.run({
+  inputData: { foo: "bar" },
+  telemetry: { metadata: { requestId: "run_123" } },
 });
 ```
 
@@ -145,6 +154,37 @@ Le script de build copie automatiquement :
 - `packages/<nom>/README.md` → `dist/docs/<nom>/README.md` (si le fichier existe).
 
 Pour exposer le README du package `@ai_kit/core`, il suffit donc de créer `packages/core/README.md`. Le prochain `pnpm --filter @ai_kit/mcp-docs build` répliquera ce fichier et il deviendra accessible via l’outil MCP.
+
+## SDK MCP
+
+Le package `@ai_kit/mcp` fournit un mini DSL inspiré de Mastra pour déclarer des serveurs MCP sans recourir directement au SDK brut. Il gère l’enregistrement des outils, ressources et prompts, et convertit automatiquement les retours simples (`string`, tableaux de textes, buffers) au format attendu par le protocole.
+
+### Exemple rapide
+
+```ts
+import { defineMcpServer, defineTool } from "@ai_kit/mcp";
+import { z } from "zod";
+
+const server = defineMcpServer({
+  name: "ai-kit-lab",
+  version: "0.1.0",
+  tools: {
+    ping: defineTool({
+      description: "Renvoie un ping lisible par un humain.",
+      inputSchema: z.object({ message: z.string() }),
+      handler: async ({ message }) => `pong: ${message}`
+    })
+  }
+});
+
+await server.startStdioServer({
+  onReady: () => {
+    console.error("Serveur MCP ai-kit-lab prêt sur stdio");
+  }
+});
+```
+
+Le DSL accepte également des ressources (fichiers statiques ou dynamiques via templates) et des prompts. Les fonctions `defineTool`, `defineResource` et `definePrompt` sont optionnelles : un simple objet JavaScript suffit, elles servent surtout à la complétion TypeScript.
 
 ## Contribuer
 

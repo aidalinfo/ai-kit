@@ -110,6 +110,16 @@ await supportAgent.generate({
 - `metadata` est fusionné superficiellement : les clés définies directement dans `experimental_telemetry.metadata` restent prioritaires.
 - Lorsque l'agent n'est pas en mode télémétrie, les overrides de `telemetry` sont ignorés, excepté si vous activez vous-même `experimental_telemetry.isEnabled`.
 
+## Instrumenter les workflows
+
+Les workflows utilisent désormais la même pile OpenTelemetry. Activez-les via `telemetry` dans `createWorkflow`, la méthode `workflow.withTelemetry()` ou le décorateur `withTelemetry(workflow, config)`. Chaque run produit :
+
+- un span racine `workflow.<id>` (override possible avec `traceName`)
+- un span par étape (`automatic` ou `human`) avec les attributs `ai_kit.workflow.step.*`
+- des événements `human.requested` / `human.completed` lors des interactions manuelles
+
+Vous pouvez enrichir un run à la volée en passant `telemetry: { metadata: { ... } }` dans `workflow.run({ ... })`, ou le désactiver ponctuellement avec `telemetry: false`. Consultez la page [`/docs/core/workflows/telemetry`](../workflows/telemetry) pour un guide complet et des exemples Langfuse.
+
 ## Exemple Nitro/Nuxt
 
 Depuis `@ai_kit/core` v1.0.12, `ensureLangfuseTelemetry` restaure automatiquement `addSpanProcessor` supprimé par OpenTelemetry v2. Vous pouvez donc initialiser Langfuse depuis un plugin Nitro sans patch manuel :

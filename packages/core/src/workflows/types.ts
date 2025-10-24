@@ -22,6 +22,17 @@ export type WorkflowStepMeta<T extends WorkflowStep<any, any, any, any>> =
 export type WorkflowStepRootInput<T extends WorkflowStep<any, any, any, any>> =
   T extends WorkflowStep<any, any, any, infer RootInput> ? RootInput : never;
 
+export interface WorkflowTelemetryOverrides {
+  traceName?: string;
+  metadata?: Record<string, unknown>;
+  recordInputs?: boolean;
+  recordOutputs?: boolean;
+}
+
+export type WorkflowTelemetryOption =
+  | boolean
+  | WorkflowTelemetryOverrides;
+
 export type AnyWorkflowStep<
   Meta extends Record<string, unknown>,
   RootInput,
@@ -116,6 +127,7 @@ export interface WorkflowConfig<
   outputSchema?: SchemaLike<Output>;
   metadata?: Meta;
   finalize?: (value: unknown) => Output;
+  telemetry?: WorkflowTelemetryOption;
 }
 
 export interface WorkflowStepSnapshot {
@@ -153,6 +165,7 @@ export interface WorkflowRunOptions<
   inputData: Input;
   metadata?: Meta;
   signal?: AbortSignal;
+  telemetry?: WorkflowTelemetryOption;
 }
 
 export type MaybePromise<T> = T | Promise<T>;

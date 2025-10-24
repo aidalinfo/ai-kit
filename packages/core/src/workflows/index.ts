@@ -40,6 +40,6 @@ export { createConditionStep } from "./steps/conditionStep.js";
 export type { ConditionStepConfig } from "./steps/conditionStep.js";
 
 export { WorkflowBuilder, createWorkflow } from "./workflowBuilder.js";
-export { Workflow } from "./workflow.js";
+export { Workflow, withTelemetry } from "./workflow.js";
 export { WorkflowRun } from "./workflowRun.js";
 export { renderWorkflowGraphJSON } from "./inspector.js";
