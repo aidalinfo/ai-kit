@@ -1,0 +1,102 @@
+---
+title: Human steps
+description: Pause a workflow and resume it with an operator's input
+sidebar:
+  order: 2
+locale: en-US
+---
+
+Human steps let you interrupt workflow execution to wait for a manual decision or extra information. Declare them with `createHuman` and reuse them across workflows.
+
+```ts
+import { createHuman, createStep, createWorkflow } from "@ai_kit/core";
+import { z } from "zod";
+
+const fetchDraftApplication = createStep<
+  { applicantId: string },
+  { applicantId: string; amount: number; history: string[] }
+>({
+  id: "fetch-draft-application",
+  description: "Load an application awaiting review",
+  inputSchema: z.object({ applicantId: z.string().min(1) }),
+  handler: async ({ input }) => ({
+    applicantId: input.applicantId,
+    amount: 4200,
+    history: ["2019: opening", "2023: update"],
+  }),
+});
+
+export const manualReview = createHuman<
+  { applicantId: string; amount: number; history: string[] },
+  { decision: string; comment: string }
+>({
+  id: "manual-review",
+  output: ({ current }) => ({
+    record: {
+      id: current.applicantId,
+      amount: current.amount,
+      history: current.history,
+    },
+  }),
+  input: ({ ask }) =>
+    ask.form({
+      title: "Manual application validation",
+      fields: [
+        ask.text({ id: "comment", label: "Comment" }),
+        ask.select({ id: "decision", label: "Decision", options: ["approve", "reject"] }),
+      ],
+    }),
+});
+
+const finalizeDecision = createStep<
+  { decision: string; comment: string },
+  { status: string }
+>({
+  id: "finalize-decision",
+  handler: ({ input, context }) => ({
+    status: `${context.initialInput.applicantId}:${input.decision}:${input.comment}`,
+  }),
+});
+
+export const onboardingWorkflow = createWorkflow({ id: "onboarding" })
+  .then(fetchDraftApplication)
+  .human(manualReview)
+  .then(finalizeDecision)
+  .commit();
+```
+
+- The output of `fetchDraftApplication` is injected into `manualReview` (`output.current`) and sent to the frontend via `pendingHuman.output`.
+- The human response becomes the input of `finalizeDecision`, which can also access the initial data through `context.initialInput`.
+
+## Handle the interaction at runtime
+
+```ts
+const run = onboardingWorkflow.createRun();
+const { stream, final } = await run.stream({ inputData: { applicantId: "app-123" } });
+
+for await (const event of stream) {
+  if (event.type === "step:human:requested") {
+    const { form, output } = event.data;
+    ui.displayReviewForm(form, output.record);
+  }
+}
+
+const pending = await final;
+
+if (pending.status === "waiting_human") {
+  await run.resumeWithHumanInput({
+    stepId: "manual-review",
+    data: { decision: "approve", comment: "Looks good" },
+  });
+}
+```
+
+`run.resumeWithHumanInput` validates the response against the human-step schema and restarts execution until completion. This pattern fits manual reviews, legal validations, or double entries requiring auditable human intervention.
+
+### Best practices
+
+- Give stable identifiers to your human steps: they are used to resume execution.
+- Expose useful metadata in `output` to help the frontend display the review (record summary, external links, etc.).
+- Record `step:human:*` events in your observability stack to measure handling times.
+
+Need to parallelize tasks before or after the human review? See [`Parallel & forEach`](./parallele-et-foreach).

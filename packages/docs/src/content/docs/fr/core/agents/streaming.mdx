@@ -1,0 +1,77 @@
+---
+title: Streaming
+description: Consommer les réponses d'un agent token par token
+sidebar:
+  order: 5
+locale: fr-FR
+---
+
+`agent.stream` renvoie un flux asynchrone pour traiter les tokens au fil de l'eau et accéder aux métadonnées agrégées une fois la génération terminée. Comme dans les autres exemples, nous partons de l'agent `assistant` créé dans l'[introduction](./introduction).
+
+```ts
+const stream = await assistant.stream({
+  prompt: "Rédige un plan détaillé pour un guide sur AI Kit.",
+  temperature: 0.5,
+});
+
+for await (const chunk of stream.textStream) {
+  process.stdout.write(chunk);
+}
+
+const finalText = await stream.text;
+console.log("\n---\n", finalText);
+```
+
+Le résultat expose :
+
+- `textStream` : un `AsyncIterable<string>` qui diffuse les tokens.
+- `fullStream` : un flux complet incluant `text`, `reasoning`, outils et erreurs.
+- `text`, `response`, `usage`, `steps` : des promesses qui consomment le flux pour fournir un état agrégé.
+- `loopTool` : un indicateur direct lorsque la boucle d'outils a été déclenchée.
+- `toAIStreamResponse()` / `toDataStreamResponse()` : des helpers pour relier le flux à une réponse HTTP (Next.js, Remix, etc.).
+
+## Streaming avec des messages
+
+```ts
+const streamedChat = await assistant.stream({
+  messages: [
+    { role: "user", content: "Décris le cycle de vie d'un agent AI Kit." }
+  ]
+});
+
+for await (const delta of streamedChat.textStream) {
+  process.stdout.write(delta);
+}
+```
+
+## Sorties structurées en flux
+
+En réutilisant `personSpec` défini dans la page [Sorties structurées](./structured-output), vous pouvez recevoir des fragments partiels pendant le stream puis reconstituer l'objet final une fois la génération terminée.
+
+L'association `agent.stream` + `structuredOutput` reste expérimentale : les fragments intermédiaires peuvent devenir incohérents et l'analyse finale échouer. Si vous devez tout de même expérimenter cette approche, prévoyez de gérer les erreurs de parsing et de relancer la génération.
+
+```ts
+const streamWithSchema = await assistant.stream({
+  prompt: "Fournis un profil de test au format structuré.",
+  structuredOutput: personSpec,
+});
+
+let lastPartial;
+for await (const partial of streamWithSchema.experimental_partialOutputStream) {
+  lastPartial = partial;
+  console.log("partial", partial);
+}
+
+const parsedOutput = await personSpec.parseOutput(
+  { text: await streamWithSchema.text },
+  {
+    response: await streamWithSchema.response,
+    usage: await streamWithSchema.usage,
+    finishReason: await streamWithSchema.finishReason,
+  },
+);
+
+console.log({ lastPartial, parsedOutput });
+```
+
+`experimental_partialOutputStream` diffuse des mises à jour incrémentales respectant le schéma `zod`. Conservez le dernier fragment pour afficher un résultat provisoire, puis parsez la réponse complète avec `parseOutput` afin d'obtenir un objet valide à la fin du flux.
