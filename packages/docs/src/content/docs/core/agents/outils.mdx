@@ -19,12 +19,15 @@ const assistant = new Agent({
   tools: {
     google_search: google.tools.googleSearch({}),
   },
+  loopTools: true,
+  maxStepTools: 15,
 });
 
 await assistant.generate({ prompt: "Quelle est la météo à Paris ?" });
 ```
 
-Passez l'option `tools` pour exposer des outils sur tous les appels. Vous pouvez toujours les remplacer ponctuellement en fournissant `tools` directement dans `generate` ou `stream`.
+Passez l'option `tools` pour exposer des outils sur tous les appels. Vous pouvez toujours les remplacer ponctuellement en fournissant `tools` directement dans `generate` ou `stream`.  
+De la même manière, `loopTools` et `maxStepTools` configurés sur l'agent servent de valeur par défaut que chaque appel peut surcharger.
 
 ## Boucle d'outils automatique
 
@@ -46,3 +49,12 @@ Ajustez la boucle via :
 - `loopTools?: boolean` sur l'agent pour activer la boucle (désactivée par défaut, même si des outils sont déclarés).
 - `maxStepTools?: number` pour plafonner le nombre total d'outils exécutés avant de couper la boucle (défaut : `20`).
 - Sur un appel, surchargez `loopTools` ou `maxStepTools` dans `agent.generate({...})` ou `agent.stream({...})`.
+
+```ts
+// L'agent est configuré avec loopTools: true,
+// mais on peut le neutraliser pour un appel ponctuel :
+await assistant.generate({
+  prompt: "Réponds sans exécuter d'outils.",
+  loopTools: false,
+});
+```
