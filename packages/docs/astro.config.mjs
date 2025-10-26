@@ -34,13 +34,11 @@ export default defineConfig({
                                                 {
                                                         label: 'Agents',
                                                         translations: { en: 'Agents' },
-                                                        link: '/core/agents/',
                                                         autogenerate: { directory: 'core/agents' },
                                                 },
                                                 {
                                                         label: 'Workflows',
                                                         translations: { en: 'Workflows' },
-                                                        link: '/core/workflows/',
                                                         autogenerate: { directory: 'core/workflows' },
                                                 },
                                                 {
