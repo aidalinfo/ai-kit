@@ -32,6 +32,18 @@ export default defineConfig({
                                         translations: { en: 'Core' },
                                         items: [
                                                 {
+                                                        label: 'Agents',
+                                                        translations: { en: 'Agents' },
+                                                        link: '/core/agents/',
+                                                        autogenerate: { directory: 'core/agents' },
+                                                },
+                                                {
+                                                        label: 'Workflows',
+                                                        translations: { en: 'Workflows' },
+                                                        link: '/core/workflows/',
+                                                        autogenerate: { directory: 'core/workflows' },
+                                                },
+                                                {
                                                         label: 'Télémétrie Langfuse',
                                                         translations: { en: 'Langfuse telemetry' },
                                                         link: '/core/telemetry/',
