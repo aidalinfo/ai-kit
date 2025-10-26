@@ -1,0 +1,35 @@
+---
+title: Introduction
+description: Overview of AI Kit, Aidalinfo's agentic micro-framework
+sidebar:
+  order: 1
+locale: en-US
+---
+
+import { PackageManagers } from 'starlight-package-managers'
+
+AI Kit is Aidalinfo's internal agentic micro-framework. Its goal is to offer a stable abstraction layer on top of the AI SDK and LLM providers, avoiding the volatility we observed with Mastra or VoltAgent. The codebase is intentionally compact, readable, and focused on the production use cases we master.
+
+## Installation
+
+<PackageManagers pkg="@ai_kit/core" />
+
+Once installed, read the documentation to get started:
+- [Create an agent](/en/core/agents/): build intelligent assistants
+- [Create a workflow](/en/core/workflows/): orchestrate complex pipelines
+
+## Why AI Kit?
+
+- **Stability:** we keep control over critical evolutions without enduring breaking changes from external frameworks.
+- **Clarity:** the code structure favors simple, well-documented concepts (agents, chunking, workflows).
+- **Interoperability:** AI Kit remains compatible with the AI SDK providers while adding our business logic.
+
+## Repository structure
+
+- `packages/core`: framework core (agents, chunking, workflows, providers).
+- `docs/core`: internal documentation (agents, chunks, workflows, best practices).
+- `packages/mcp-docs-server`: MCP server exposing the AI Kit documentation.
+
+## Goal
+
+The goal is to strengthen our technical autonomy around AI assistants and pipelines: feel free to extend these resources and suggest improvements.

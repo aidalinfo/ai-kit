@@ -1,0 +1,24 @@
+---
+title: Workflows
+description: Overview of AI Kit workflows and their core capabilities
+sidebar:
+  order: 2
+locale: en-US
+---
+
+AI Kit workflows orchestrate typed sequences of steps inspired by Mastra. Each step declares input/output validation schemas, shares a common context, and can emit real-time events to follow execution.
+
+## Why use workflows?
+
+- **Reliability:** each step is validated by `zod`, which limits runtime surprises and improves observability.
+- **Composability:** branch your flows, run steps in parallel, or iterate with `forEach` to cover complex use cases.
+- **Integration:** workflows share the same telemetry, runtime, and tool mechanisms as agents, making it easy to combine them.
+
+## Contents of this section
+
+- [`Introduction`](./introduction): core concepts, API overview, and quick-start example.
+- [`Human steps`](./etapes-humaines): pause a workflow to request human input and resume execution afterward.
+- [`Conditional branches`](./branches-conditionnelles): fork runs depending on user data or AI results.
+- [`While loops`](./boucles-while): repeat a step until a condition is met.
+- [`Parallel & forEach`](./parallele-et-foreach): process data concurrently and merge the results.
+- [`Telemetry`](./telemetry): instrument workflows with Langfuse and the OpenTelemetry stack.

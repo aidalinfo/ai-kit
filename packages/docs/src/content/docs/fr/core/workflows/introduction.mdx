@@ -1,0 +1,249 @@
+---
+title: Introduction
+description: Installez le module Workflows et construisez un pipeline simple étape par étape.
+sidebar:
+  order: 1
+locale: fr-FR
+---
+
+import { PackageManagers } from 'starlight-package-managers'
+
+## Installation
+
+Ajoutez le package core et une librairie de schéma (ex. Zod) :
+
+<PackageManagers pkg="@ai_kit/core zod" />
+
+## 1. Déclarer une étape
+
+Une étape est décrite avec `createStep`. Vous lui donnez un identifiant, des schémas optionnels et un `handler` qui reçoit l'entrée typée, le contexte et un `AbortSignal`.
+
+```ts
+import { createStep } from "@ai_kit/core";
+import { z } from "zod";
+
+type WeatherInput = { city: string };
+type WeatherOutput = { forecast: string };
+
+export const fetchWeather = createStep<WeatherInput, WeatherOutput>({
+  id: "fetch-weather",
+  description: "Récupère la météo courante",
+  inputSchema: z.object({ city: z.string().min(1) }),
+  handler: async ({ input, signal }) => {
+    if (signal.aborted) {
+      throw new Error("Requête annulée");
+    }
+
+    // TODO: remplacez par un appel API réel
+    return { forecast: `Il fait beau à ${input.city}` };
+  },
+});
+```
+
+Le schéma est optionnel : tout objet qui expose `parse` ou `safeParse` suffit. Réutilisez une étape existante en la clonant via `cloneStep` :
+
+```ts
+import { cloneStep } from "@ai_kit/core";
+
+export const fetchWeatherCopy = cloneStep(fetchWeather, {
+  id: "fetch-weather-copy",
+  description: "Météo pour une autre ville",
+});
+```
+
+## 2. Assembler un workflow
+
+Composez vos étapes avec `createWorkflow`, enchaînez-les avec `.then()` puis finalisez avec `.commit()`.
+
+```ts
+import { createWorkflow } from "@ai_kit/core";
+import { z } from "zod";
+import { fetchWeather } from "./steps/fetchWeather";
+
+export const weatherWorkflow = createWorkflow({
+  id: "weather-line",
+  description: "Workflow météo simple",
+  inputSchema: z.object({ city: z.string() }),
+  outputSchema: z.object({ forecast: z.string() }),
+})
+  .then(fetchWeather)
+  .commit();
+```
+
+`commit()` retourne une instance immuable de `Workflow`. Le schéma de sortie est appliqué sur la valeur renvoyée par la dernière étape (ou par `finalize` si vous en définissez un).
+
+## 3. Exécuter et inspecter
+
+Utilisez `.run()` pour exécuter le workflow en une seule fois. Le résultat contient le statut global, un snapshot détaillé pour chaque étape ainsi que vos métadonnées partagées.
+
+```ts
+const result = await weatherWorkflow.run({
+  inputData: { city: "Paris" },
+});
+
+if (result.status === "success") {
+  console.log(result.result.forecast);
+} else {
+  console.error("Échec", result.error);
+}
+```
+
+### Contrôler l'exécution
+
+- `workflow.createRun()` retourne un `WorkflowRun` réutilisable.
+- `run.watch(listener)` enregistre un observateur appelé à chaque événement (`workflow:start`, `step:success`, etc.).
+- `run.stream()` renvoie un itérateur asynchrone pour consommer les événements en direct tout en attendant la résolution.
+- `run.cancel()` annule proprement l'exécution via un `AbortSignal`.
+
+```ts
+const run = weatherWorkflow.createRun();
+
+const unwatch = run.watch(event => {
+  console.log(`[${event.type}]`, event);
+});
+
+const { stream, final } = await run.stream({ inputData: { city: "Lyon" } });
+
+for await (const evt of stream) {
+  // Alimentez votre UI temps réel ou vos logs
+}
+
+const outcome = await final;
+unwatch();
+```
+
+### Métadonnées et contexte partagé
+
+Initialisez un objet partagé via `metadata` lors du `run.start()` ou `run.stream()`. Dans une étape, accédez-y avec `context.getMetadata()` et mettez-le à jour grâce à `context.updateMetadata()`. La propriété `context.store` expose une `Map` partagée pour stocker des références temporaires.
+
+```ts
+const notifyTeam = createStep({
+  id: "notify-team",
+  handler: async ({ context }) => {
+    context.emit({ type: "notification", data: { channel: "slack" } });
+    return { status: "sent" };
+  },
+});
+```
+
+## 4. Exemple complet (workflow + agent)
+
+> L'exemple nécessite un environnement qui expose `fetch` (Node.js 18+ ou polyfill).
+
+```ts
+import { Agent, createStep, createWorkflow, scaleway } from "@ai_kit/core";
+import { z } from "zod";
+
+type WeatherInput = { city: string };
+type WeatherSnapshot = {
+  location: string;
+  temperature: number;
+  feelsLike: number;
+  humidity: number;
+  windSpeed: number;
+  windGust: number;
+  conditions: string;
+};
+type AdviceOutput = { text: string };
+type WorkflowMeta = Record<string, unknown>;
+
+const weatherCodeLabels: Record<number, string> = {
+  0: "Ciel dégagé",
+  1: "Globalement dégagé",
+  2: "Partiellement nuageux",
+  61: "Pluie faible",
+};
+
+const getWeatherCondition = (code: number) =>
+  weatherCodeLabels[code] ?? "Conditions inconnues";
+
+const getWeather = async (location: string) => {
+  const geocodingUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1`;
+  const geocodingResponse = await fetch(geocodingUrl);
+  const geocodingData = await geocodingResponse.json();
+
+  if (!geocodingData.results?.[0]) {
+    throw new Error(`Location '${location}' not found`);
+  }
+
+  const { latitude, longitude, name } = geocodingData.results[0];
+
+  const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_gusts_10m,weather_code`;
+  const response = await fetch(weatherUrl);
+  const data = await response.json();
+
+  return {
+    temperature: data.current.temperature_2m,
+    feelsLike: data.current.apparent_temperature,
+    humidity: data.current.relative_humidity_2m,
+    windSpeed: data.current.wind_speed_10m,
+    windGust: data.current.wind_gusts_10m,
+    conditions: getWeatherCondition(data.current.weather_code),
+    location: name,
+  };
+};
+
+const assistant = new Agent({
+  name: "assistant-meteo",
+  instructions: "Tu guides une personne pour profiter du temps.",
+  model: scaleway("gpt-oss-120b"),
+});
+
+const fetchWeatherStep = createStep<WeatherInput, WeatherSnapshot, WorkflowMeta, WeatherInput>({
+  id: "fetch-weather",
+  description: "Interroge Open-Meteo",
+  inputSchema: z.object({ city: z.string().min(1) }),
+  handler: async ({ input, signal }) => {
+    if (signal.aborted) throw new Error("Requête annulée");
+    const snapshot = await getWeather(input.city);
+    return snapshot;
+  },
+});
+
+const summarizeWeather = createStep<WeatherSnapshot, AdviceOutput, WorkflowMeta, WeatherInput>({
+  id: "summarize-weather",
+  description: "Produis un texte exploitable",
+  inputSchema: z.object({
+    location: z.string(),
+    temperature: z.number(),
+    feelsLike: z.number(),
+    humidity: z.number(),
+    windSpeed: z.number(),
+    windGust: z.number(),
+    conditions: z.string(),
+  }),
+  handler: async ({ input, context, signal }) => {
+    if (signal.aborted) throw new Error("Requête annulée");
+
+    const { city } = context.initialInput;
+    const prompt = [
+      `Ville: ${city} (${input.location})`,
+      `Conditions: ${input.conditions}`,
+      `Température: ${input.temperature}°C (ressenti ${input.feelsLike}°C)`,
+      `Humidité: ${input.humidity}%`,
+      `Vent: ${input.windSpeed} km/h (rafales ${input.windGust} km/h)`,
+      "Donne-moi un court paragraphe de conseils pour cette météo.",
+    ].join("\n");
+
+    const result = await assistant.generate({ prompt });
+    return { text: result.text };
+  },
+});
+
+export const weatherAdvisorWorkflow = createWorkflow<WeatherInput, AdviceOutput, WorkflowMeta>({
+  id: "weather-advisor",
+  description: "Bulletin météo personnalisé avec conseils",
+  inputSchema: z.object({ city: z.string().min(1) }),
+  outputSchema: z.object({ text: z.string() }),
+})
+  .then(fetchWeatherStep)
+  .then(summarizeWeather)
+  .commit();
+
+const result = await weatherAdvisorWorkflow.run({ inputData: { city: "Paris" } });
+console.log(result.result?.text);
+```
+
+Dans le second handler, `context.initialInput` permet de réutiliser la ville saisie tout en profitant des données enrichies de l'étape précédente. Vous pouvez aussi ajouter `context.emit(...)` pour tracer les snapshots ou `context.updateMetadata` afin de partager des informations additionnelles avec d'autres steps.
+
+Prochaine étape : intégrer un humain dans la boucle avec les [`étapes humaines`](./etapes-humaines).
