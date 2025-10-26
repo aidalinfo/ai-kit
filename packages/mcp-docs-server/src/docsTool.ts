@@ -145,7 +145,7 @@ export function registerDocsTool(server: McpServer) {
   const docsRoot = getDocsRoot();
 
   const docsToolSchema = z.object({
-    path: z.string().describe("Relative path inside the docs/ directory (e.g. core/agents.md).").optional(),
+    path: z.string().describe("Relative path inside the docs/ directory (e.g. core/agents/index.mdx).").optional(),
     keywords: z
       .array(z.string())
       .describe("Optional keywords to search across all docs to surface matching snippets.")
@@ -285,7 +285,7 @@ export function registerDocsTool(server: McpServer) {
       .optional(),
     paths: z
       .array(z.string().min(1))
-      .describe("Optional list of doc paths to include (relative to docs/, e.g. core/agents.md).")
+      .describe("Optional list of doc paths to include (relative to docs/, e.g. core/agents/index.mdx).")
       .optional(),
     page: z
       .number()

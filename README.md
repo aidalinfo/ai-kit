@@ -42,7 +42,7 @@ const result = await assistant.generate({
 console.log(result.text);
 ```
 
-👉 Guides détaillés : [Agents](./docs/core/agents.md)
+👉 Guides détaillés : [Agents](./packages/docs/src/content/docs/core/agents/index.mdx)
 
 ### Activer la télémétrie Langfuse
 
@@ -194,7 +194,7 @@ Le DSL accepte également des ressources (fichiers statiques ou dynamiques via t
 
 ## Ressources
 
-- [Documentation Agents](./docs/core/agents.md)
+- [Documentation Agents](./packages/docs/src/content/docs/core/agents/index.mdx)
 - [Documentation Chunks](./docs/core/chunks.md)
 - [Documentation Workflows](./docs/core/workflows.md)
 - [Documentation MCP](./docs/mcp/usage.md)

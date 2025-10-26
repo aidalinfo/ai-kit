@@ -43,6 +43,7 @@ interface StructuredGeneratePipelineParams<
   structuredOutput: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
   options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
   telemetryEnabled: boolean;
+  loopToolsEnabled: boolean;
 }
 
 interface StructuredStreamPipelineParams<
@@ -56,6 +57,7 @@ interface StructuredStreamPipelineParams<
   structuredOutput: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
   options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
   telemetryEnabled: boolean;
+  loopToolsEnabled: boolean;
 }
 
 export function shouldUseStructuredPipeline<OUTPUT, PARTIAL_OUTPUT>(
@@ -80,7 +82,15 @@ export async function generateWithStructuredPipeline<
 >(
   params: StructuredGeneratePipelineParams<OUTPUT, PARTIAL_OUTPUT, STATE>,
 ) {
-  const { model, system, tools, structuredOutput, options, telemetryEnabled } = params;
+  const {
+    model,
+    system,
+    tools,
+    structuredOutput,
+    options,
+    telemetryEnabled,
+    loopToolsEnabled,
+  } = params;
 
   const originalPrompt = "prompt" in options ? options.prompt : undefined;
   const originalMessages = "messages" in options ? options.messages : undefined;
@@ -91,6 +101,7 @@ export async function generateWithStructuredPipeline<
       tools,
       options,
       telemetryEnabled,
+      loopToolsEnabled,
     });
 
   const schema = createSchemaFromStructuredOutput(structuredOutput);
@@ -122,7 +133,15 @@ export async function streamWithStructuredPipeline<
 >(
   params: StructuredStreamPipelineParams<OUTPUT, PARTIAL_OUTPUT, STATE>,
 ) {
-  const { model, system, tools, structuredOutput, options, telemetryEnabled } = params;
+  const {
+    model,
+    system,
+    tools,
+    structuredOutput,
+    options,
+    telemetryEnabled,
+    loopToolsEnabled,
+  } = params;
 
   const originalPrompt = "prompt" in options ? options.prompt : undefined;
   const originalMessages = "messages" in options ? options.messages : undefined;
@@ -133,6 +152,7 @@ export async function streamWithStructuredPipeline<
     tools,
     options,
     telemetryEnabled,
+    loopToolsEnabled,
   });
 
   const schema = createSchemaFromStructuredOutput(structuredOutput);
@@ -314,12 +334,14 @@ async function callGenerateText<
   tools,
   options,
   telemetryEnabled,
+  loopToolsEnabled,
 }: {
   model: LanguageModel;
   system?: string;
   tools?: AgentTools;
   options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
   telemetryEnabled: boolean;
+  loopToolsEnabled: boolean;
 }): Promise<GenerateTextResult<ToolSet, OUTPUT>> {
   if ("prompt" in options && options.prompt !== undefined) {
     const {
@@ -364,7 +386,9 @@ async function callGenerateText<
       payload.experimental_context = mergedContext;
     }
 
-    applyDefaultStopWhen(payload, tools);
+    if (loopToolsEnabled) {
+      applyDefaultStopWhen(payload, tools);
+    }
 
     const mergedTelemetry = mergeTelemetryConfig({
       agentTelemetryEnabled: telemetryEnabled,
@@ -422,7 +446,9 @@ async function callGenerateText<
       payload.experimental_context = mergedContext;
     }
 
-    applyDefaultStopWhen(payload, tools);
+    if (loopToolsEnabled) {
+      applyDefaultStopWhen(payload, tools);
+    }
 
     const mergedTelemetry = mergeTelemetryConfig({
       agentTelemetryEnabled: telemetryEnabled,
@@ -450,12 +476,14 @@ async function callStreamText<
   tools,
   options,
   telemetryEnabled,
+  loopToolsEnabled,
 }: {
   model: LanguageModel;
   system?: string;
   tools?: AgentTools;
   options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
   telemetryEnabled: boolean;
+  loopToolsEnabled: boolean;
 }): Promise<StreamTextResult<ToolSet, PARTIAL_OUTPUT>> {
   if ("prompt" in options && options.prompt !== undefined) {
     const {
@@ -499,7 +527,9 @@ async function callStreamText<
       payload.experimental_context = mergedContext;
     }
 
-    applyDefaultStopWhen(payload, tools);
+    if (loopToolsEnabled) {
+      applyDefaultStopWhen(payload, tools);
+    }
 
     const mergedTelemetry = mergeTelemetryConfig({
       agentTelemetryEnabled: telemetryEnabled,
@@ -557,7 +587,9 @@ async function callStreamText<
       payload.experimental_context = mergedContext;
     }
 
-    applyDefaultStopWhen(payload, tools);
+    if (loopToolsEnabled) {
+      applyDefaultStopWhen(payload, tools);
+    }
 
     const mergedTelemetry = mergeTelemetryConfig({
       agentTelemetryEnabled: telemetryEnabled,
