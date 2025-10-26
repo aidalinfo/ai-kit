@@ -360,12 +360,14 @@ async function callGenerateText<
       experimental_context,
       telemetry: telemetryOverrides,
       experimental_telemetry,
+      loopTools: _loopTools,
+      maxStepTools: _maxStepTools,
       ...restWithoutContext
     } = rest as {
       experimental_context?: unknown;
       telemetry?: AgentTelemetryOverrides;
       experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
-    } & typeof rest;
+    } & typeof rest & { loopTools?: unknown; maxStepTools?: unknown };
     const toolSet = toToolSet(tools);
     const payload = {
       ...restWithoutContext,
@@ -420,12 +422,14 @@ async function callGenerateText<
       experimental_context,
       telemetry: telemetryOverrides,
       experimental_telemetry,
+      loopTools: _loopTools,
+      maxStepTools: _maxStepTools,
       ...restWithoutContext
     } = rest as {
       experimental_context?: unknown;
       telemetry?: AgentTelemetryOverrides;
       experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
-    } & typeof rest;
+    } & typeof rest & { loopTools?: unknown; maxStepTools?: unknown };
     const toolSet = toToolSet(tools);
     const payload = {
       ...restWithoutContext,
@@ -502,12 +506,14 @@ async function callStreamText<
       experimental_context,
       telemetry: telemetryOverrides,
       experimental_telemetry,
+      loopTools: _loopTools,
+      maxStepTools: _maxStepTools,
       ...restWithoutContext
     } = rest as {
       experimental_context?: unknown;
       telemetry?: AgentTelemetryOverrides;
       experimental_telemetry?: StreamTextParams["experimental_telemetry"];
-    } & typeof rest;
+    } & typeof rest & { loopTools?: unknown; maxStepTools?: unknown };
     const toolSet = toToolSet(tools);
     const payload = {
       ...restWithoutContext,
@@ -561,12 +567,14 @@ async function callStreamText<
       experimental_context,
       telemetry: telemetryOverrides,
       experimental_telemetry,
+      loopTools: _loopTools,
+      maxStepTools: _maxStepTools,
       ...restWithoutContext
     } = rest as {
       experimental_context?: unknown;
       telemetry?: AgentTelemetryOverrides;
       experimental_telemetry?: StreamTextParams["experimental_telemetry"];
-    } & typeof rest;
+    } & typeof rest & { loopTools?: unknown; maxStepTools?: unknown };
     const toolSet = toToolSet(tools);
     const payload = {
       ...restWithoutContext,
