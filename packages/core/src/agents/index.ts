@@ -149,6 +149,8 @@ export class Agent {
           telemetry: telemetryOverrides,
           experimental_telemetry,
           stopWhen: existingStopWhen,
+          loopTools: _loopTools,
+          maxStepTools: _maxStepTools,
           ...restWithoutContext
         } = rest;
 
@@ -220,6 +222,8 @@ export class Agent {
           telemetry: telemetryOverrides,
           experimental_telemetry,
           stopWhen: existingStopWhen,
+          loopTools: _loopTools,
+          maxStepTools: _maxStepTools,
           ...restWithoutContext
         } = rest;
 
@@ -359,6 +363,8 @@ export class Agent {
           telemetry: telemetryOverrides,
           experimental_telemetry,
           stopWhen: existingStopWhen,
+          loopTools: _loopTools,
+          maxStepTools: _maxStepTools,
           ...restWithoutContext
         } = rest;
 
@@ -432,6 +438,8 @@ export class Agent {
           telemetry: telemetryOverrides,
           experimental_telemetry,
           stopWhen: existingStopWhen,
+          loopTools: _loopTools,
+          maxStepTools: _maxStepTools,
           ...restWithoutContext
         } = rest;
 
