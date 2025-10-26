@@ -51,3 +51,36 @@ Le serveur enregistre deux outils :
 - `ai_kit-docs-search` effectue une recherche par mots-clés dans la documentation et retourne des extraits paginés. Utilisez cet outil lorsque vous souhaitez des références ciblées sans charger des fichiers entiers.
 
 Demandez `core/quickstart.md`, par exemple, pour recevoir le contenu Markdown rendu et prêt pour votre agent.
+
+## Créer votre propre serveur MCP
+
+Le package `@ai_kit/mcp` offre un DSL léger inspiré de Mastra. Il enveloppe le SDK officiel MCP pour que vous puissiez enregistrer des outils, des ressources et des prompts sans gérer la plomberie (`McpServer.registerTool`, `ResourceTemplate`, etc.).
+
+```ts
+import { defineMcpServer, defineTool } from "@ai_kit/mcp";
+import { z } from "zod";
+
+const weatherServer = defineMcpServer({
+  name: "ai-kit-weather",
+  version: "0.1.0",
+  tools: {
+    forecast: defineTool({
+      description: "Renvoie une météo factice pour la ville demandée.",
+      inputSchema: z.object({ city: z.string() }),
+      handler: async ({ city }) => `Ensoleillé sur ${city}`
+    })
+  }
+});
+
+await weatherServer.startStdioServer({
+  onReady: () => console.error("Serveur météo MCP prêt.")
+});
+```
+
+### Points clés
+
+- Les handlers peuvent renvoyer directement une `string` ou un tableau de `string` ; le package convertit automatiquement en `CallToolResult`.
+- Pour une ressource statique, fournissez juste `uri` et un `read` qui retourne du texte (ou un `Buffer`). Pour une ressource dynamique, utilisez `template` et `list`/`complete` si nécessaire.
+- `definePrompt` fonctionne sur le même principe et accepte un handler qui renvoie une `string`, un tableau de messages ou un `GetPromptResult` complet.
+
+Utilisez la méthode `createServer()` si vous devez brancher un transport personnalisé (WebSocket, SSE, etc.), ou `startStdioServer()` pour les clients MCP classiques (Claude Desktop, Cursor, Codex).
