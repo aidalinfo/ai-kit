@@ -1,0 +1,74 @@
+---
+title: Sorties structurées
+description: Valider les réponses de vos agents avec Zod et `structuredOutput`
+sidebar:
+  order: 4
+---
+
+Utilisez l'option `structuredOutput` pour demander au modèle de respecter un schéma `zod`. L'agent transmet ce schéma à `experimental_output` du SDK `ai` et renvoie un résultat typé. Les exemples qui suivent réutilisent l'agent `assistant` instancié dans l'[introduction](./introduction).
+
+```ts
+import { Output } from "@ai_kit/core/agents";
+import { z } from "zod";
+
+const personSpec = Output.object({
+  schema: z.object({
+    name: z.string(),
+    age: z.number().nullable().describe("Age de la personne."),
+    contact: z.object({
+      type: z.literal("email"),
+      value: z.string(),
+    }),
+    occupation: z.object({
+      type: z.literal("employed"),
+      company: z.string(),
+      position: z.string(),
+    }),
+  }),
+});
+
+const structured = await assistant.generate({
+  prompt: "Crée un profil de test pour un client potentiel.",
+  structuredOutput: personSpec,
+});
+
+console.log(structured.experimental_output);
+// { name: "...", age: 32, contact: { ... }, occupation: { ... } }
+```
+
+Pour un schéma ciblé (extraction d'un identifiant SIRET) :
+
+```ts
+import { Agent, Output } from "@ai_kit/core";
+import { z } from "zod";
+import { google } from "@ai-sdk/google";
+
+const siretOutput = Output.object({
+  schema: z.object({
+    siret: z.string().length(14, {
+      message: "Le SIRET doit contenir exactement 14 chiffres.",
+    }),
+  }),
+});
+
+const assistant = new Agent({
+  name: "assistant-vie",
+  instructions: "Assistant de vie",
+  model: google("gemini-2.5-flash"),
+  tools: {
+    google_search: google.tools.googleSearch({}),
+  },
+});
+
+const result = await assistant.generate({
+  prompt: "Cherche le SIRET de la société Aidalinfo",
+  structuredOutput: siretOutput,
+});
+
+console.log(result.experimental_output);
+// { siret: "12345678901234" }
+```
+
+Le schéma impose ici exactement 14 caractères, ce qui simplifie la validation côté application. En cas d'échec de parsing, le SDK lève une exception que vous pouvez intercepter pour réessayer ou journaliser l'erreur.
+
+> Préférez `agent.generate` pour la génération structurée. Les flux (`stream`) peuvent rompre l'analyse du schéma et restent expérimentaux.

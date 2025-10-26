@@ -1,0 +1,48 @@
+---
+title: Outils & tool loop
+description: Déclarer des outils par défaut et contrôler la boucle loopTools
+sidebar:
+  order: 3
+---
+
+Les outils permettent à vos agents de déclencher du code applicatif (recherche, requêtes API, calculs métier...). AI Kit les enregistre au niveau de l'agent et les injecte automatiquement dans chaque appel.
+
+## Ajouter des outils par défaut
+
+```ts
+import { Agent, google } from "@ai_kit/core";
+
+const assistant = new Agent({
+  name: "assistant-vie",
+  instructions: "Assistant de vie",
+  model: google("gemini-2.5-flash"),
+  tools: {
+    google_search: google.tools.googleSearch({}),
+  },
+});
+
+await assistant.generate({ prompt: "Quelle est la météo à Paris ?" });
+```
+
+Passez l'option `tools` pour exposer des outils sur tous les appels. Vous pouvez toujours les remplacer ponctuellement en fournissant `tools` directement dans `generate` ou `stream`.
+
+## Boucle d'outils automatique
+
+Lorsque `loopTools` est activé et que l'agent dispose d'outils, AI Kit orchestre automatiquement les appels : après chaque réponse du modèle contenant des `toolCalls`, les outils correspondants s'exécutent puis la conversation reprend jusqu'à obtenir du texte final. Le résultat expose un indicateur `loopTool: true` pour faciliter l'inspection DX.
+
+```ts
+const result = await assistant.generate({
+  prompt: "Cherche la documentation du workflow 'tool loop'.",
+  loopTools: true,
+});
+
+if (result.loopTool) {
+  console.log("Des outils ont été exécutés pendant la conversation.");
+}
+```
+
+Ajustez la boucle via :
+
+- `loopTools?: boolean` sur l'agent pour activer la boucle (désactivée par défaut, même si des outils sont déclarés).
+- `maxStepTools?: number` pour plafonner le nombre total d'outils exécutés avant de couper la boucle (défaut : `20`).
+- Sur un appel, surchargez `loopTools` ou `maxStepTools` dans `agent.generate({...})` ou `agent.stream({...})`.

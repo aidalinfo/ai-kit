@@ -2,6 +2,8 @@ import {
   generateText,
   streamText,
   Output,
+  type GenerateTextResult,
+  type StreamTextResult,
   type Tool,
   type ToolSet,
 } from "ai";
@@ -38,6 +40,8 @@ export type BaseAgentOptions<
   structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
   runtime?: RuntimeStore<STATE>;
   telemetry?: AgentTelemetryOverrides;
+  loopTools?: boolean;
+  maxStepTools?: number;
 };
 
 export type AgentGenerateOptions<
@@ -87,3 +91,19 @@ export function toToolSet(tools: AgentTools): ToolSet | undefined {
 
   return tools as ToolSet;
 }
+
+export interface AgentLoopMetadata {
+  loopTool?: boolean;
+}
+
+export type AgentGenerateResult<OUTPUT> = GenerateTextResult<
+  ToolSet,
+  OUTPUT
+> &
+  AgentLoopMetadata;
+
+export type AgentStreamResult<PARTIAL_OUTPUT> = StreamTextResult<
+  ToolSet,
+  PARTIAL_OUTPUT
+> &
+  AgentLoopMetadata;
