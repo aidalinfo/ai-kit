@@ -1,0 +1,173 @@
+---
+title: Télémétrie Langfuse
+description: Activer et configurer la télémétrie Langfuse pour les agents AI Kit
+sidebar:
+  order: 3
+locale: fr-FR
+---
+
+import { PackageManagers } from 'starlight-package-managers'
+
+AI Kit expose une intégration optionnelle avec [Langfuse](https://langfuse.com/) pour consigner les traces `generate`/`stream`. Cette page décrit l'installation des dépendances OpenTelemetry, l'initialisation du `LangfuseSpanProcessor`, puis l'activation de la télémétrie côté agents.
+
+## Dépendances requises
+
+Ajoutez les paquets Langfuse et OpenTelemetry. Ils sont déclarés en peer dependency dans `@ai_kit/core` et doivent être installés dans votre application.
+
+<PackageManagers pkg="@langfuse/otel @opentelemetry/sdk-trace-node" />
+
+## Variables d'environnement
+
+Exposez vos identifiants Langfuse côté serveur :
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+# Facultatif : région US
+# LANGFUSE_BASE_URL=https://us.cloud.langfuse.com
+```
+
+## Initialiser le processeur Langfuse
+
+Importez `ensureLangfuseTelemetry` le plus tôt possible (ex. `instrumentation.ts`, hook serveur ou point d'entrée). La fonction charge dynamiquement `@langfuse/otel`, enregistre un `NodeTracerProvider` et renvoie un handle réutilisable.
+
+```ts
+// instrumentation.ts
+import { ensureLangfuseTelemetry } from "@ai_kit/core";
+
+const telemetry = await ensureLangfuseTelemetry({
+  // Exclut les spans générés par Next.js pour ne conserver que l'IA.
+  shouldExportSpan: ({ otelSpan }) =>
+    otelSpan?.instrumentationScope?.name !== "next.js",
+});
+
+// En environnement serverless, forcez le flush en fin de requête.
+export const flushLangfuse = () => telemetry.flush();
+```
+
+`ensureLangfuseTelemetry` lève une erreur claire si les dépendances optionnelles ne sont pas installées ou si les clés d'environnement sont absentes. Le mode `autoFlush` vaut `"process"` par défaut : des hooks `beforeExit`, `SIGINT` et `SIGTERM` déclenchent automatiquement `flush()`/`shutdown()` pour éviter de perdre des traces.
+
+Dans un handler Next.js/Vercel, combinez-le avec `after` pour vider les buffers dès que la réponse est envoyée :
+
+```ts
+import { after } from "next/server";
+import { ensureLangfuseTelemetry } from "@ai_kit/core";
+
+const telemetry = await ensureLangfuseTelemetry();
+
+export async function POST(req: Request) {
+  const result = await agent.stream({ /* ... */ });
+
+  after(async () => {
+    await telemetry.flush();
+  });
+
+  return result.toAIStreamResponse();
+}
+```
+
+## Activer la télémétrie sur un agent
+
+Ajoutez `telemetry: true` lors de la création de l'agent pour injecter automatiquement `experimental_telemetry.isEnabled = true` dans chaque appel.
+
+```ts
+import { Agent } from "@ai_kit/core";
+import { openai } from "@ai-sdk/openai";
+
+const supportAgent = new Agent({
+  name: "support-assistant",
+  model: openai("gpt-4.1-mini"),
+  telemetry: true,
+});
+```
+
+Vous pouvez aussi activer ou désactiver la télémétrie à la volée :
+
+```ts
+supportAgent.withTelemetry(false);
+```
+
+Si vous passez explicitement `experimental_telemetry.isEnabled = false` dans un appel, ce choix a priorité et désactive l'envoi de traces, même si l'agent est configuré avec `telemetry: true`.
+
+## Personnaliser la télémétrie par appel
+
+Les méthodes `generate` et `stream` acceptent une nouvelle option `telemetry`. Elle fusionne ses champs avec `experimental_telemetry` :
+
+```ts
+await supportAgent.generate({
+  prompt: "Crée un ticket d'incident pour l'utilisateur #42",
+  telemetry: {
+    functionId: "support-ticket",
+    metadata: {
+      ticketId: "42",
+      priority: "high",
+    },
+    recordInputs: false,
+  },
+});
+```
+
+- `functionId`, `recordInputs` et `recordOutputs` ne sont appliqués que si ces valeurs ne sont pas déjà fournies via `experimental_telemetry`.
+- `metadata` est fusionné superficiellement : les clés définies directement dans `experimental_telemetry.metadata` restent prioritaires.
+- Lorsque l'agent n'est pas en mode télémétrie, les overrides de `telemetry` sont ignorés, excepté si vous activez vous-même `experimental_telemetry.isEnabled`.
+
+## Instrumenter les workflows
+
+Les workflows utilisent désormais la même pile OpenTelemetry. Un simple `telemetry: true` dans `createWorkflow` (ou `workflow.withTelemetry(true)`) suffit pour :
+
+- nommer le span racine comme l’`id` du workflow ;
+- enregistrer automatiquement les entrées et sorties du run ;
+- exposer les attributs `input`, `output`, `metadata`, `name` en plus des clés `ai_kit.workflow.*`.
+
+Passez un objet si vous voulez personnaliser `traceName`, ajouter des métadonnées ou désactiver l’enregistrement des données confidentielles. Chaque run produit également :
+
+- un span par étape (`automatic` ou `human`) avec les attributs `ai_kit.workflow.step.*` ;
+- des événements `human.requested` / `human.completed` lors des interactions manuelles.
+
+Vous pouvez enrichir un run à la volée en passant `telemetry: { metadata: { ... } }` dans `workflow.run({ ... })`, ou le désactiver ponctuellement avec `telemetry: false`. Consultez la page [`/docs/core/workflows/telemetry`](/core/workflows/telemetry/) pour un guide complet et des exemples Langfuse.
+
+## Exemple Nitro/Nuxt
+
+Depuis `@ai_kit/core` v1.0.12, `ensureLangfuseTelemetry` restaure automatiquement `addSpanProcessor` supprimé par OpenTelemetry v2. Vous pouvez donc initialiser Langfuse depuis un plugin Nitro sans patch manuel :
+
+```ts
+// server/plugins/langfuse-telemetry.ts
+import { ensureLangfuseTelemetry } from "@ai_kit/core";
+
+type LangfuseTelemetryHandle = Awaited<ReturnType<typeof ensureLangfuseTelemetry>>;
+
+let telemetryPromise: Promise<LangfuseTelemetryHandle> | undefined;
+
+const getTelemetry = () => {
+  telemetryPromise ||= ensureLangfuseTelemetry({
+    // Ignore les spans internes Nuxt/Nitro pour garder uniquement vos traces applicatives.
+    shouldExportSpan: ({ otelSpan }) => {
+      const scopeName = otelSpan?.instrumentationScope?.name;
+      return scopeName !== "nuxt" && scopeName !== "nitro";
+    },
+  });
+
+  return telemetryPromise;
+};
+
+export const flushLangfuse = async () => {
+  const telemetry = await getTelemetry();
+  await telemetry.flush();
+};
+
+export default defineNitroPlugin(async (nitroApp) => {
+  const telemetry = await getTelemetry();
+
+  nitroApp.hooks.hook("close", async () => {
+    await telemetry.shutdown();
+  });
+});
+```
+
+Dans vos handlers `eventHandler`/`defineEventHandler`, importez `flushLangfuse` et appelez-le via `event.node.res.on("finish", flushLangfuse)` ou avec `after` pour vider les spans à la fin de chaque requête.
+
+## Ressources utiles
+
+- [Langfuse TypeScript SDK – Setup](https://langfuse.com/docs/observability/sdk/typescript/setup)
+- [Instrumentation Langfuse & OpenTelemetry](https://langfuse.com/docs/observability/sdk/typescript/instrumentation)
+- [Filtrer les spans avec `shouldExportSpan`](https://langfuse.com/docs/observability/sdk/typescript/advanced-usage)

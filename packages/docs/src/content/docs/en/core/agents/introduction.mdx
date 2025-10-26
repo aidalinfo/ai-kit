@@ -1,0 +1,61 @@
+---
+title: Introduction
+description: Install @ai_kit/core and generate your first responses
+sidebar:
+  order: 2
+locale: en-US
+---
+
+import { PackageManagers } from 'starlight-package-managers'
+
+## Installation
+
+Install the core library together with the model SDK you want:
+
+<PackageManagers pkg="@ai_kit/core @ai-sdk/openai ai zod" />
+
+## Create an agent
+
+```ts
+import { Agent, scaleway } from "@ai_kit/core";
+
+const assistant = new Agent({
+  name: "assistant-documentation",
+  instructions: "You help developers understand the AI Kit platform.",
+  model: scaleway("gpt-oss-120b"),
+});
+```
+
+- `name` identifies your agent (logging, monitoring, metrics).
+- `instructions` sets the default system prompt. You can override it with `system` on each call.
+- `model` expects an `LanguageModel` from the `ai` SDK. We use the Scaleway model here, but any compatible model works.
+
+## Generate a single response
+
+Use `agent.generate` when you only expect one response. You can provide a simple `prompt` or ChatML-compatible `messages`.
+
+```ts
+const result = await assistant.generate({
+  prompt: "Explain the difference between generate and stream in AI Kit.",
+});
+
+console.log(result.text);
+```
+
+`generate` returns a resolved response with its text, eventual structured output, and metadata (prompt tokens, duration, etc.).
+
+## Stream tokens as they arrive
+
+Use `agent.stream` to read tokens on the fly:
+
+```ts
+const stream = await assistant.stream({
+  prompt: "List five safeguards to deploy an AI agent in production.",
+});
+
+for await (const chunk of stream.textStream) {
+  process.stdout.write(chunk);
+}
+```
+
+The stream also exposes `textStream`, `rawStream`, and helpers to convert the result into an AI SDK response. Call `stream.final()` to retrieve the aggregated metadata.

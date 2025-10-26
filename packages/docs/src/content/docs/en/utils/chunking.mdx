@@ -1,0 +1,96 @@
+---
+title: Chunk management
+description: Utilities to split text and JSON into coherent pieces
+sidebar:
+  order: 1
+locale: en-US
+---
+
+This module exposes utilities to break text or JSON content into coherent chunks, inspired by Mastra's behavior.
+
+## Import
+
+```ts
+import {
+  splitTextRecursively,
+  splitJsonRecursively,
+  TChunkDocument,
+} from "@ai_kit/core";
+```
+
+## Split plain text
+
+```ts
+const chunks = splitTextRecursively("Your text…", {
+  chunkSize: 500,
+  chunkOverlap: 50,
+});
+
+// Each chunk exposes index, start, end, content, type = "text", and optional metadata.
+```
+
+`chunkOverlap` defines how many characters are shared between two chunks to preserve context.
+
+### Reuse the generated chunks
+
+```ts
+const chunks = splitTextRecursively(longArticle, {
+  chunkSize: 400,
+  chunkOverlap: 40,
+});
+
+// Example 1: prepare embeddings
+const values = chunks.map((chunk) => chunk.content);
+await vectorStore.embed(values);
+
+// Example 2: rebuild a summary
+const summary = chunks
+  .map((chunk) => chunk.content.split("\n")[0])
+  .join("\n");
+
+// Example 3: attach an identifier to each passage
+const passages = chunks.map((chunk) => ({
+  id: `article-${chunk.index}`,
+  text: chunk.content,
+  start: chunk.start,
+  end: chunk.end,
+}));
+```
+
+## Split JSON
+
+```ts
+const data = { foo: "bar", nested: { value: 42 } };
+
+const chunks = splitJsonRecursively(data, {
+  chunkSize: 300,
+  format: "pretty",
+  metadata: { source: "example" },
+});
+
+// The chunks have type = "json" and inherit the provided metadata.
+```
+
+`format` can be `auto`, `preserve` (keep the original string), or `pretty` (make it readable before splitting).
+
+## Use `TChunkDocument`
+
+```ts
+const doc = TChunkDocument.fromJSON(myJson, { dataset: "clients" });
+const chunks = doc.chunk({
+  chunkSize: 256,
+  chunkOverlap: 32,
+  metadata: { stage: "training" },
+});
+
+// toString lets you retrieve the formatted content (useful for logs or storage)
+const normalized = doc.toString("pretty");
+```
+
+`TChunkDocument` simplifies handling the content type (text or JSON) and merges the document metadata with the metadata provided during chunking.
+
+## Quick tips
+
+- Tune `chunkSize` according to your model or search engine limit.
+- Use a light `chunkOverlap` (10–50) for tasks that need adjacent context.
+- Attach `metadata` to trace the origin of each chunk and enrich later searches.

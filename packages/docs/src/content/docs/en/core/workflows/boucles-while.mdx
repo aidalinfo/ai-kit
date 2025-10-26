@@ -1,0 +1,102 @@
+---
+title: While loops
+description: Repeat the same step until a condition is met, without losing history
+sidebar:
+  order: 3
+locale: en-US
+---
+
+`createWhileStep` encapsulates a controlled loop: you provide a condition, a mandatory `maxIterations`, and the step to repeat. The API chains executions, forwards the previous output as the next input, and collects results.
+
+## Polling example
+
+The snippet below queries a service until the status becomes `"ready"` or the iteration limit is reached.
+
+```ts
+import {
+  createMapStep,
+  createWhileStep,
+  createWorkflow,
+} from "@ai_kit/core";
+import { z } from "zod";
+
+const pollingStateSchema = z.object({
+  jobId: z.string().min(1),
+  attempt: z.number().int().min(0),
+  done: z.boolean().optional(),
+});
+
+type PollingState = z.infer<typeof pollingStateSchema>;
+type PollingResult = PollingState & { done: boolean };
+
+const checkStatus = createMapStep<PollingState, PollingResult>({
+  id: "check-status",
+  inputSchema: pollingStateSchema,
+  outputSchema: pollingStateSchema.extend({
+    done: z.boolean(),
+  }),
+  handler: async ({ input }) => {
+    const attempt = input.attempt;
+
+    const done = await fetch(`/jobs/${input.jobId}/status?attempt=${attempt}`)
+      .then((res) => res.json())
+      .then((body) => body.done === true);
+
+    return {
+      jobId: input.jobId,
+      attempt: attempt + 1,
+      done,
+    };
+  },
+});
+
+const pollUntilDone = createWhileStep({
+  id: "poll-job",
+  description: "Retry checkStatus until completion or timeout",
+  inputSchema: z.object({
+    jobId: z.string().min(1),
+    attempt: z.number().int().min(0).default(0),
+  }),
+  loopStep: checkStatus,
+  maxIterations: 12,
+  condition: ({ lastOutput }) => {
+    // Continue while the service isn’t ready (max 12 attempts)
+    return lastOutput?.done !== true;
+  },
+});
+
+export const pollWorkflow = createWorkflow({
+  id: "polling",
+  inputSchema: z.object({
+    jobId: z.string().min(1),
+    attempt: z.number().int().min(0).default(0),
+  }),
+  outputSchema: z.object({
+    lastResult: pollingStateSchema.extend({ done: z.boolean() }).optional(),
+    allResults: z.array(pollingStateSchema.extend({ done: z.boolean() })),
+  }),
+})
+  .while(pollUntilDone)
+  .commit();
+```
+
+By default, the step returns `{ lastResult, allResults }`, with `lastResult` potentially `undefined` if no iteration ran. Here we rely on that standard behaviour, which is enough to expose the final state and full history. `maxIterations` remains required and triggers a `WorkflowExecutionError` if the condition would continue beyond the limit, so the UI can display a clear message.
+
+## Condition and safeguards
+
+- The `condition({ input, lastOutput, iteration, context, signal })` function is evaluated before each iteration. Return `false` to exit the loop cleanly.
+- `maxIterations` protects against infinite loops: if the condition would still be true after reaching this limit, an error is thrown with the step identifier.
+- The abort signal is propagated automatically: if `signal.aborted === true`, the loop stops with `WorkflowAbortError`.
+
+## Prepare the input and collect results
+
+- `prepareNextInput` is optional. Without it, the initial input is used for the first iteration, and each output becomes the next input, as shown above. Use this hook only when you need to transform the input explicitly.
+- `collect` receives `{ input, results, lastResult, iterations, context }` and lets you shape the output (aggregation, mapping to a business structure). If omitted, `createWhileStep` returns `{ lastResult, allResults }`.
+
+## ForEach or While?
+
+- `createForEachStep` iterates over a known collection and can parallelize processing (`concurrency`). Ideal for transforming lists or aggregating independent tasks.
+- `createWhileStep` is useful when you don’t know the number of iterations in advance: polling, validation workflows, successive refinements where each output influences the next step.
+- You can combine both: for example, a `while` that polls queued tasks and, once greenlit, a `forEach` that distributes the work across items.
+
+Need explicit branching control instead? See the [`Conditional branches`](./branches-conditionnelles) page.
