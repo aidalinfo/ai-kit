@@ -34,14 +34,34 @@ export default defineConfig({
                                                 {
                                                         label: 'Agents',
                                                         translations: { en: 'Agents' },
-                                                        link: '/core/agents/',
-                                                        autogenerate: { directory: 'core/agents' },
+                                                        items: [
+                                                                {
+                                                                        label: 'Présentation',
+                                                                        translations: { en: 'Overview' },
+                                                                        link: '/core/agents/',
+                                                                },
+                                                                {
+                                                                        label: 'Guides',
+                                                                        translations: { en: 'Guides' },
+                                                                        autogenerate: { directory: 'core/agents' },
+                                                                },
+                                                        ],
                                                 },
                                                 {
                                                         label: 'Workflows',
                                                         translations: { en: 'Workflows' },
-                                                        link: '/core/workflows/',
-                                                        autogenerate: { directory: 'core/workflows' },
+                                                        items: [
+                                                                {
+                                                                        label: 'Présentation',
+                                                                        translations: { en: 'Overview' },
+                                                                        link: '/core/workflows/',
+                                                                },
+                                                                {
+                                                                        label: 'Guides',
+                                                                        translations: { en: 'Guides' },
+                                                                        autogenerate: { directory: 'core/workflows' },
+                                                                },
+                                                        ],
                                                 },
                                                 {
                                                         label: 'Télémétrie Langfuse',
