@@ -3,11 +3,12 @@ import type {
   MaybePromise,
   SchemaLike,
   StepHandlerArgs,
-  WorkflowStepContext,
+  WorkflowStepRuntimeContext,
   WorkflowStepInput,
   WorkflowStepMeta,
   WorkflowStepOutput,
   WorkflowStepRootInput,
+  WorkflowCtxValue,
 } from "../types.js";
 import { createStep, WorkflowStep } from "./step.js";
 
@@ -16,11 +17,13 @@ export interface WhileIterationContext<
   LoopOutput,
   Meta extends Record<string, unknown>,
   RootInput,
+  Ctx extends Record<string, unknown> | undefined,
 > {
   input: Input;
   lastOutput: LoopOutput | undefined;
   iteration: number;
-  context: WorkflowStepContext<Meta, RootInput>;
+  context: WorkflowStepRuntimeContext<Meta, RootInput, Ctx>;
+  ctx: WorkflowCtxValue<Ctx>;
   signal: AbortSignal;
 }
 
@@ -29,8 +32,9 @@ export type WhileConditionFn<
   LoopOutput,
   Meta extends Record<string, unknown>,
   RootInput,
+  Ctx extends Record<string, unknown> | undefined,
 > = (
-  args: WhileIterationContext<Input, LoopOutput, Meta, RootInput>,
+  args: WhileIterationContext<Input, LoopOutput, Meta, RootInput, Ctx>,
 ) => MaybePromise<boolean>;
 
 export type WhileStepCollectFn<
@@ -39,18 +43,20 @@ export type WhileStepCollectFn<
   CollectOutput,
   Meta extends Record<string, unknown>,
   RootInput,
+  Ctx extends Record<string, unknown> | undefined,
 > = (args: {
   input: Input;
   results: Array<LoopOutput>;
   lastResult: LoopOutput | undefined;
   iterations: number;
-  context: WorkflowStepContext<Meta, RootInput>;
+  context: WorkflowStepRuntimeContext<Meta, RootInput, Ctx>;
+  ctx: WorkflowCtxValue<Ctx>;
 }) => MaybePromise<CollectOutput>;
 
 export type WhileStepOutput<
   LoopOutput,
-  Collect extends WhileStepCollectFn<any, LoopOutput, any, any, any> | undefined,
-> = Collect extends WhileStepCollectFn<any, LoopOutput, infer CollectOutput, any, any>
+  Collect extends WhileStepCollectFn<any, LoopOutput, any, any, any, any> | undefined,
+> = Collect extends WhileStepCollectFn<any, LoopOutput, infer CollectOutput, any, any, any>
   ? Awaited<CollectOutput>
   : {
       lastResult?: LoopOutput;
@@ -59,14 +65,16 @@ export type WhileStepOutput<
 
 export interface WhileStepConfig<
   Input extends WorkflowStepInput<LoopStep>,
-  LoopStep extends WorkflowStep<any, any, any, any>,
+  LoopStep extends WorkflowStep<any, any, any, any, Ctx>,
   Collect extends WhileStepCollectFn<
     Input,
     WorkflowStepOutput<LoopStep>,
     any,
     WorkflowStepMeta<LoopStep>,
-    WorkflowStepRootInput<LoopStep>
+    WorkflowStepRootInput<LoopStep>,
+    Ctx
   > | undefined = undefined,
+  Ctx extends Record<string, unknown> | undefined = undefined,
 > {
   id: string;
   description?: string;
@@ -77,7 +85,8 @@ export interface WhileStepConfig<
     Input,
     WorkflowStepOutput<LoopStep>,
     WorkflowStepMeta<LoopStep>,
-    WorkflowStepRootInput<LoopStep>
+    WorkflowStepRootInput<LoopStep>,
+    Ctx
   >;
   maxIterations: number;
   prepareNextInput?: (
@@ -85,7 +94,8 @@ export interface WhileStepConfig<
       Input,
       WorkflowStepOutput<LoopStep>,
       WorkflowStepMeta<LoopStep>,
-      WorkflowStepRootInput<LoopStep>
+      WorkflowStepRootInput<LoopStep>,
+      Ctx
     >,
   ) => MaybePromise<WorkflowStepInput<LoopStep>>;
   collect?: Collect;
@@ -93,31 +103,39 @@ export interface WhileStepConfig<
 
 export const createWhileStep = <
   Input extends WorkflowStepInput<LoopStep>,
-  LoopStep extends WorkflowStep<any, any, any, any>,
+  LoopStep extends WorkflowStep<any, any, any, any, Ctx>,
   Collect extends WhileStepCollectFn<
     Input,
     WorkflowStepOutput<LoopStep>,
     any,
     WorkflowStepMeta<LoopStep>,
-    WorkflowStepRootInput<LoopStep>
+    WorkflowStepRootInput<LoopStep>,
+    Ctx
   > | undefined = undefined,
+  Ctx extends Record<string, unknown> | undefined = undefined,
 >(
-  config: WhileStepConfig<Input, LoopStep, Collect>,
+  config: WhileStepConfig<Input, LoopStep, Collect, Ctx>,
 ) =>
   createStep<
     Input,
     WhileStepOutput<WorkflowStepOutput<LoopStep>, Collect>,
     WorkflowStepMeta<LoopStep>,
-    WorkflowStepRootInput<LoopStep>
+    WorkflowStepRootInput<LoopStep>,
+    Ctx
   >({
     id: config.id,
     description: config.description,
     inputSchema: config.inputSchema,
     outputSchema: config.outputSchema,
     handler: async (
-      args: StepHandlerArgs<Input, WorkflowStepMeta<LoopStep>, WorkflowStepRootInput<LoopStep>>,
+      args: StepHandlerArgs<
+        Input,
+        WorkflowStepMeta<LoopStep>,
+        WorkflowStepRootInput<LoopStep>,
+        Ctx
+      >,
     ) => {
-      const { context, signal } = args;
+      const { stepRuntime, ctx, signal } = args;
 
       if (!Number.isFinite(config.maxIterations) || config.maxIterations <= 0) {
         throw new WorkflowExecutionError(
@@ -138,7 +156,8 @@ export const createWhileStep = <
           input: args.input,
           lastOutput,
           iteration: iterations,
-          context,
+          context: stepRuntime,
+          ctx,
           signal,
         });
 
@@ -162,7 +181,8 @@ export const createWhileStep = <
             input: args.input,
             lastOutput,
             iteration: iterations,
-            context,
+            context: stepRuntime,
+            ctx,
             signal,
           });
         } else if (iterations === 0) {
@@ -174,7 +194,9 @@ export const createWhileStep = <
         try {
           const { output } = await config.loopStep.execute({
             input: nextInput,
-            context,
+            ctx,
+            stepRuntime,
+            context: stepRuntime,
             signal,
           });
 
@@ -197,7 +219,8 @@ export const createWhileStep = <
           results,
           lastResult: lastOutput,
           iterations,
-          context,
+          context: stepRuntime,
+          ctx,
         })) as WhileStepOutput<WorkflowStepOutput<LoopStep>, Collect>;
       }
 

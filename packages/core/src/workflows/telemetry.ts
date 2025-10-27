@@ -49,7 +49,7 @@ interface FinishWorkflowArgs {
 }
 
 interface StartStepArgs<Meta extends Record<string, unknown>> {
-  step: WorkflowStep<any, any, Meta, any>;
+  step: WorkflowStep<any, any, Meta, any, any>;
   stepId: string;
   occurrence: number;
   startedAt: Date;

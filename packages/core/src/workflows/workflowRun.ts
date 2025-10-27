@@ -11,13 +11,17 @@ import type {
   WorkflowEvent,
   WorkflowRunOptions,
   WorkflowRunResult,
-  WorkflowStepContext,
+  WorkflowStepRuntimeContext,
   WorkflowStepSnapshot,
   WorkflowWatcher,
   PendingHumanTask,
   HumanFormDefinition,
   WorkflowTelemetryOption,
   WorkflowTelemetryOverrides,
+  WorkflowCtxInit,
+  WorkflowCtxRunInput,
+  WorkflowCtxValue,
+  WorkflowCtxUpdater,
 } from "./types.js";
 import { cloneMetadata, mergeSignals } from "./utils/runtime.js";
 import type { Workflow } from "./workflow.js";
@@ -32,8 +36,9 @@ interface WorkflowRunInit<
   Input,
   Output,
   Meta extends Record<string, unknown>,
+  Ctx extends Record<string, unknown> | undefined,
 > {
-  workflow: Workflow<Input, Output, Meta>;
+  workflow: Workflow<Input, Output, Meta, Ctx>;
   runId: string;
 }
 
@@ -103,13 +108,14 @@ interface PendingHumanState<
   Output,
   Meta extends Record<string, unknown>,
   RootInput,
+  Ctx extends Record<string, unknown> | undefined,
 > {
-  step: HumanWorkflowStep<Input, Output, Meta, RootInput>;
+  step: HumanWorkflowStep<Input, Output, Meta, RootInput, Ctx>;
   stepId: string;
   requestedAt: Date;
   form: HumanFormDefinition;
   payload: unknown;
-  context: WorkflowStepContext<Meta, RootInput>;
+  context: WorkflowStepRuntimeContext<Meta, RootInput, Ctx>;
   input: Input;
   snapshotIndex: number;
   occurrence: number;
@@ -120,11 +126,12 @@ export class WorkflowRun<
   Input,
   Output,
   Meta extends Record<string, unknown> = Record<string, unknown>,
+  Ctx extends Record<string, unknown> | undefined = undefined,
 > {
   readonly workflowId: string;
   readonly runId: string;
-  private readonly workflow: Workflow<Input, Output, Meta>;
-  private readonly graph: ReturnType<Workflow<Input, Output, Meta>["getGraph"]>;
+  private readonly workflow: Workflow<Input, Output, Meta, Ctx>;
+  private readonly graph: ReturnType<Workflow<Input, Output, Meta, Ctx>["getGraph"]>;
   private readonly defaultNext = new Map<string, string | undefined>();
   private readonly branchMembers = new Map<string, Set<string>>();
   private readonly sequenceIndex = new Map<string, number>();
@@ -137,6 +144,8 @@ export class WorkflowRun<
   private emitStream?: (event: WorkflowEvent<Meta>) => void;
   private eventStream?: WorkflowEventStream<Meta>;
   private runtimeMetadata!: Meta;
+  private runtimeCtx!: Ctx;
+  private frozenCtx!: WorkflowCtxValue<Ctx>;
   private stepsSnapshot!: Record<string, WorkflowStepSnapshot[]>;
   private stepOccurrences!: Map<string, number>;
   private startedAt!: Date;
@@ -144,13 +153,13 @@ export class WorkflowRun<
   private current: unknown;
   private currentStepId?: string;
   private composedSignal!: AbortSignal;
-  private pendingHuman?: PendingHumanState<any, any, Meta, Input>;
+  private pendingHuman?: PendingHumanState<any, any, Meta, Input, Ctx>;
   private finishedAt?: Date;
   private telemetry?: WorkflowRunTelemetry<Meta>;
   private telemetryOverrides?: WorkflowTelemetryOverrides;
   private activeStepTelemetry?: StepTelemetryHandle;
 
-  constructor({ workflow, runId }: WorkflowRunInit<Input, Output, Meta>) {
+  constructor({ workflow, runId }: WorkflowRunInit<Input, Output, Meta, Ctx>) {
     this.workflow = workflow;
     this.workflowId = workflow.id;
     this.runId = runId;
@@ -197,6 +206,60 @@ export class WorkflowRun<
     });
 
     this.telemetryOverrides = this.telemetry.getResolvedOverrides();
+  }
+
+  private refreshFrozenCtx() {
+    if (this.runtimeCtx === undefined) {
+      this.frozenCtx = undefined as WorkflowCtxValue<Ctx>;
+      return;
+    }
+
+    const clone = { ...(this.runtimeCtx as Record<string, unknown>) } as Ctx;
+    this.runtimeCtx = clone;
+    this.frozenCtx = Object.freeze(clone) as WorkflowCtxValue<Ctx>;
+  }
+
+  private initializeCtx(baseCtx: WorkflowCtxInit<Ctx>, override?: WorkflowCtxRunInput<Ctx>) {
+    if (baseCtx === undefined && override === undefined) {
+      this.runtimeCtx = undefined as Ctx;
+      this.frozenCtx = undefined as WorkflowCtxValue<Ctx>;
+      return;
+    }
+
+    const merged = {
+      ...(baseCtx ?? {}) as Record<string, unknown>,
+      ...(override ?? {}) as Record<string, unknown>,
+    } as Ctx;
+
+    this.runtimeCtx = merged;
+    this.refreshFrozenCtx();
+  }
+
+  private applyCtxUpdate(updater: WorkflowCtxUpdater<Ctx>) {
+    if (typeof updater !== "function") {
+      return;
+    }
+
+    const normalized = updater as unknown as (current: Ctx) => Ctx;
+    const current = this.runtimeCtx === undefined
+      ? ({} as Ctx)
+      : this.runtimeCtx;
+
+    this.runtimeCtx = normalized(current);
+    this.refreshFrozenCtx();
+  }
+
+  private getCtxSnapshot(): WorkflowCtxValue<Ctx> {
+    return this.frozenCtx;
+  }
+
+  private cloneCtx(): WorkflowCtxValue<Ctx> {
+    if (this.runtimeCtx === undefined) {
+      return undefined as WorkflowCtxValue<Ctx>;
+    }
+
+    const clone = { ...(this.runtimeCtx as Record<string, unknown>) };
+    return Object.freeze(clone) as WorkflowCtxValue<Ctx>;
   }
 
   getTelemetrySelection(): WorkflowTelemetryOption | undefined {
@@ -263,11 +326,13 @@ export class WorkflowRun<
     this.controller.abort(reason ?? new WorkflowAbortError());
   }
 
-  async start(options: WorkflowRunOptions<Input, Meta>): Promise<WorkflowRunResult<Output, Meta>> {
+  async start(
+    options: WorkflowRunOptions<Input, Meta, Ctx>,
+  ): Promise<WorkflowRunResult<Output, Meta, Ctx>> {
     return this.execute(options, undefined);
   }
 
-  async stream(options: WorkflowRunOptions<Input, Meta>) {
+  async stream(options: WorkflowRunOptions<Input, Meta, Ctx>) {
     const stream = new WorkflowEventStream<Meta>();
     this.eventStream = stream;
 
@@ -294,9 +359,9 @@ export class WorkflowRun<
   }
 
   private async execute(
-    { inputData, metadata, signal, telemetry }: WorkflowRunOptions<Input, Meta>,
+    { inputData, metadata, ctx, signal, telemetry }: WorkflowRunOptions<Input, Meta, Ctx>,
     emitStream: ((event: WorkflowEvent<Meta>) => void) | undefined,
-  ): Promise<WorkflowRunResult<Output, Meta>> {
+  ): Promise<WorkflowRunResult<Output, Meta, Ctx>> {
     if (this.executed) {
       throw new WorkflowExecutionError("Workflow run can only be executed once");
     }
@@ -314,6 +379,7 @@ export class WorkflowRun<
     );
 
     this.runtimeMetadata = cloneMetadata(metadata ?? this.workflow.getInitialMetadata());
+    this.initializeCtx(this.workflow.getBaseContext(), ctx);
     this.stepsSnapshot = {};
     this.stepOccurrences = new Map();
     this.startedAt = new Date();
@@ -341,6 +407,7 @@ export class WorkflowRun<
         error,
         steps: this.stepsSnapshot,
         metadata: this.runtimeMetadata,
+        ctx: this.cloneCtx(),
         startedAt: this.startedAt,
         finishedAt,
       };
@@ -355,21 +422,23 @@ export class WorkflowRun<
   }
 
   private async handleHumanStep(
-    step: HumanWorkflowStep<any, any, Meta, Input>,
-    context: WorkflowStepContext<Meta, Input>,
+    step: HumanWorkflowStep<any, any, Meta, Input, Ctx>,
+    context: WorkflowStepRuntimeContext<Meta, Input, Ctx>,
     started: Date,
     stepHandle: StepTelemetryHandle | undefined,
     occurrence: number,
-  ): Promise<WorkflowRunResult<Output, Meta>> {
+  ): Promise<WorkflowRunResult<Output, Meta, Ctx>> {
     if (!this.stepsSnapshot) {
       throw new WorkflowExecutionError("Workflow run is not initialized");
     }
 
-    const args = {
+    const args: StepHandlerArgs<unknown, Meta, Input, Ctx> = {
       input: this.current,
+      ctx: this.getCtxSnapshot(),
+      stepRuntime: context,
       context,
       signal: this.composedSignal,
-    } as StepHandlerArgs<unknown, Meta, Input>;
+    };
 
     const buildHumanRequest = () => step.buildHumanRequest(args);
     const { input, form, payload } = await (
@@ -436,13 +505,14 @@ export class WorkflowRun<
       status: "waiting_human",
       steps: this.stepsSnapshot,
       metadata: this.runtimeMetadata,
+      ctx: this.cloneCtx(),
       startedAt: this.startedAt,
       finishedAt: this.finishedAt,
       pendingHuman: pending,
     };
   }
 
-  private async runLoop(): Promise<WorkflowRunResult<Output, Meta>> {
+  private async runLoop(): Promise<WorkflowRunResult<Output, Meta, Ctx>> {
     while (this.currentStepId) {
       const stepId = this.currentStepId;
       const step = this.graph.steps.get(stepId);
@@ -460,6 +530,7 @@ export class WorkflowRun<
           error,
           steps: this.stepsSnapshot,
           metadata: this.runtimeMetadata,
+          ctx: this.cloneCtx(),
           startedAt: this.startedAt,
           finishedAt,
         };
@@ -479,6 +550,7 @@ export class WorkflowRun<
           error,
           steps: this.stepsSnapshot,
           metadata: this.runtimeMetadata,
+          ctx: this.cloneCtx(),
           startedAt: this.startedAt,
           finishedAt,
         };
@@ -496,7 +568,7 @@ export class WorkflowRun<
 
       this.emit({ type: "step:start", stepId });
 
-      const context: WorkflowStepContext<Meta, Input> = {
+      const stepRuntime: WorkflowStepRuntimeContext<Meta, Input, Ctx> = {
         workflowId: this.workflowId,
         runId: this.runId,
         initialInput: this.initialInput,
@@ -517,16 +589,22 @@ export class WorkflowRun<
             metadata: event.metadata ?? this.runtimeMetadata,
           });
         },
+        getCtx: () => this.getCtxSnapshot(),
+        updateCtx: (updater: WorkflowCtxUpdater<Ctx>) => {
+          this.applyCtxUpdate(updater);
+        },
       };
 
       if (step instanceof HumanWorkflowStep) {
-        return this.handleHumanStep(step, context, started, stepHandle, occurrence);
+        return this.handleHumanStep(step, stepRuntime, started, stepHandle, occurrence);
       }
 
       const executeStep = () =>
         step.execute({
           input: this.current,
-          context,
+          ctx: this.getCtxSnapshot(),
+          stepRuntime,
+          context: stepRuntime,
           signal: this.composedSignal,
         });
 
@@ -540,7 +618,12 @@ export class WorkflowRun<
         const finished = new Date();
         this.stepOccurrences.set(step.id, occurrence);
 
-        const transitionContext = { input, output, context };
+        const transitionContext = {
+          input,
+          output,
+          context: stepRuntime,
+          ctx: this.getCtxSnapshot(),
+        };
 
         const resolveBranch = () => step.resolveBranch(transitionContext);
         const resolvedBranchId = await (
@@ -651,6 +734,7 @@ export class WorkflowRun<
           error,
           steps: this.stepsSnapshot,
           metadata: this.runtimeMetadata,
+          ctx: this.cloneCtx(),
           startedAt: this.startedAt,
           finishedAt: finished,
         };
@@ -673,6 +757,7 @@ export class WorkflowRun<
         error,
         steps: this.stepsSnapshot,
         metadata: this.runtimeMetadata,
+        ctx: this.cloneCtx(),
         startedAt: this.startedAt,
         finishedAt,
       };
@@ -693,6 +778,7 @@ export class WorkflowRun<
         result: output,
         steps: this.stepsSnapshot,
         metadata: this.runtimeMetadata,
+        ctx: this.cloneCtx(),
         startedAt: this.startedAt,
         finishedAt,
       };
@@ -710,13 +796,14 @@ export class WorkflowRun<
         error,
         steps: this.stepsSnapshot,
         metadata: this.runtimeMetadata,
+        ctx: this.cloneCtx(),
         startedAt: this.startedAt,
         finishedAt,
       };
     }
   }
 
-  async resumeWithHumanInput(args: { runId?: string; stepId: string; data: unknown }): Promise<WorkflowRunResult<Output, Meta>> {
+  async resumeWithHumanInput(args: { runId?: string; stepId: string; data: unknown }): Promise<WorkflowRunResult<Output, Meta, Ctx>> {
     if (!this.executed) {
       throw new WorkflowResumeError("Workflow run has not been started");
     }
@@ -760,7 +847,12 @@ export class WorkflowRun<
 
     this.history.set(step.id, { input, output: response });
 
-    const transitionContext = { input, output: response, context };
+    const transitionContext = {
+      input,
+      output: response,
+      context,
+      ctx: this.getCtxSnapshot(),
+    };
 
     const resolveNext = () => step.resolveNext(transitionContext);
     const resolvedNext = await (

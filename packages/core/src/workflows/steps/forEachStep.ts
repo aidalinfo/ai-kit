@@ -23,15 +23,21 @@ export type ForEachStepOutput<
 
 export interface ForEachStepConfig<
   Input,
-  ItemStep extends WorkflowStep<any, any, any, any>,
+  ItemStep extends WorkflowStep<any, any, any, any, Ctx>,
   Collect extends ForEachCollectFn<WorkflowStepOutput<ItemStep>, any> | undefined = undefined,
+  Ctx extends Record<string, unknown> | undefined = undefined,
 > {
   id: string;
   description?: string;
   inputSchema?: SchemaLike<Input>;
   outputSchema?: SchemaLike<ForEachStepOutput<WorkflowStepOutput<ItemStep>, Collect>>;
   items: (
-    args: StepHandlerArgs<Input, WorkflowStepMeta<ItemStep>, WorkflowStepRootInput<ItemStep>>,
+    args: StepHandlerArgs<
+      Input,
+      WorkflowStepMeta<ItemStep>,
+      WorkflowStepRootInput<ItemStep>,
+      Ctx
+    >,
   ) => MaybePromise<Iterable<WorkflowStepInput<ItemStep>>>;
   itemStep: ItemStep;
   collect?: Collect;
@@ -40,23 +46,30 @@ export interface ForEachStepConfig<
 
 export const createForEachStep = <
   Input,
-  ItemStep extends WorkflowStep<any, any, any, any>,
+  ItemStep extends WorkflowStep<any, any, any, any, Ctx>,
   Collect extends ForEachCollectFn<WorkflowStepOutput<ItemStep>, any> | undefined = undefined,
+  Ctx extends Record<string, unknown> | undefined = undefined,
 >(
-  config: ForEachStepConfig<Input, ItemStep, Collect>,
+  config: ForEachStepConfig<Input, ItemStep, Collect, Ctx>,
 ) =>
   createStep<
     Input,
     ForEachStepOutput<WorkflowStepOutput<ItemStep>, Collect>,
     WorkflowStepMeta<ItemStep>,
-    WorkflowStepRootInput<ItemStep>
+    WorkflowStepRootInput<ItemStep>,
+    Ctx
   >({
     id: config.id,
     description: config.description,
     inputSchema: config.inputSchema,
     outputSchema: config.outputSchema,
     handler: async (
-      args: StepHandlerArgs<Input, WorkflowStepMeta<ItemStep>, WorkflowStepRootInput<ItemStep>>,
+      args: StepHandlerArgs<
+        Input,
+        WorkflowStepMeta<ItemStep>,
+        WorkflowStepRootInput<ItemStep>,
+        Ctx
+      >,
     ) => {
       const itemsIterable = await config.items(args);
       const items = Array.isArray(itemsIterable) ? itemsIterable : Array.from(itemsIterable);

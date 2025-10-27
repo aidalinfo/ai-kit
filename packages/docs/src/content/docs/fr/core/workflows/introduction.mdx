@@ -126,6 +126,56 @@ const notifyTeam = createStep({
 });
 ```
 
+### Partager un `ctx` d'exécution
+
+Les workflows peuvent transporter un contexte d'exécution typé entre les étapes. Déclarez une valeur initiale dans `createWorkflow({ ctx })`, puis fusionnez une surcharge par exécution via `workflow.run({ ctx })`. Le `ctx` reçu dans chaque handler est en lecture seule ; utilisez `stepRuntime.updateCtx()` pour propager un nouvel état.
+
+```ts
+type OrderCtx = {
+  orgId: string;
+  total: number;
+  userId?: string;
+};
+
+const orderWorkflow = createWorkflow<
+  { amount: number; userId: string },
+  string,
+  Record<string, never>,
+  OrderCtx
+>({
+  id: "order-processing",
+  ctx: { orgId: "default-org", total: 0 },
+})
+  .then(
+    createStep({
+      id: "apply-amount",
+      handler: ({ input, ctx, stepRuntime }) => {
+        stepRuntime.updateCtx(current => ({
+          ...current,
+          total: current.total + input.amount,
+          userId: input.userId,
+        }));
+        return `Enregistré pour ${ctx.orgId}`;
+      },
+    }),
+  )
+  .then(
+    createStep({
+      id: "format-summary",
+      handler: ({ ctx }) => `Organisation ${ctx.orgId} — total ${ctx.total}`,
+    }),
+  )
+  .commit();
+
+const run = await orderWorkflow.run({
+  inputData: { amount: 120, userId: "user_42" },
+  ctx: { orgId: "acme-co" },
+});
+
+console.log(run.ctx);
+// { orgId: "acme-co", total: 120, userId: "user_42" }
+```
+
 ## 4. Exemple complet (workflow + agent)
 
 > L'exemple nécessite un environnement qui expose `fetch` (Node.js 18+ ou polyfill).
