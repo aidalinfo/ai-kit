@@ -27,6 +27,7 @@ export interface WorkflowTelemetryOverrides {
   metadata?: Record<string, unknown>;
   recordInputs?: boolean;
   recordOutputs?: boolean;
+  userId?: string;
 }
 
 export type WorkflowTelemetryOption =
