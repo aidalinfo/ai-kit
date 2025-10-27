@@ -11,9 +11,9 @@ const fallbackPath = `/${defaultLocale}/`;
     <title>Redirection…</title>
     <meta name="robots" content="noindex" />
     <meta http-equiv="refresh" content={`0;url=${fallbackPath}`} />
-    <script>
-      const supportedLocales = new Set({JSON.stringify(localeSlugs)});
-      const fallback = {JSON.stringify(defaultLocale)};
+    <script define:vars={{ localeSlugs, defaultLocale }}>
+      const supportedLocales = new Set(localeSlugs);
+      const fallbackLocale = defaultLocale;
       const toPath = (locale) => `/${locale}/`;
 
       const chooseLocale = () => {
@@ -29,7 +29,7 @@ const fallbackPath = `/${defaultLocale}/`;
           }
         }
 
-        return fallback;
+        return fallbackLocale;
       };
 
       const target = chooseLocale();
