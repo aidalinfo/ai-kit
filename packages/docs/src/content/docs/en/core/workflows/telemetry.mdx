@@ -56,6 +56,7 @@ export const weatherWorkflow = createWorkflow({
     metadata: {
       domain: "weather",
     },
+    userId: "anonymous",
   },
 })
   .then(normalizeInput)
@@ -64,6 +65,8 @@ export const weatherWorkflow = createWorkflow({
 ```
 
 Each execution inherits this configuration. Attributes are written with the `ai_kit.workflow.*` prefix in addition to generic keys (`input`, `output`, `metadata`, `name`), making it easier to search in your OTEL backends or Langfuse.
+
+> ℹ️ When `userId` is provided, the value is exported under `langfuse.user.id`, `user.id`, and `ai_kit.workflow.user_id`, which automatically fills the **User ID** column in the Langfuse UI.
 
 ## Modify an existing instance
 
@@ -101,6 +104,7 @@ You can enrich or disable telemetry per run:
 await weatherWorkflow.run({
   inputData: { city: "Paris" },
   telemetry: {
+    userId: session.user.id,
     metadata: {
       requestId: "req_42",
     },
@@ -115,6 +119,29 @@ await weatherWorkflow.run({
 ```
 
 Overrides merge with the global configuration. By default (`telemetry: true`), inputs and outputs are captured; you can disable them (`recordInputs: false`, `recordOutputs: false`) at the workflow or run level, and metadata is shallow-merged.
+
+## Link a user
+
+Provide a user identifier through `telemetry.userId` to tie a run back to the end customer. The value is merged with any default defined at construction time and remains accessible via Langfuse or runtime hooks such as `getTelemetrySelection()`.
+
+```ts
+const productWorkflow = createWorkflow({
+  id: "product-search",
+  telemetry: { userId: "anonymous" },
+})
+  .then(generateProductDataStep)
+  .commit();
+
+await productWorkflow.run({
+  inputData: { prompt },
+  telemetry: {
+    userId: session.user.id,
+    metadata: { tenantId: session.tenantId },
+  },
+});
+```
+
+Langfuse surfaces the identifier in the trace attributes (`langfuse.user.id`) and in the **User ID** column. Add complementary metadata (`tenantId`, `plan`, etc.) to streamline filtering.
 
 ## Couple with Langfuse
 

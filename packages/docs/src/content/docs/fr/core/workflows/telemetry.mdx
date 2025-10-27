@@ -56,6 +56,7 @@ export const weatherWorkflow = createWorkflow({
     metadata: {
       domain: "weather",
     },
+    userId: "anonymous",
   },
 })
   .then(normalizeInput)
@@ -64,6 +65,8 @@ export const weatherWorkflow = createWorkflow({
 ```
 
 Chaque exécution héritera de cette configuration. Les attributs sont écrits avec le préfixe `ai_kit.workflow.*` en plus des clés génériques (`input`, `output`, `metadata`, `name`), ce qui facilite la recherche dans vos backends OTEL ou Langfuse.
+
+> ℹ️ Lorsque `userId` est renseigné, l’attribut est exporté sous les clés `langfuse.user.id`, `user.id` et `ai_kit.workflow.user_id`, ce qui remplit la colonne **User ID** dans l’interface Langfuse.
 
 ## Modifier une instance existante
 
@@ -101,6 +104,7 @@ Vous pouvez enrichir ou désactiver la télémétrie au niveau d'un run individu
 await weatherWorkflow.run({
   inputData: { city: "Paris" },
   telemetry: {
+    userId: session.user.id,
     metadata: {
       requestId: "req_42",
     },
@@ -115,6 +119,29 @@ await weatherWorkflow.run({
 ```
 
 Les overrides sont fusionnés avec la configuration globale. Par défaut (`telemetry: true`), les entrées et sorties sont capturées ; vous pouvez les désactiver (`recordInputs: false`, `recordOutputs: false`) au niveau du workflow ou d’un run, et les métadonnées sont combinées superficiellement.
+
+## Associer un utilisateur
+
+Exposez un identifiant utilisateur via `telemetry.userId` pour lier un run à un compte final. La valeur se combine avec celle déclarée à la construction (si présente) et reste accessible dans Langfuse ainsi que dans les hooks d’exécution (`getTelemetrySelection()`).
+
+```ts
+const productWorkflow = createWorkflow({
+  id: "product-search",
+  telemetry: { userId: "anonymous" },
+})
+  .then(generateProductDataStep)
+  .commit();
+
+await productWorkflow.run({
+  inputData: { prompt },
+  telemetry: {
+    userId: session.user.id,
+    metadata: { tenantId: session.tenantId },
+  },
+});
+```
+
+Dans Langfuse, l’identifiant apparaît dans les attributs de la trace (`langfuse.user.id`) et dans la colonne **User ID** du tableau des runs. Combinez-le avec des métadonnées supplémentaires (`tenantId`, `plan`, etc.) pour faciliter vos filtres.
 
 ## Coupler avec Langfuse
 

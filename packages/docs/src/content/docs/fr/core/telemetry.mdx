@@ -126,6 +126,8 @@ Passez un objet si vous voulez personnaliser `traceName`, ajouter des métadonn�
 
 Vous pouvez enrichir un run à la volée en passant `telemetry: { metadata: { ... } }` dans `workflow.run({ ... })`, ou le désactiver ponctuellement avec `telemetry: false`. Consultez la page [`/docs/core/workflows/telemetry`](/core/workflows/telemetry/) pour un guide complet et des exemples Langfuse.
 
+> ℹ️ `telemetry.userId` transmet automatiquement l'identifiant aux attributs `langfuse.user.id` et `user.id`. Le guide Workflows détaille son usage et la manière de combiner des métadonnées supplémentaires.
+
 ## Exemple Nitro/Nuxt
 
 Depuis `@ai_kit/core` v1.0.12, `ensureLangfuseTelemetry` restaure automatiquement `addSpanProcessor` supprimé par OpenTelemetry v2. Vous pouvez donc initialiser Langfuse depuis un plugin Nitro sans patch manuel :

@@ -20,6 +20,7 @@ export interface WorkflowTelemetryResolvedConfig {
   metadata?: Record<string, unknown>;
   recordInputs: boolean;
   recordOutputs: boolean;
+  userId?: string;
 }
 
 interface ResolveTelemetryOptionsParams {
@@ -131,6 +132,8 @@ export const resolveWorkflowTelemetryConfig = ({
     ...(overrideOverrides?.metadata ?? {}),
   };
 
+  const resolvedUserId = overrideOverrides?.userId ?? baseOverrides?.userId;
+
   const hasMetadata = Object.keys(metadata).length > 0;
   const resolvedTraceName = overrideOverrides?.traceName ?? baseOverrides?.traceName ?? workflowId;
 
@@ -144,6 +147,7 @@ export const resolveWorkflowTelemetryConfig = ({
     metadata: hasMetadata ? metadata : undefined,
     recordInputs: resolvedRecordInputs,
     recordOutputs: resolvedRecordOutputs,
+    userId: resolvedUserId,
   };
 };
 
@@ -248,6 +252,10 @@ export class WorkflowRunTelemetry<
       overrides.recordOutputs = false;
     }
 
+    if (this.config.userId) {
+      overrides.userId = this.config.userId;
+    }
+
     return Object.keys(overrides).length > 0 ? overrides : undefined;
   }
 
@@ -271,6 +279,12 @@ export class WorkflowRunTelemetry<
     if (this.config.metadata) {
       assignMetadataAttributes(this.rootSpan, "ai_kit.workflow.metadata.", this.config.metadata);
       this.rootSpan.setAttribute("metadata", JSON.stringify(this.config.metadata));
+    }
+
+    if (this.config.userId) {
+      this.rootSpan.setAttribute("langfuse.user.id", this.config.userId);
+      this.rootSpan.setAttribute("user.id", this.config.userId);
+      this.rootSpan.setAttribute("ai_kit.workflow.user_id", this.config.userId);
     }
 
     if (this.config.recordInputs) {
