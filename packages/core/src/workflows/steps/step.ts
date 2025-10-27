@@ -14,14 +14,15 @@ export class WorkflowStep<
   Output,
   Meta extends Record<string, unknown> = Record<string, unknown>,
   RootInput = unknown,
+  Ctx extends Record<string, unknown> | undefined = undefined,
 > {
   readonly id: string;
   readonly description?: string;
-  protected readonly inputSchema?: WorkflowStepConfig<Input, Output, Meta, RootInput>["inputSchema"];
-  protected readonly outputSchema?: WorkflowStepConfig<Input, Output, Meta, RootInput>["outputSchema"];
-  protected readonly handler: WorkflowStepConfig<Input, Output, Meta, RootInput>["handler"];
-  protected readonly next?: string | NextResolver<Input, Output, Meta, RootInput>;
-  protected readonly branchResolver?: BranchResolver<Input, Output, Meta, RootInput>;
+  protected readonly inputSchema?: WorkflowStepConfig<Input, Output, Meta, RootInput, Ctx>["inputSchema"];
+  protected readonly outputSchema?: WorkflowStepConfig<Input, Output, Meta, RootInput, Ctx>["outputSchema"];
+  protected readonly handler: WorkflowStepConfig<Input, Output, Meta, RootInput, Ctx>["handler"];
+  protected readonly next?: string | NextResolver<Input, Output, Meta, RootInput, Ctx>;
+  protected readonly branchResolver?: BranchResolver<Input, Output, Meta, RootInput, Ctx>;
 
   constructor({
     id,
@@ -31,7 +32,7 @@ export class WorkflowStep<
     handler,
     next,
     branchResolver,
-  }: WorkflowStepConfig<Input, Output, Meta, RootInput>) {
+  }: WorkflowStepConfig<Input, Output, Meta, RootInput, Ctx>) {
     this.id = id;
     this.description = description;
     this.inputSchema = inputSchema;
@@ -42,7 +43,7 @@ export class WorkflowStep<
   }
 
   async execute(
-    args: StepHandlerArgs<unknown, Meta, RootInput>,
+    args: StepHandlerArgs<unknown, Meta, RootInput, Ctx>,
   ): Promise<{ input: Input; output: Output }> {
     const validatedInput = parseWithSchema(this.inputSchema, args.input, `step ${this.id} input`);
     const result = await this.handler({
@@ -58,9 +59,9 @@ export class WorkflowStep<
   }
 
   clone(
-    overrides: Partial<WorkflowStepConfig<Input, Output, Meta, RootInput>>,
+    overrides: Partial<WorkflowStepConfig<Input, Output, Meta, RootInput, Ctx>>,
   ) {
-    return new WorkflowStep<Input, Output, Meta, RootInput>({
+    return new WorkflowStep<Input, Output, Meta, RootInput, Ctx>({
       id: overrides.id ?? this.id,
       description: overrides.description ?? this.description,
       inputSchema: overrides.inputSchema ?? this.inputSchema,
@@ -72,7 +73,7 @@ export class WorkflowStep<
   }
 
   async resolveNext(
-    args: StepTransitionContext<Input, Output, Meta, RootInput>,
+    args: StepTransitionContext<Input, Output, Meta, RootInput, Ctx>,
   ): Promise<string | undefined> {
     if (!this.next) {
       return undefined;
@@ -86,7 +87,7 @@ export class WorkflowStep<
   }
 
   resolveBranch(
-    args: StepTransitionContext<Input, Output, Meta, RootInput>,
+    args: StepTransitionContext<Input, Output, Meta, RootInput, Ctx>,
   ): MaybePromise<BranchId | undefined> {
     return this.branchResolver?.(args);
   }
@@ -96,24 +97,26 @@ export class WorkflowStep<
   }
 }
 
-export type WorkflowStepOutput<T extends WorkflowStep<any, any, any, any>> =
-  T extends WorkflowStep<any, infer Output, any, any> ? Output : never;
+export type WorkflowStepOutput<T extends WorkflowStep<any, any, any, any, any>> =
+  T extends WorkflowStep<any, infer Output, any, any, any> ? Output : never;
 
 export const createStep = <
   Input,
   Output,
   Meta extends Record<string, unknown> = Record<string, unknown>,
   RootInput = unknown,
->(config: WorkflowStepConfig<Input, Output, Meta, RootInput>) => new WorkflowStep(config);
+  Ctx extends Record<string, unknown> | undefined = undefined,
+>(config: WorkflowStepConfig<Input, Output, Meta, RootInput, Ctx>) => new WorkflowStep(config);
 
 export const cloneStep = <
   Input,
   Output,
   Meta extends Record<string, unknown> = Record<string, unknown>,
   RootInput = unknown,
+  Ctx extends Record<string, unknown> | undefined = undefined,
 >(
-  step: WorkflowStep<Input, Output, Meta, RootInput>,
-  overrides: Partial<WorkflowStepConfig<Input, Output, Meta, RootInput>>,
+  step: WorkflowStep<Input, Output, Meta, RootInput, Ctx>,
+  overrides: Partial<WorkflowStepConfig<Input, Output, Meta, RootInput, Ctx>>,
 ) => step.clone(overrides);
 
 export const createMapStep = createStep;

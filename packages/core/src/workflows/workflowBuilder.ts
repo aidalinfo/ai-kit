@@ -18,15 +18,15 @@ import {
 } from "./steps/whileStep.js";
 import { Workflow } from "./workflow.js";
 
-interface WorkflowBuilderStore<Meta extends Record<string, unknown>, Input> {
-  steps: Map<string, WorkflowStep<any, any, Meta, any>>;
+interface WorkflowBuilderStore<Meta extends Record<string, unknown>, Input, Ctx extends Record<string, unknown> | undefined> {
+  steps: Map<string, WorkflowStep<any, any, Meta, any, Ctx>>;
   sequence: string[];
   branchLookup: Map<string, Map<BranchId, string>>;
   conditionSteps: Set<string>;
   entryId: string | null;
 }
 
-const createEmptyStore = <Meta extends Record<string, unknown>, Input>(): WorkflowBuilderStore<Meta, Input> => ({
+const createEmptyStore = <Meta extends Record<string, unknown>, Input, Ctx extends Record<string, unknown> | undefined>(): WorkflowBuilderStore<Meta, Input, Ctx> => ({
   steps: new Map(),
   sequence: [],
   branchLookup: new Map(),
@@ -34,8 +34,8 @@ const createEmptyStore = <Meta extends Record<string, unknown>, Input>(): Workfl
   entryId: null,
 });
 
-const ensureBranchLookup = <Meta extends Record<string, unknown>, Input>(
-  store: WorkflowBuilderStore<Meta, Input>,
+const ensureBranchLookup = <Meta extends Record<string, unknown>, Input, Ctx extends Record<string, unknown> | undefined>(
+  store: WorkflowBuilderStore<Meta, Input, Ctx>,
   conditionId: string,
 ) => {
   if (store.branchLookup.has(conditionId)) {
@@ -43,8 +43,8 @@ const ensureBranchLookup = <Meta extends Record<string, unknown>, Input>(
   }
 };
 
-const buildAdjacency = <Meta extends Record<string, unknown>, Input>(
-  store: WorkflowBuilderStore<Meta, Input>,
+const buildAdjacency = <Meta extends Record<string, unknown>, Input, Ctx extends Record<string, unknown> | undefined>(
+  store: WorkflowBuilderStore<Meta, Input, Ctx>,
 ) => {
   const adjacency = new Map<string, Set<string>>();
 
@@ -118,23 +118,24 @@ class ConditionalWorkflowBuilder<
   Input,
   Output,
   Meta extends Record<string, unknown>,
+  Ctx extends Record<string, unknown> | undefined,
 > {
   constructor(
-    private readonly parent: WorkflowBuilder<Input, unknown, Output, Meta>,
+    private readonly parent: WorkflowBuilder<Input, unknown, Output, Meta, Ctx>,
     private readonly conditionId: string,
   ) {}
 
-  private normalizeStep(step: WorkflowStep<any, any, Meta, any>) {
-    return step as WorkflowStep<any, any, Meta, Input>;
+  private normalizeStep(step: WorkflowStep<any, any, Meta, any, Ctx>) {
+    return step as WorkflowStep<any, any, Meta, Input, Ctx>;
   }
 
   then(
     ...branches: [
-      | WorkflowStep<any, any, Meta, any>
-        | Record<string, WorkflowStep<any, any, Meta, any>>,
-      ...Array<WorkflowStep<any, any, Meta, any>>
+      | WorkflowStep<any, any, Meta, any, Ctx>
+        | Record<string, WorkflowStep<any, any, Meta, any, Ctx>>,
+      ...Array<WorkflowStep<any, any, Meta, any, Ctx>>
     ]
-  ): WorkflowBuilder<Input, unknown, Output, Meta> {
+  ): WorkflowBuilder<Input, unknown, Output, Meta, Ctx> {
     if (branches.length === 0) {
       throw new WorkflowSchemaError("Conditional builder requires at least one branch step");
     }
@@ -175,21 +176,23 @@ type CompatibleStep<
   Current,
   Meta extends Record<string, unknown>,
   RootInput,
-> = WorkflowStep<Current, any, Meta, RootInput> | WorkflowStep<Current, any, Meta, any>;
+  Ctx extends Record<string, unknown> | undefined,
+> = WorkflowStep<Current, any, Meta, RootInput, Ctx> | WorkflowStep<Current, any, Meta, any, Ctx>;
 
 export class WorkflowBuilder<
   Input,
   Current,
   Output,
   Meta extends Record<string, unknown> = Record<string, unknown>,
+  Ctx extends Record<string, unknown> | undefined = undefined,
 > {
-  private readonly config: WorkflowConfig<Input, Output, Meta>;
-  private readonly store: WorkflowBuilderStore<Meta, Input>;
+  private readonly config: WorkflowConfig<Input, Output, Meta, Ctx>;
+  private readonly store: WorkflowBuilderStore<Meta, Input, Ctx>;
   private readonly finalize?: (value: unknown) => Output;
 
   constructor(
-    config: WorkflowConfig<Input, Output, Meta>,
-    store: WorkflowBuilderStore<Meta, Input> = createEmptyStore(),
+    config: WorkflowConfig<Input, Output, Meta, Ctx>,
+    store: WorkflowBuilderStore<Meta, Input, Ctx> = createEmptyStore<Meta, Input, Ctx>(),
     finalize?: (value: unknown) => Output,
   ) {
     this.config = config;
@@ -197,15 +200,15 @@ export class WorkflowBuilder<
     this.finalize = finalize ?? config.finalize;
   }
 
-  private transition<Next>(): WorkflowBuilder<Input, Next, Output, Meta> {
-    return new WorkflowBuilder<Input, Next, Output, Meta>(
+  private transition<Next>(): WorkflowBuilder<Input, Next, Output, Meta, Ctx> {
+    return new WorkflowBuilder<Input, Next, Output, Meta, Ctx>(
       { ...this.config, finalize: undefined },
       this.store,
       this.finalize,
     );
   }
 
-  private appendStep(step: WorkflowStep<any, any, Meta, any>, options?: { condition?: boolean }) {
+  private appendStep(step: WorkflowStep<any, any, Meta, any, Ctx>, options?: { condition?: boolean }) {
     if (this.store.steps.has(step.id)) {
       throw new WorkflowSchemaError(`Duplicate workflow step id ${step.id}`);
     }
@@ -224,8 +227,8 @@ export class WorkflowBuilder<
 
   registerBranches(
     conditionId: string,
-    declarations: Array<{ id: BranchId; step: WorkflowStep<any, any, Meta, any> }>,
-  ): WorkflowBuilder<Input, unknown, Output, Meta> {
+    declarations: Array<{ id: BranchId; step: WorkflowStep<any, any, Meta, any, Ctx> }>,
+  ): WorkflowBuilder<Input, unknown, Output, Meta, Ctx> {
     ensureBranchLookup(this.store, conditionId);
 
     const branchMap = new Map<BranchId, string>();
@@ -243,7 +246,7 @@ export class WorkflowBuilder<
   }
 
   then<StepInput extends Current, Next>(
-    step: WorkflowStep<StepInput, Next, Meta, Input> | WorkflowStep<StepInput, Next, Meta, any>,
+    step: WorkflowStep<StepInput, Next, Meta, Input, Ctx> | WorkflowStep<StepInput, Next, Meta, any, Ctx>,
   ) {
     this.appendStep(step);
     return this.transition<Next>();
@@ -251,54 +254,57 @@ export class WorkflowBuilder<
 
   human<Next>(
     stepOrConfig:
-      | HumanWorkflowStep<Current, Next, Meta, Input>
-      | HumanStepConfig<Current, Next, Meta, Input>,
+      | HumanWorkflowStep<Current, Next, Meta, Input, Ctx>
+      | HumanStepConfig<Current, Next, Meta, Input, Ctx>,
   ) {
     const step =
       stepOrConfig instanceof HumanWorkflowStep
         ? stepOrConfig
-        : createHumanStep<Current, Next, Meta, Input>(stepOrConfig);
+        : createHumanStep<Current, Next, Meta, Input, Ctx>(stepOrConfig);
 
-    this.appendStep(step as WorkflowStep<any, any, Meta, any>);
+    this.appendStep(step as WorkflowStep<any, any, Meta, any, Ctx>);
     return this.transition<Next>();
   }
 
   while<
-    LoopStep extends WorkflowStep<any, any, Meta, any>,
+    LoopStep extends WorkflowStep<any, any, Meta, any, Ctx>,
     StepInput extends Current & WorkflowStepInput<LoopStep>,
     Collect extends WhileStepCollectFn<
       StepInput,
       WorkflowStepOutput<LoopStep>,
       any,
       WorkflowStepMeta<LoopStep>,
-      WorkflowStepRootInput<LoopStep>
+      WorkflowStepRootInput<LoopStep>,
+      Ctx
     > | undefined = undefined,
     StepOutput = WhileStepOutput<WorkflowStepOutput<LoopStep>, Collect>,
   >(
     stepOrConfig:
-      | WorkflowStep<StepInput, StepOutput, Meta, Input>
-      | WhileStepConfig<StepInput, LoopStep, Collect>,
+      | WorkflowStep<StepInput, StepOutput, Meta, Input, Ctx>
+      | WhileStepConfig<StepInput, LoopStep, Collect, Ctx>,
   ) {
     const step =
       stepOrConfig instanceof WorkflowStep
         ? stepOrConfig
-        : createWhileStep<StepInput, LoopStep, Collect>(stepOrConfig);
+        : createWhileStep<StepInput, LoopStep, Collect, Ctx>(stepOrConfig);
 
-    this.appendStep(step as WorkflowStep<any, any, Meta, any>);
+    this.appendStep(step as WorkflowStep<any, any, Meta, any, Ctx>);
     return this.transition<StepOutput>();
   }
 
   conditions<StepInput extends Current, StepOutput>(
-    step: WorkflowStep<StepInput, StepOutput, Meta, Input> | WorkflowStep<StepInput, StepOutput, Meta, any>,
+    step:
+      | WorkflowStep<StepInput, StepOutput, Meta, Input, Ctx>
+      | WorkflowStep<StepInput, StepOutput, Meta, any, Ctx>,
   ) {
     this.appendStep(step, { condition: true });
-    return new ConditionalWorkflowBuilder<Input, Output, Meta>(
-      this as unknown as WorkflowBuilder<Input, unknown, Output, Meta>,
+    return new ConditionalWorkflowBuilder<Input, Output, Meta, Ctx>(
+      this as unknown as WorkflowBuilder<Input, unknown, Output, Meta, Ctx>,
       step.id,
     );
   }
 
-  commit(): Workflow<Input, Output, Meta> {
+  commit(): Workflow<Input, Output, Meta, Ctx> {
     if (!this.store.entryId) {
       throw new WorkflowSchemaError("Cannot commit a workflow without steps");
     }
@@ -314,7 +320,7 @@ export class WorkflowBuilder<
     detectCycles(adjacency);
 
     const finalize = this.finalize ?? (value => value as Output);
-    return new Workflow<Input, Output, Meta>(
+    return new Workflow<Input, Output, Meta, Ctx>(
       { ...this.config, finalize },
       {
         steps: this.store.steps,
@@ -331,5 +337,6 @@ export const createWorkflow = <
   Input,
   Output,
   Meta extends Record<string, unknown> = Record<string, unknown>,
->(config: WorkflowConfig<Input, Output, Meta>) =>
-  new WorkflowBuilder<Input, Input, Output, Meta>(config);
+  Ctx extends Record<string, unknown> | undefined = undefined,
+>(config: WorkflowConfig<Input, Output, Meta, Ctx>) =>
+  new WorkflowBuilder<Input, Input, Output, Meta, Ctx>(config);

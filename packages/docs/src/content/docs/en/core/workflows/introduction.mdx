@@ -126,6 +126,56 @@ const notifyTeam = createStep({
 });
 ```
 
+### Share a runtime `ctx`
+
+Workflows can also carry a typed runtime context across steps. Declare an initial value in `createWorkflow({ ctx })`, then merge per-run overrides via `workflow.run({ ctx })`. The `ctx` handed to each handler is read-only; use `stepRuntime.updateCtx()` to produce the next state.
+
+```ts
+type OrderCtx = {
+  orgId: string;
+  total: number;
+  userId?: string;
+};
+
+const orderWorkflow = createWorkflow<
+  { amount: number; userId: string },
+  string,
+  Record<string, never>,
+  OrderCtx
+>({
+  id: "order-processing",
+  ctx: { orgId: "default-org", total: 0 },
+})
+  .then(
+    createStep({
+      id: "apply-amount",
+      handler: ({ input, ctx, stepRuntime }) => {
+        stepRuntime.updateCtx(current => ({
+          ...current,
+          total: current.total + input.amount,
+          userId: input.userId,
+        }));
+        return `Recorded ${ctx.orgId}`;
+      },
+    }),
+  )
+  .then(
+    createStep({
+      id: "format-summary",
+      handler: ({ ctx }) => `Org ${ctx.orgId} processed ${ctx.total}`,
+    }),
+  )
+  .commit();
+
+const run = await orderWorkflow.run({
+  inputData: { amount: 120, userId: "user_42" },
+  ctx: { orgId: "acme-co" },
+});
+
+console.log(run.ctx);
+// { orgId: "acme-co", total: 120, userId: "user_42" }
+```
+
 ## 4. Complete example (workflow + agent)
 
 > The example requires an environment with `fetch` (Node.js 18+ or a polyfill).
