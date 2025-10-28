@@ -1,4 +1,4 @@
-import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 
 const scalewayModelIds = [
   "gemma-3-27b-it",
@@ -17,7 +17,7 @@ const scalewayModelIds = [
 
 type ScalewayModelId = (typeof scalewayModelIds)[number];
 
-const baseScaleway = createOpenAI({
+const baseScaleway = createOpenAICompatible({
   apiKey: process.env.SCALEWAY_API_KEY!,
   baseURL: "https://api.scaleway.ai/v1",
   name: "scaleway",
