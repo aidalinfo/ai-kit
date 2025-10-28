@@ -6,3 +6,4 @@ export { tool } from "ai";
 export type { ToolSet } from 'ai';
 export * from "./runtime/index.js";
 export * from "./telemetry/langfuse.js";
+export { parseToon } from "./shared/utils/toon/parseToon.js";

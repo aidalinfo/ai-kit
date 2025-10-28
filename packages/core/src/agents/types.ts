@@ -42,6 +42,7 @@ export type BaseAgentOptions<
   telemetry?: AgentTelemetryOverrides;
   loopTools?: boolean;
   maxStepTools?: number;
+  toon?: boolean;
 };
 
 export type AgentGenerateOptions<
