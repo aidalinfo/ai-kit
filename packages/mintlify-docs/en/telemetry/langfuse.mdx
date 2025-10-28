@@ -1,0 +1,135 @@
+---
+title: "Langfuse telemetry"
+description: "Configure OpenTelemetry + Langfuse tracing for AI Kit agents."
+locale: en
+---
+
+AI Kit integrates with [Langfuse](https://langfuse.com/) to trace `generate`/`stream` calls. This guide covers dependency setup, processor initialisation, and agent-level configuration.
+
+## Dependencies
+
+```bash
+pnpm add @langfuse/otel @opentelemetry/sdk-trace-node
+# or
+npm install @langfuse/otel @opentelemetry/sdk-trace-node
+```
+
+## Environment variables
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+# optional
+# LANGFUSE_BASE_URL=https://us.cloud.langfuse.com
+```
+
+## Initialise Langfuse
+
+```ts
+// instrumentation.ts
+import { ensureLangfuseTelemetry } from "@ai_kit/core";
+
+const telemetry = await ensureLangfuseTelemetry({
+  shouldExportSpan: ({ otelSpan }) =>
+    otelSpan?.instrumentationScope?.name !== "next.js",
+});
+
+export const flushLangfuse = () => telemetry.flush();
+```
+
+- `ensureLangfuseTelemetry` dynamically loads `@langfuse/otel`, registers a `NodeTracerProvider`, and returns a reusable handle.
+- `autoFlush` defaults to `"process"`: `beforeExit`, `SIGINT`, and `SIGTERM` trigger `flush()`/`shutdown()` automatically.
+- Initialise as early as possible (server entrypoint, framework plugin, …).
+
+### Next.js example
+
+```ts
+import { after } from "next/server";
+import { ensureLangfuseTelemetry } from "@ai_kit/core";
+
+const telemetry = await ensureLangfuseTelemetry();
+
+export async function POST(req: Request) {
+  const result = await agent.stream({ /* ... */ });
+
+  after(async () => {
+    await telemetry.flush();
+  });
+
+  return result.toAIStreamResponse();
+}
+```
+
+## Enable telemetry on an agent
+
+```ts
+import { Agent } from "@ai_kit/core";
+import { openai } from "@ai-sdk/openai";
+
+const supportAgent = new Agent({
+  name: "support-assistant",
+  model: openai("gpt-4.1-mini"),
+  telemetry: true,
+});
+```
+
+Adjust it dynamically:
+
+```ts
+supportAgent.withTelemetry(false);
+
+await supportAgent.generate({
+  prompt: "Create an incident ticket for user #42",
+  telemetry: {
+    functionId: "support-ticket",
+    metadata: { ticketId: "42", priority: "high" },
+    recordInputs: false,
+  },
+});
+```
+
+- `telemetry` merges with `experimental_telemetry`.
+- Overrides are ignored when the agent telemetry flag is off unless you explicitly set `experimental_telemetry.isEnabled`.
+
+## Instrument workflows
+
+Workflows use the same OTEL stack. See [Workflow telemetry](/en/workflows/telemetry) for configuration details (`traceName`, `metadata`, `userId`, …).
+
+## Nitro / Nuxt example
+
+```ts
+// server/plugins/langfuse-telemetry.ts
+import { ensureLangfuseTelemetry } from "@ai_kit/core";
+
+type Handle = Awaited<ReturnType<typeof ensureLangfuseTelemetry>>;
+let telemetryPromise: Promise<Handle> | undefined;
+
+const getTelemetry = () => {
+  telemetryPromise ||= ensureLangfuseTelemetry({
+    shouldExportSpan: ({ otelSpan }) => {
+      const scope = otelSpan?.instrumentationScope?.name;
+      return scope !== "nuxt" && scope !== "nitro";
+    },
+  });
+  return telemetryPromise;
+};
+
+export const flushLangfuse = async () => {
+  const telemetry = await getTelemetry();
+  await telemetry.flush();
+};
+
+export default defineNitroPlugin(async nitroApp => {
+  const telemetry = await getTelemetry();
+
+  nitroApp.hooks.hook("close", async () => {
+    await telemetry.shutdown();
+  });
+});
+```
+
+## Additional resources
+
+- [Langfuse TypeScript SDK – Setup](https://langfuse.com/docs/observability/sdk/typescript/setup)
+- [Advanced Langfuse instrumentation](https://langfuse.com/docs/observability/sdk/typescript/instrumentation)
+- [Filtering spans (`shouldExportSpan`)](https://langfuse.com/docs/observability/sdk/typescript/advanced-usage)

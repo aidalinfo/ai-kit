@@ -1,0 +1,42 @@
+---
+title: "Serveur MCP AI Kit"
+description: "Exposer la documentation AI Kit via le Model Context Protocol."
+locale: fr
+---
+
+Le package `@ai_kit/mcp-docs` diffuse la documentation AI Kit sur le Model Context Protocol (MCP). Utilisez-le dans vos clients compatibles pour que vos agents accèdent en continu aux guides et références.
+
+## Configuration côté client
+
+### Claude Desktop / Claude Code
+
+```json
+{
+  "mcpServers": {
+    "ai_kit-docs": {
+      "command": "npx",
+      "args": ["-y", "@ai_kit/mcp-docs@latest"]
+    }
+  }
+}
+```
+
+### Codex
+
+```toml
+[mcp_servers."ai_kit-docs"]
+command = "npx"
+args = ["-y", "@ai_kit/mcp-docs@latest"]
+startup_timeout_ms = 20000  # optionnel
+```
+
+Lancez le serveur avec `npx` ou installez-le globalement si vous préférez.
+
+## Outils exposés
+
+- `ai_kit-docs` – liste les dossiers ou lit un fichier Markdown/MDX depuis `docs/`. Paramètres :
+  - `path` (relatif à `docs/`) pour cibler un fichier ou un répertoire ;
+  - `keywords` optionnel pour mettre en évidence les correspondances.
+- `ai_kit-docs-search` – recherche plein texte paginée dans la documentation. Idéal pour obtenir des extraits ciblés sans charger toute la page.
+
+Demandez par exemple `core/quickstart.md` pour recevoir le contenu rendu utilisable directement par vos agents.

@@ -1,0 +1,120 @@
+---
+title: "Workflow class"
+description: "Create and run typed workflows with AI Kit."
+locale: en
+---
+
+```ts
+import {
+  createWorkflow,
+  type Workflow,
+  type WorkflowConfig,
+  type WorkflowRunOptions,
+  type WorkflowRunResult,
+} from "@ai_kit/core";
+```
+
+## `WorkflowConfig`
+
+| Property | Type | Default | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | required | Unique workflow identifier. |
+| `description` | `string` | `undefined` | Optional DX description. |
+| `inputSchema` | `SchemaLike<Input>` | `undefined` | Input validation. |
+| `outputSchema` | `SchemaLike<Output>` | `undefined` | Output validation (applied after `finalize`). |
+| `metadata` | `Meta` | `undefined` | Initial metadata shared by steps. |
+| `finalize` | `(value: unknown) => Output` | identity | Transform the final value before validation. |
+| `telemetry` | `boolean \| WorkflowTelemetryOverrides` | `undefined` | Enable and configure telemetry (Langfuse/OTEL). |
+| `ctx` | `WorkflowCtxInit<Ctx>` | `undefined` | Initial shared context (read-only inside handlers). |
+
+## Creation
+
+```ts
+const workflow = createWorkflow<Input, Output>({
+  id: "my-workflow",
+  inputSchema,
+  outputSchema,
+  metadata: { source: "app" },
+  telemetry: { recordInputs: true },
+})
+  .then(stepA)
+  .human(reviewStep)
+  .while(loopStep)
+  .conditions(conditionStep)
+  .then({ low: lowStep, high: highStep })
+  .commit();
+```
+
+### Builder (`WorkflowBuilder`)
+
+- `.then(step)` – append an automatic step (`createStep`, `createMapStep`, …).
+- `.human(config | step)` – add a human step (`createHuman`).
+- `.while(config | step)` – add a controlled loop (`createWhileStep`).
+- `.conditions(step)` – declare a condition step; chain `.then(...)` with an object `{ branchId: step }` or a list of steps.
+- `.commit()` – validate the structure, ensure no cycles, and return an immutable `Workflow`.
+
+Each step needs a unique `id`. Declare branches before calling `commit()`.
+
+## `Workflow` methods
+
+### `createRun(runId?: string)`
+
+Instantiates a `WorkflowRun`. A unique `runId` is generated via `createRunId()` if omitted.
+
+### `run(options)`
+
+```ts
+run(options: WorkflowRunOptions<Input, Meta, Ctx>): Promise<WorkflowRunResult<Output, Meta, Ctx>>;
+```
+
+Executes the workflow in one shot (equivalent to `createRun().start(options)`).
+
+### `validateInput(value)`
+
+Applies `inputSchema`; throws `WorkflowSchemaError` on validation failures.
+
+### `validateOutput(value)`
+
+Runs `finalize` then `outputSchema`. Handy for step-level tests.
+
+### `getInitialMetadata()`
+
+Returns a deep copy of the initial metadata (may be `undefined`).
+
+### `getTelemetryConfig()`
+
+Exposes the current telemetry configuration (`boolean` or overrides object).
+
+### `getBaseContext()`
+
+Returns the base context (`ctx`) used for subsequent runs.
+
+### `withTelemetry(option = true)`
+
+Enable/disable telemetry by mutating the workflow and return `this`. Use `withTelemetry(workflow, option)` for a functional approach.
+
+### `inspect()`
+
+Provides the workflow graph (`nodes`, `edges`, `entryId`)—useful for visualisation and debugging.
+
+## Run options (`WorkflowRunOptions`)
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `inputData` | `Input` | Workflow input. |
+| `metadata` | `Meta` | Metadata merged with the workflow defaults. |
+| `ctx` | `Partial<Ctx> \| Ctx` | Shared context injected for this run. |
+| `signal` | `AbortSignal` | Cancel execution. |
+| `telemetry` | `WorkflowTelemetryOption` | Per-run overrides (trace name, metadata, userId, `record*` flags). |
+
+The result (`WorkflowRunResult`) includes:
+
+- `status` (`"success" \| "failed" \| "cancelled" \| "waiting_human"`);
+- `result` (final output);
+- `error` (if any);
+- `steps` (snapshots per step, occurrences, branch taken);
+- `metadata`, `ctx` (final states);
+- `startedAt`, `finishedAt`;
+- `pendingHuman` when the run is waiting for a human step.
+
+For streaming, resume, and observability features, see [`WorkflowRun`](/en/api-reference/workflow-run).

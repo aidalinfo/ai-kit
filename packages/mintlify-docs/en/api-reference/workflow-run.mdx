@@ -1,0 +1,82 @@
+---
+title: "WorkflowRun class"
+description: "Control workflow execution and consume runtime events."
+locale: en
+---
+
+```ts
+import {
+  type WorkflowRun,
+  type WorkflowRunResult,
+  type WorkflowRunOptions,
+  type WorkflowEvent,
+} from "@ai_kit/core";
+```
+
+A `WorkflowRun` instance is created via `workflow.createRun(runId?)`. It encapsulates execution state, event observation, and human-step management.
+
+## Methods
+
+### `watch(listener)`
+
+```ts
+watch(listener: WorkflowWatcher<Meta>): () => void;
+```
+
+Registers a listener called on every event (`workflow:start`, `step:success`, `step:event`, `step:human:*`, …). Returns a disposer to stop watching.
+
+### `cancel(reason?)`
+
+```ts
+cancel(reason?: unknown): void;
+```
+
+Aborts execution by triggering the underlying `AbortSignal`. The final result has status `"cancelled"` and the error contains `WorkflowAbortError` when no custom reason is provided.
+
+### `start(options)`
+
+```ts
+start(options: WorkflowRunOptions<Input, Meta, Ctx>): Promise<WorkflowRunResult<Output, Meta, Ctx>>;
+```
+
+Runs the workflow to completion (or until a human step) without streaming. Can be called only once per run.
+
+### `stream(options)`
+
+```ts
+stream(options: WorkflowRunOptions<Input, Meta, Ctx>): Promise<{
+  stream: AsyncIterableIterator<WorkflowEvent<Meta>>;
+  final: Promise<WorkflowRunResult<Output, Meta, Ctx>>;
+  result: Promise<WorkflowRunResult<Output, Meta, Ctx>>; // alias of final
+}>;
+```
+
+Returns an async iterator of events. The `final` promise resolves when the run finishes (`success`, `failed`, `cancelled`, `waiting_human`). When awaiting human input, the stream stays open until the workflow resumes.
+
+### `resumeWithHumanInput({ stepId, data, runId? })`
+
+```ts
+resumeWithHumanInput(args: {
+  runId?: string;
+  stepId: string;
+  data: unknown;
+}): Promise<WorkflowRunResult<Output, Meta, Ctx>>;
+```
+
+Validates the response with the human step schema, updates snapshots, and relaunches the execution loop. Throws `WorkflowResumeError` if no interaction is pending or the identifiers don’t match.
+
+## Telemetry & events
+
+- Events include `workflowId`, `runId`, `timestamp`, `metadata`, and type-specific payloads.
+- Telemetry (OTEL/Langfuse) is configured via the workflow or per-run `telemetry` option. `WorkflowRun` automatically records step spans and human interaction events.
+
+## History & context
+
+Step handlers receive a `WorkflowStepRuntimeContext` that provides:
+
+- `getMetadata()` / `updateMetadata()` – shared mutable metadata.
+- `store` – a `Map<string, unknown>` for temporary references (useful for `resumeWithHumanInput`).
+- `getCtx()` / `updateCtx()` – shared typed context.
+- `emit(event)` – custom events (`step:event`) forwarded to `watch`/`stream`.
+
+The `WorkflowRunResult.steps` collection stores snapshots for every step (status, timestamps, occurrence, branch taken, next step).

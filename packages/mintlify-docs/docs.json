@@ -1,108 +1,209 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "theme": "maple",
+  "name": "ai_kit",
   "colors": {
-    "primary": "#16A34A",
+    "primary": "#E91E63",
     "light": "#07C983",
     "dark": "#15803D"
   },
   "favicon": "/favicon.svg",
-  "navigation": {
-    "tabs": [
+  "i18n": {
+    "defaultLocale": "fr",
+    "locales": [
       {
-        "tab": "Guides",
-        "groups": [
+        "code": "fr",
+        "name": "Français"
+      },
+      {
+        "code": "en",
+        "name": "English"
+      }
+    ]
+  },
+  "navigation": {
+    "global": {
+      "anchors": [
+        {
+          "anchor": "Repository",
+          "href": "https://github.com/aidalinfo/ai-kit",
+          "icon": "book"
+        },
+        {
+          "anchor": "Issues",
+          "href": "https://github.com/aidalinfo/ai-kit/issues",
+          "icon": "message-lines"
+        }
+      ]
+    },
+    "languages": [
+      {
+        "language": "fr",
+        "default": true,
+        "tabs": [
           {
-            "group": "Getting started",
-            "pages": [
-              "index",
-              "quickstart",
-              "development"
+            "tab": "Guides",
+            "groups": [
+              {
+                "group": "Getting started",
+                "pages": [
+                  "fr/index",
+                  "fr/getting-started/overview",
+                  "fr/getting-started/first-agent",
+                  "fr/getting-started/project-structure"
+                ]
+              },
+              {
+                "group": "Agents",
+                "pages": [
+                  "fr/agents/index",
+                  "fr/agents/tools",
+                  "fr/agents/structured-output",
+                  "fr/agents/streaming",
+                  "fr/agents/runtime"
+                ]
+              },
+              {
+                "group": "Workflows",
+                "pages": [
+                  "fr/workflows/index",
+                  "fr/workflows/introduction",
+                  "fr/workflows/branches",
+                  "fr/workflows/parallel",
+                  "fr/workflows/human-steps",
+                  "fr/workflows/while",
+                  "fr/workflows/telemetry"
+                ]
+              },
+              {
+                "group": "Utils",
+                "pages": [
+                  "fr/utils/chunking"
+                ]
+              },
+              {
+                "group": "Télémétrie",
+                "pages": [
+                  "fr/telemetrie/index",
+                  "fr/telemetrie/langfuse"
+                ]
+              },
+              {
+                "group": "Providers",
+                "pages": [
+                  "fr/providers/scaleway"
+                ]
+              },
+              {
+                "group": "MCP",
+                "pages": [
+                  "fr/mcp/usage"
+                ]
+              }
             ]
           },
           {
-            "group": "Customization",
-            "pages": [
-              "essentials/settings",
-              "essentials/navigation"
-            ]
-          },
-          {
-            "group": "Writing content",
-            "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
-            ]
-          },
-          {
-            "group": "AI tools",
-            "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+            "tab": "API reference",
+            "groups": [
+              {
+                "group": "Classes centrales",
+                "pages": [
+                  "fr/api-reference/introduction",
+                  "fr/api-reference/agent",
+                  "fr/api-reference/workflow",
+                  "fr/api-reference/workflow-run",
+                  "fr/api-reference/runtime-store"
+                ]
+              }
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
-        "groups": [
+        "language": "en",
+        "tabs": [
           {
-            "group": "API documentation",
-            "pages": [
-              "api-reference/introduction"
+            "tab": "Guides",
+            "groups": [
+              {
+                "group": "Getting started",
+                "pages": [
+                  "en/index",
+                  "en/getting-started/overview",
+                  "en/getting-started/first-agent",
+                  "en/getting-started/project-structure"
+                ]
+              },
+              {
+                "group": "Agents",
+                "pages": [
+                  "en/agents/index",
+                  "en/agents/tools",
+                  "en/agents/structured-output",
+                  "en/agents/streaming",
+                  "en/agents/runtime"
+                ]
+              },
+              {
+                "group": "Workflows",
+                "pages": [
+                  "en/workflows/index",
+                  "en/workflows/introduction",
+                  "en/workflows/branches",
+                  "en/workflows/parallel",
+                  "en/workflows/human-steps",
+                  "en/workflows/while",
+                  "en/workflows/telemetry"
+                ]
+              },
+              {
+                "group": "Utilities",
+                "pages": [
+                  "en/utils/chunking"
+                ]
+              },
+              {
+                "group": "Telemetry",
+                "pages": [
+                  "en/telemetry/index",
+                  "en/telemetry/langfuse"
+                ]
+              },
+              {
+                "group": "Providers",
+                "pages": [
+                  "en/providers/scaleway"
+                ]
+              },
+              {
+                "group": "MCP",
+                "pages": [
+                  "en/mcp/usage"
+                ]
+              }
             ]
           },
           {
-            "group": "Endpoint examples",
-            "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+            "tab": "API reference",
+            "groups": [
+              {
+                "group": "Core classes",
+                "pages": [
+                  "en/api-reference/introduction",
+                  "en/api-reference/agent",
+                  "en/api-reference/workflow",
+                  "en/api-reference/workflow-run",
+                  "en/api-reference/runtime-store"
+                ]
+              }
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
+    ]
   },
   "contextual": {
     "options": [
-     "copy",
      "view",
      "chatgpt",
      "claude",
@@ -114,9 +215,9 @@
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "github": "https://github.com/aidalinfo/ai-kit",
+      "linkedin": "https://www.linkedin.com/company/aidalinfo",
+      "x": "https://x.com/Ninapepite_"
     }
   }
 }

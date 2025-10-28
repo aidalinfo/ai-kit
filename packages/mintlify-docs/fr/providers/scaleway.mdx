@@ -1,0 +1,159 @@
+---
+title: "Provider Scaleway"
+description: "Utiliser les modèles Scaleway AI avec AI Kit."
+locale: fr
+---
+
+Le provider `scaleway` exploite l’API compatible OpenAI de [Scaleway AI](https://www.scaleway.com/fr/ai/). Il fonctionne avec les agents et workflows AI Kit.
+
+## Installation
+
+```bash
+pnpm add @ai_kit/core @ai-sdk/openai ai
+```
+
+## Configuration
+
+```bash
+export SCALEWAY_API_KEY="skw-..."
+```
+
+La clé se récupère depuis la [console Scaleway](https://console.scaleway.com/iam/api-keys).
+
+## Utilisation avec un agent
+
+```ts
+import { Agent, scaleway } from "@ai_kit/core";
+
+const assistant = new Agent({
+  name: "assistant-scaleway",
+  instructions: "Tu es un assistant utile et précis.",
+  model: scaleway("gpt-oss-120b"),
+});
+
+const result = await assistant.generate({
+  prompt: "Quelle est la capitale de la France ?",
+});
+
+console.log(result.text);
+```
+
+## Modèles proposés
+
+| Modèle | Description | Taille |
+| --- | --- | --- |
+| `gpt-oss-120b` | Modèle généraliste performant | 120B |
+| `llama-3.3-70b-instruct` | Meta Llama 3.3 orienté instruction | 70B |
+| `llama-3.1-8b-instruct` | Llama compact | 8B |
+| `mistral-small-3.2-24b-instruct-2506` | Mistral Small récente | 24B |
+| `mistral-nemo-instruct-2407` | Mistral Nemo optimisé | 12B |
+| `qwen3-235b-a22b-instruct-2507` | Qwen 3 grande capacité | 235B |
+| `qwen3-coder-30b-a3b-instruct` | Qwen 3 spécialisé code | 30B |
+| `deepseek-r1-distill-llama-70b` | DeepSeek R1 distillé | 70B |
+| `gemma-3-27b-it` | Google Gemma 3 instruction | 27B |
+| `voxtral-small-24b-2507` | Voxtral Small | 24B |
+| `devstral-small-2505` | Devstral pour le dev | 25B |
+| `pixtral-12b-2409` | Pixtral multimodal | 12B |
+
+## Exemples
+
+### Sortie structurée
+
+```ts
+import { Agent, scaleway, Output } from "@ai_kit/core";
+import { z } from "zod";
+
+const codeSchema = Output.object({
+  schema: z.object({
+    language: z.string(),
+    code: z.string(),
+    explanation: z.string(),
+  }),
+});
+
+const assistant = new Agent({
+  name: "code-assistant",
+  instructions: "Tu es un expert en programmation.",
+  model: scaleway("qwen3-coder-30b-a3b-instruct"),
+});
+
+const result = await assistant.generate({
+  prompt: "Écris une fonction Python pour calculer la suite de Fibonacci",
+  structuredOutput: codeSchema,
+});
+
+console.log(result.experimental_output);
+```
+
+### Dans un workflow
+
+```ts
+import { Agent, createStep, createWorkflow, scaleway } from "@ai_kit/core";
+import { z } from "zod";
+
+const assistant = new Agent({
+  name: "analyzer",
+  instructions: "Analyse le sentiment du texte.",
+  model: scaleway("mistral-small-3.2-24b-instruct-2506"),
+});
+
+const analyzeStep = createStep({
+  id: "analyze-text",
+  inputSchema: z.object({ text: z.string() }),
+  handler: async ({ input }) => {
+    const result = await assistant.generate({
+      prompt: `Analyse le sentiment de ce texte : "${input.text}"`,
+    });
+
+    return { sentiment: result.text };
+  },
+});
+
+const workflow = createWorkflow({
+  id: "sentiment-analysis",
+  inputSchema: z.object({ text: z.string() }),
+  outputSchema: z.object({ sentiment: z.string() }),
+})
+  .then(analyzeStep)
+  .commit();
+```
+
+### Streaming
+
+```ts
+const assistant = new Agent({
+  name: "assistant-stream",
+  instructions: "Tu es un assistant créatif.",
+  model: scaleway("llama-3.3-70b-instruct"),
+});
+
+const stream = await assistant.stream({
+  prompt: "Raconte une courte histoire sur un robot qui apprend à cuisiner.",
+  temperature: 0.7,
+});
+
+for await (const chunk of stream.textStream) {
+  process.stdout.write(chunk);
+}
+```
+
+## Choisir le bon modèle
+
+- Génération de code : `qwen3-coder-30b-a3b-instruct`, `devstral-small-2505`.
+- Tâches générales : `gpt-oss-120b`, `llama-3.3-70b-instruct`.
+- Charges légères : `llama-3.1-8b-instruct`, `mistral-nemo-instruct-2407`.
+- Raisonnement complexe : `deepseek-r1-distill-llama-70b`, `qwen3-235b-a22b-instruct-2507`.
+- Multimodal : `pixtral-12b-2409`.
+
+## Bonnes pratiques
+
+1. **Sécurité** – stockez la clé API dans un secret, jamais dans le code.
+2. **Gestion d’erreurs** – entourez les appels d’un `try/catch` et journalisez les erreurs.
+3. **Contrôle des coûts** – définissez `maxOutputTokens` et surveillez l’utilisation.
+4. **Température** – adaptez selon la créativité souhaitée (`0.0-0.3` précis, `0.4-0.7` équilibré, `0.8+` très créatif).
+
+## Ressources
+
+- [Documentation Scaleway AI](https://www.scaleway.com/fr/docs/ai-data/)
+- [Console Scaleway](https://console.scaleway.com/)
+- [Tarification Scaleway AI](https://www.scaleway.com/fr/pricing/#ai-data)

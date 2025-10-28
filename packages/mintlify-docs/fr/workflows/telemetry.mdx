@@ -1,0 +1,162 @@
+---
+title: "Télémétrie workflows"
+description: "Instrumenter vos workflows avec OpenTelemetry et exporter les traces vers Langfuse."
+locale: fr
+---
+
+Les workflows émettent un span racine pour chaque run et un span enfant par étape (y compris les interactions humaines). Activez la télémétrie globalement, instance par instance ou run par run.
+
+## Activer à la construction
+
+```ts
+import { createWorkflow } from "@ai_kit/core";
+import { normalizeInput, fetchForecast } from "./steps";
+
+export const weatherWorkflow = createWorkflow({
+  id: "weather-run",
+  telemetry: true,
+})
+  .then(normalizeInput)
+  .then(fetchForecast)
+  .commit();
+```
+
+Avec `telemetry: true`, AI Kit :
+
+- crée un span racine nommé comme l’`id` du workflow ;
+- capture automatiquement `input`, `output`, `metadata` (via `recordInputs`/`recordOutputs`) ;
+- ajoute les attributs `ai_kit.workflow.*` pour faciliter la recherche côté Langfuse ou OTEL.
+
+Passez un objet pour personnaliser la trace :
+
+```ts
+import { createStep, createWorkflow } from "@ai_kit/core";
+import { z } from "zod";
+
+const normalizeInput = createStep({
+  id: "normalize",
+  inputSchema: z.object({ city: z.string() }),
+  outputSchema: z.object({ city: z.string() }),
+  handler: ({ input }) => ({ city: input.city.trim() }),
+});
+
+export const weatherWorkflow = createWorkflow({
+  id: "weather-run",
+  description: "Récupère la météo et génère un résumé",
+  inputSchema: z.object({ city: z.string() }),
+  outputSchema: z.object({ forecast: z.string() }),
+  telemetry: {
+    traceName: "workflow.weather-run",
+    recordInputs: true,
+    recordOutputs: true,
+    metadata: {
+      domain: "weather",
+    },
+    userId: "anonymous",
+  },
+})
+  .then(normalizeInput)
+  .commit();
+```
+
+> Lorsque `userId` est renseigné, il est exporté sous `langfuse.user.id`, `user.id` et `ai_kit.workflow.user_id`.
+
+## Modifier une instance existante
+
+```ts
+import { withTelemetry } from "@ai_kit/core";
+
+const workflow = createWorkflow({
+  id: "tickets",
+  inputSchema: z.object({ topic: z.string() }),
+  outputSchema: z.object({ summary: z.string() }),
+})
+  .then(classifyTicket)
+  .then(generateAnswer)
+  .commit();
+
+workflow.withTelemetry({
+  traceName: "workflow.tickets",
+  recordOutputs: true,
+});
+
+const instrumented = withTelemetry(workflow, {
+  metadata: { team: "support" },
+});
+```
+
+## Overrides par run
+
+```ts
+await weatherWorkflow.run({
+  inputData: { city: "Paris" },
+  telemetry: {
+    userId: session.user.id,
+    metadata: { requestId: "req_42" },
+  },
+});
+
+await weatherWorkflow.run({
+  inputData: { city: "Lyon" },
+  telemetry: false,
+});
+```
+
+Les overrides fusionnent avec la configuration globale (`recordInputs`, `recordOutputs`, `metadata`, etc.).
+
+## Associer un utilisateur
+
+```ts
+const productWorkflow = createWorkflow({
+  id: "product-search",
+  telemetry: { userId: "anonymous" },
+})
+  .then(generateProductDataStep)
+  .commit();
+
+await productWorkflow.run({
+  inputData: { prompt },
+  telemetry: {
+    userId: session.user.id,
+    metadata: { tenantId: session.tenantId },
+  },
+});
+```
+
+L’ID utilisateur apparaît dans Langfuse ainsi que dans les attributs de trace. Combinez-le avec des métadonnées (`tenantId`, `plan`, …) pour faciliter vos filtres.
+
+## Coupler avec Langfuse
+
+```ts
+// instrumentation.ts
+import { ensureLangfuseTelemetry } from "@ai_kit/core";
+
+export const telemetry = ensureLangfuseTelemetry({
+  autoFlush: "process",
+});
+```
+
+```ts
+// entrypoint.ts
+import "./instrumentation";
+import { weatherWorkflow } from "./workflows/weather";
+
+await telemetry;
+
+await weatherWorkflow.run({
+  inputData: { city: "Marseille" },
+  telemetry: {
+    metadata: { environment: process.env.NODE_ENV },
+  },
+});
+```
+
+Chaque étape ajoute :
+
+- `ai_kit.workflow.step.kind` (`automatic` ou `human`) ;
+- `ai_kit.workflow.step.occurrence` (compteur pour les boucles) ;
+- `ai_kit.workflow.step.branch_id` / `next_step_id` en cas de conditions.
+
+Les interactions humaines conservent le même span entre `request` et `resume`. Des événements `human.requested` / `human.completed` sont émis pour le suivi.
+
+> Si vous n’utilisez pas `autoFlush: "process"`, appelez `provider.forceFlush()` / `provider.shutdown()` lors de l’arrêt de l’application.

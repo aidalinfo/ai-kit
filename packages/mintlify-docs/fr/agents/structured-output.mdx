@@ -1,0 +1,79 @@
+---
+title: "Sorties structurées"
+description: "Valider les réponses de vos agents avec Zod et `structuredOutput`."
+locale: fr
+---
+
+Utilisez l’option `structuredOutput` pour contraindre l’agent à respecter un schéma `zod`. Le schéma est transmis à `experimental_output` du SDK `ai` et le résultat renvoyé est typé.
+
+```ts
+import { Output } from "@ai_kit/core/agents";
+import { z } from "zod";
+
+const personSpec = Output.object({
+  schema: z.object({
+    name: z.string(),
+    age: z.number().nullable().describe("Âge de la personne."),
+    contact: z.object({
+      type: z.literal("email"),
+      value: z.string(),
+    }),
+    occupation: z.object({
+      type: z.literal("employed"),
+      company: z.string(),
+      position: z.string(),
+    }),
+  }),
+});
+
+const structured = await assistant.generate({
+  prompt: "Crée un profil de test pour un client potentiel.",
+  structuredOutput: personSpec,
+});
+
+console.log(structured.experimental_output);
+// -> { name: "...", age: 32, contact: { ... }, occupation: { ... } }
+```
+
+- `Output.object` fournit une syntaxe fluide pour décrire la réponse attendue.
+- Les descriptions du schéma sont transmises au modèle pour améliorer la précision.
+- En cas de parsing invalide, le SDK lève une exception que vous pouvez intercepter.
+
+## Extraction ciblée
+
+```ts
+import { Agent, Output } from "@ai_kit/core";
+import { z } from "zod";
+import { google } from "@ai-sdk/google";
+
+const siretOutput = Output.object({
+  schema: z.object({
+    siret: z
+      .string()
+      .length(14, "Le SIRET doit contenir exactement 14 chiffres."),
+  }),
+});
+
+const assistant = new Agent({
+  name: "assistant-vie",
+  instructions: "Assistant de vie",
+  model: google("gemini-2.5-flash"),
+  tools: {
+    google_search: google.tools.googleSearch({}),
+  },
+});
+
+const result = await assistant.generate({
+  prompt: "Cherche le SIRET de la société Aidalinfo",
+  structuredOutput: siretOutput,
+});
+
+console.log(result.experimental_output);
+// -> { siret: "12345678901234" }
+```
+
+## Recommandations
+
+- Préférez `agent.generate` pour la génération structurée : le mode streaming reste expérimental.
+- Logguez les erreurs de parsing pour affiner vos prompts ou relancer une tentative.
+- Distinguez les sorties « strictes » (identifiants, métadonnées) des contenus libres (résumés, réponses longues).

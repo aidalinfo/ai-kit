@@ -1,0 +1,69 @@
+---
+title: "RuntimeStore"
+description: "Share resources across tools and manage their lifecycle."
+locale: en
+---
+
+```ts
+import {
+  RuntimeStore,
+  createRuntime,
+  withRuntime,
+  RUNTIME_CONTEXT_FIELD,
+} from "@ai_kit/core";
+```
+
+The runtime is a per-request key/value store used to share data between your application and the tools executed by the model. It integrates with agents (`runtime` option) and is automatically propagated to runtime-aware tools (`createRuntimeTool`).
+
+## Instantiation
+
+```ts
+const runtime = new RuntimeStore<{ workbook: Workbook }>({
+  defaults: { workbook: initialWorkbook },
+});
+```
+
+### Main methods
+
+| Method | Description |
+| --- | --- |
+| `runtime.get(key)` | Retrieve a value (`undefined` when absent). |
+| `runtime.require(key)` | Retrieve a value or throw a descriptive error. |
+| `runtime.set(key, value)` | Assign a value (returns `this`). |
+| `runtime.delete(key)` / `clear()` | Remove a value or wipe the store. |
+| `runtime.snapshot()` | Clone the current state (values + handlers) for an isolated execution. |
+| `runtime.run(callback)` | Bind the runtime to `AsyncLocalStorage` and execute the callback. |
+| `runtime.onCleanup(key, handler)` | Register a handler executed automatically on `dispose()`. |
+| `runtime.dispose()` | Run all cleanup handlers and clear the store (propagates errors). |
+| `runtime.load(name, source)` | Load a registered runtime resource via `registerRuntimeResource`. |
+
+## Static helpers
+
+- `RuntimeStore.current()` – return the runtime currently bound to the async context.
+- `RuntimeStore.requireCurrent()` – throw if no active runtime is available.
+- `RuntimeStore.mergeExperimentalContext(base, runtime)` – merge a runtime into `experimental_context` (used by agents).
+- `RuntimeStore.resolveFromExperimentalContext(context)` – retrieve the runtime from an `experimental_context` object.
+
+## `createRuntime` and `withRuntime`
+
+```ts
+const runtime = createRuntime<{ workbook: Workbook }>();
+
+await withRuntime(runtime, async scoped => {
+  const workbook = scoped?.require("workbook");
+  // ...
+});
+```
+
+- `createRuntime(init?)` – convenience wrapper around `new RuntimeStore(init)`.
+- `withRuntime(runtime, callback)` – create a snapshot, execute the callback, and automatically dispose resources even when it throws.
+
+## Resource management
+
+`runtime.load(name, source)` relies on resources registered via `registerRuntimeResource(name, { loader, dispose })`. The loader receives the source and current runtime; the disposer runs when the request ends or `dispose` is called manually.
+
+## Agents & tools integration
+
+- Pass `runtime` to `agent.generate`/`agent.stream` so runtime tools (`createRuntimeTool`) can access shared data via `runtime.require(key)`.
+- Cleanup handlers (`onCleanup`) guarantee proper resource disposal even with streaming or cancellations.
+- Runtimes chain nicely: `snapshot()` creates a parented clone, and `RuntimeStore.current()` lets tools retrieve it without explicit parameters.
