@@ -12,6 +12,7 @@ import {
 } from "ai";
 
 import { RuntimeStore, type RuntimeState } from "../runtime/store.js";
+import { parseToon } from "../shared/utils/toon/parseToon.js";
 import { applyDefaultStopWhen } from "./toolDefaults.js";
 import { mergeTelemetryConfig } from "./telemetry.js";
 
@@ -44,6 +45,7 @@ interface StructuredGeneratePipelineParams<
   options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
   telemetryEnabled: boolean;
   loopToolsEnabled: boolean;
+  toon?: boolean;
 }
 
 interface StructuredStreamPipelineParams<
@@ -58,6 +60,7 @@ interface StructuredStreamPipelineParams<
   options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
   telemetryEnabled: boolean;
   loopToolsEnabled: boolean;
+  toon?: boolean;
 }
 
 export function shouldUseStructuredPipeline<OUTPUT, PARTIAL_OUTPUT>(
@@ -90,26 +93,50 @@ export async function generateWithStructuredPipeline<
     options,
     telemetryEnabled,
     loopToolsEnabled,
+    toon,
   } = params;
 
   const originalPrompt = "prompt" in options ? options.prompt : undefined;
   const originalMessages = "messages" in options ? options.messages : undefined;
+  const textResult = await callGenerateText<OUTPUT, PARTIAL_OUTPUT, STATE>({
+    model,
+    system,
+    tools,
+    options,
+    telemetryEnabled,
+    loopToolsEnabled,
+  });
 
-    const textResult = await callGenerateText<OUTPUT, PARTIAL_OUTPUT, STATE>({
-      model,
-      system,
-      tools,
-      options,
-      telemetryEnabled,
-      loopToolsEnabled,
-    });
-
-  const schema = createSchemaFromStructuredOutput(structuredOutput);
+  const schemaDefinition = createSchemaFromStructuredOutput(structuredOutput);
+  const schema = jsonSchema(schemaDefinition);
   const structuringMessages = buildStructuringMessages({
     text: textResult.text,
     originalPrompt,
     originalMessages,
   });
+
+  const useToon = (toon ?? options.toon) ?? false;
+
+  if (useToon) {
+    const toonSystem = buildToonSystemPrompt({
+      baseSystem: system,
+      schema: schemaDefinition,
+    });
+
+    const toonResult = await generateText({
+      ...extractObjectCallSettings(
+        options as unknown as Partial<GenerateTextParams>,
+      ),
+      model,
+      system: toonSystem,
+      messages: structuringMessages,
+    });
+
+    const parsed = parseToon<OUTPUT>(toonResult.text);
+    setExperimentalOutput(toonResult, parsed);
+
+    return toonResult;
+  }
 
   const objectResult = await generateObject({
     ...extractObjectCallSettings(
@@ -141,6 +168,7 @@ export async function streamWithStructuredPipeline<
     options,
     telemetryEnabled,
     loopToolsEnabled,
+    toon,
   } = params;
 
   const originalPrompt = "prompt" in options ? options.prompt : undefined;
@@ -155,7 +183,60 @@ export async function streamWithStructuredPipeline<
     loopToolsEnabled,
   });
 
-  const schema = createSchemaFromStructuredOutput(structuredOutput);
+  const schemaDefinition = createSchemaFromStructuredOutput(structuredOutput);
+  const schema = jsonSchema(schemaDefinition);
+  const useToon = (toon ?? options.toon) ?? false;
+
+  if (useToon) {
+    const baseText = await streamResult.text;
+    const structuringMessages = buildStructuringMessages({
+      text: baseText,
+      originalPrompt,
+      originalMessages,
+    });
+
+    const toonSystem = buildToonSystemPrompt({
+      baseSystem: system,
+      schema: schemaDefinition,
+    });
+
+    const toonStream = await streamText({
+      ...extractObjectCallSettings(
+        options as unknown as Partial<GenerateTextParams>,
+      ),
+      model,
+      system: toonSystem,
+      messages: structuringMessages,
+    });
+
+    let pipelineError: unknown;
+
+    const parsePromise = toonStream.text
+      .then((toonText) => {
+        const parsed = parseToon<OUTPUT>(toonText);
+        setExperimentalOutput(toonStream, parsed);
+      })
+      .catch((error) => {
+        pipelineError = error;
+        throw error;
+      });
+
+    overrideExperimentalOutputGetter(toonStream, () => pipelineError);
+
+    Object.defineProperty(toonStream, "experimental_partialOutputStream", {
+      configurable: true,
+      get() {
+        return EMPTY_ASYNC_ITERABLE;
+      },
+    });
+
+    void parsePromise.catch(() => {
+      // handled via overridden getter
+    });
+
+    return toonStream;
+  }
+
   let pipelineError: unknown;
 
   const objectStreamPromise = (async () => {
@@ -238,7 +319,33 @@ function createSchemaFromStructuredOutput(
     );
   }
 
-  return jsonSchema(schema);
+  return schema;
+}
+
+function buildToonSystemPrompt({
+  baseSystem,
+  schema,
+}: {
+  baseSystem?: string;
+  schema: JSONSchema7;
+}) {
+  const schemaJson = JSON.stringify(schema, null, 2);
+  const instructions = [
+    "You are a formatter that converts assistant replies into Token-Oriented Object Notation (TOON).",
+    "Follow these rules:",
+    "- Use the JSON schema below to drive the structure of the output.",
+    "- Return only valid TOON without any additional commentary or explanations.",
+    "- Preserve key ordering and include every required property from the schema.",
+    "- When data is missing, emit the literal null rather than omitting the key.",
+  ].join("\n");
+
+  const sections = [
+    baseSystem?.trim() ? baseSystem.trim() : undefined,
+    instructions,
+    `JSON schema:\n${schemaJson}`,
+  ].filter(Boolean) as string[];
+
+  return sections.join("\n\n");
 }
 
 function buildStructuringMessages({
@@ -362,6 +469,7 @@ async function callGenerateText<
       experimental_telemetry,
       loopTools: _loopTools,
       maxStepTools: _maxStepTools,
+      toon: _toon,
       ...restWithoutContext
     } = rest as {
       experimental_context?: unknown;
@@ -424,6 +532,7 @@ async function callGenerateText<
       experimental_telemetry,
       loopTools: _loopTools,
       maxStepTools: _maxStepTools,
+      toon: _toon,
       ...restWithoutContext
     } = rest as {
       experimental_context?: unknown;
@@ -508,6 +617,7 @@ async function callStreamText<
       experimental_telemetry,
       loopTools: _loopTools,
       maxStepTools: _maxStepTools,
+      toon: _toon,
       ...restWithoutContext
     } = rest as {
       experimental_context?: unknown;
@@ -569,6 +679,7 @@ async function callStreamText<
       experimental_telemetry,
       loopTools: _loopTools,
       maxStepTools: _maxStepTools,
+      toon: _toon,
       ...restWithoutContext
     } = rest as {
       experimental_context?: unknown;

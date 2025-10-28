@@ -53,6 +53,7 @@ export interface AgentConfig {
   telemetry?: boolean;
   loopTools?: boolean;
   maxStepTools?: number;
+  toon?: boolean;
 }
 
 export class Agent {
@@ -63,6 +64,7 @@ export class Agent {
   private telemetryEnabled: boolean;
   private loopToolsEnabled: boolean;
   private maxStepTools: number;
+  private toonEnabled: boolean;
 
   constructor({
     name,
@@ -72,6 +74,7 @@ export class Agent {
     telemetry,
     loopTools,
     maxStepTools,
+    toon,
   }: AgentConfig) {
     this.name = name;
     this.instructions = instructions;
@@ -80,6 +83,7 @@ export class Agent {
     this.telemetryEnabled = telemetry ?? false;
     this.loopToolsEnabled = loopTools ?? false;
     this.maxStepTools = maxStepTools ?? DEFAULT_MAX_STEP_TOOLS;
+    this.toonEnabled = toon ?? false;
   }
 
   withTelemetry(enabled: boolean = true) {
@@ -99,6 +103,7 @@ export class Agent {
     const runtime = options.runtime;
     const loopToolsOption = options.loopTools;
     const maxStepToolsOption = options.maxStepTools;
+    const toonEnabled = options.toon ?? this.toonEnabled;
     const loopSettings = createToolLoopSettings({
       loopToolsEnabled: loopToolsOption ?? this.loopToolsEnabled,
       tools: this.tools,
@@ -112,15 +117,20 @@ export class Agent {
         shouldUseStructuredPipeline(this.model, this.tools, structuredOutput)
       ) {
         const preparedOptions = prepareOptionsForRuntime(options, runtimeForCall);
+        const optionsWithToon = {
+          ...preparedOptions,
+          toon: toonEnabled,
+        } as typeof preparedOptions;
         return runAgentWithToolLoop({
           settings: loopSettings,
-          existingStopWhen: (preparedOptions as { stopWhen?: GenerateTextParams["stopWhen"] })
-            .stopWhen,
+          existingStopWhen: (optionsWithToon as {
+            stopWhen?: GenerateTextParams["stopWhen"];
+          }).stopWhen,
           execute: async (stopWhenOverride) => {
             const optionsWithStopWhen =
               stopWhenOverride !== undefined
-                ? { ...preparedOptions, stopWhen: stopWhenOverride }
-                : preparedOptions;
+                ? { ...optionsWithToon, stopWhen: stopWhenOverride }
+                : optionsWithToon;
 
             const result = await generateWithStructuredPipeline({
               model: this.model,
@@ -130,6 +140,7 @@ export class Agent {
               options: optionsWithStopWhen,
               telemetryEnabled: this.telemetryEnabled,
               loopToolsEnabled: loopSettings.enabled,
+              toon: toonEnabled,
             });
 
             return result;
@@ -151,6 +162,7 @@ export class Agent {
           stopWhen: existingStopWhen,
           loopTools: _loopTools,
           maxStepTools: _maxStepTools,
+          toon: _toon,
           ...restWithoutContext
         } = rest;
 
@@ -224,6 +236,7 @@ export class Agent {
           stopWhen: existingStopWhen,
           loopTools: _loopTools,
           maxStepTools: _maxStepTools,
+          toon: _toon,
           ...restWithoutContext
         } = rest;
 
@@ -312,6 +325,7 @@ export class Agent {
     const runtime = options.runtime;
     const loopToolsOption = options.loopTools;
     const maxStepToolsOption = options.maxStepTools;
+    const toonEnabled = options.toon ?? this.toonEnabled;
     const loopSettings = createToolLoopSettings({
       loopToolsEnabled: loopToolsOption ?? this.loopToolsEnabled,
       tools: this.tools,
@@ -325,15 +339,20 @@ export class Agent {
         shouldUseStructuredPipeline(this.model, this.tools, structuredOutput)
       ) {
         const preparedOptions = prepareOptionsForRuntime(options, runtimeForCall);
+        const optionsWithToon = {
+          ...preparedOptions,
+          toon: toonEnabled,
+        } as typeof preparedOptions;
         const streamResult = await runAgentWithToolLoop({
           settings: loopSettings,
-          existingStopWhen: (preparedOptions as { stopWhen?: StreamTextParams["stopWhen"] })
-            .stopWhen,
+          existingStopWhen: (optionsWithToon as {
+            stopWhen?: StreamTextParams["stopWhen"];
+          }).stopWhen,
           execute: async (stopWhenOverride) => {
             const optionsWithStopWhen =
               stopWhenOverride !== undefined
-                ? { ...preparedOptions, stopWhen: stopWhenOverride }
-                : preparedOptions;
+                ? { ...optionsWithToon, stopWhen: stopWhenOverride }
+                : optionsWithToon;
 
             return streamWithStructuredPipeline({
               model: this.model,
@@ -343,6 +362,7 @@ export class Agent {
               options: optionsWithStopWhen,
               telemetryEnabled: this.telemetryEnabled,
               loopToolsEnabled: loopSettings.enabled,
+              toon: toonEnabled,
             });
           },
         });
@@ -365,6 +385,7 @@ export class Agent {
           stopWhen: existingStopWhen,
           loopTools: _loopTools,
           maxStepTools: _maxStepTools,
+          toon: _toon,
           ...restWithoutContext
         } = rest;
 
@@ -440,6 +461,7 @@ export class Agent {
           stopWhen: existingStopWhen,
           loopTools: _loopTools,
           maxStepTools: _maxStepTools,
+          toon: _toon,
           ...restWithoutContext
         } = rest;
 
