@@ -70,6 +70,7 @@
                   "fr/workflows/introduction",
                   "fr/workflows/branches",
                   "fr/workflows/parallel",
+                  "fr/workflows/branch-parallel",
                   "fr/workflows/human-steps",
                   "fr/workflows/while",
                   "fr/workflows/telemetry"
@@ -151,6 +152,7 @@
                   "en/workflows/introduction",
                   "en/workflows/branches",
                   "en/workflows/parallel",
+                  "en/workflows/branch-parallel",
                   "en/workflows/human-steps",
                   "en/workflows/while",
                   "en/workflows/telemetry"

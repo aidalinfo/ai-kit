@@ -6,6 +6,8 @@ locale: en
 
 `createParallelStep` and `createForEachStep` let you run multiple sub-steps concurrently. Combine them to transform lists or aggregate analytical workloads efficiently.
 
+> Need to parallelise *full workflow branches* (each with multiple steps)? Use the builder-level [`branchParallel`](./branch-parallel) helper instead of `createParallelStep`. The two features target different layers.
+
 ## Chunking pipeline
 
 ```ts

@@ -17,8 +17,13 @@ export {
 
 export {
   createParallelStep,
+  ParallelWorkflowStep,
 } from "./steps/parallelStep.js";
-export type { ParallelStepConfig, ParallelStepOutputs } from "./steps/parallelStep.js";
+export type {
+  ParallelStepConfig,
+  ParallelStepOutputs,
+  ParallelWorkflowStepConfig,
+} from "./steps/parallelStep.js";
 
 export {
   createForEachStep,

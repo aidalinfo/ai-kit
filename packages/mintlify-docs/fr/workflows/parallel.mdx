@@ -6,6 +6,8 @@ locale: fr
 
 `createParallelStep` et `createForEachStep` permettent de lancer plusieurs sous-étapes en concurrence. Cette combinaison est idéale pour transformer des listes ou agréger des tâches analytiques.
 
+> Vous cherchez à paralléliser des *branches entières* (plusieurs steps successifs) dans un workflow builder ? Consultez plutôt [`branchParallel`](./branch-parallel), conçu pour ce cas d'usage différent.
+
 ## Pipeline de chunking
 
 ```ts

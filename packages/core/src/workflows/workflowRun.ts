@@ -7,6 +7,7 @@ import {
 import type {
   StepCustomEvent,
   StepHandlerArgs,
+  StepTransitionContext,
   BranchId,
   WorkflowEvent,
   WorkflowRunOptions,
@@ -22,6 +23,10 @@ import type {
   WorkflowCtxRunInput,
   WorkflowCtxValue,
   WorkflowCtxUpdater,
+  WorkflowParallelGroupGraph,
+  WorkflowParallelLookupEntry,
+  ParallelAggregateFn,
+  WorkflowParallelBranchGraph,
 } from "./types.js";
 import { cloneMetadata, mergeSignals } from "./utils/runtime.js";
 import type { Workflow } from "./workflow.js";
@@ -31,6 +36,8 @@ import {
   resolveWorkflowTelemetryConfig,
   type StepTelemetryHandle,
 } from "./telemetry.js";
+import { ParallelWorkflowStep } from "./steps/parallelStep.js";
+import { WorkflowStep } from "./steps/step.js";
 
 interface WorkflowRunInit<
   Input,
@@ -136,6 +143,18 @@ export class WorkflowRun<
   private readonly branchMembers = new Map<string, Set<string>>();
   private readonly sequenceIndex = new Map<string, number>();
   private readonly branchOwners = new Map<string, string>();
+  private readonly parallelGroups = new Map<string, WorkflowParallelGroupGraph<Meta, Input, Ctx>>();
+  private readonly parallelLookup = new Map<string, WorkflowParallelLookupEntry>();
+  private readonly parallelBranchNavigation = new Map<
+    string,
+    {
+      defaultNext: Map<string, string | undefined>;
+      branchMembers: Map<string, Set<string>>;
+      sequenceIndex: Map<string, number>;
+      branchOwners: Map<string, string>;
+      sequence: string[];
+    }
+  >();
   private readonly watchers = new Set<WorkflowWatcher<Meta>>();
   private readonly store = new Map<string, unknown>();
   private readonly history = new Map<string, { input: unknown; output?: unknown }>();
@@ -182,6 +201,22 @@ export class WorkflowRun<
         this.branchOwners.set(target, conditionId);
       }
       this.branchMembers.set(conditionId, members);
+    }
+
+    for (const [groupId, group] of this.graph.parallelGroups.entries()) {
+      this.parallelGroups.set(groupId, group);
+
+      for (const [branchId, branch] of group.branches.entries()) {
+        const key = this.buildParallelBranchKey(groupId, branchId);
+        this.parallelBranchNavigation.set(
+          key,
+          this.createParallelBranchNavigation(groupId, branchId, branch),
+        );
+      }
+    }
+
+    for (const [stepId, lookup] of this.graph.parallelLookup.entries()) {
+      this.parallelLookup.set(stepId, lookup);
     }
   }
 
@@ -277,6 +312,8 @@ export class WorkflowRun<
       runId: this.runId,
       timestamp: Date.now(),
       metadata: event.metadata ?? this.runtimeMetadata,
+      parallelGroupId: event.parallelGroupId,
+      parallelBranchId: event.parallelBranchId,
     };
 
     this.watchers.forEach(listener => listener(payload));
@@ -315,6 +352,445 @@ export class WorkflowRun<
     }
 
     return this.defaultNext.get(stepId);
+  }
+
+  private buildParallelBranchKey(groupId: string, branchId: string) {
+    return `${groupId}:${branchId}`;
+  }
+
+  private createParallelBranchNavigation(
+    _groupId: string,
+    _branchId: string,
+    branch: WorkflowParallelBranchGraph<Meta, Input, Ctx>,
+  ) {
+    const defaultNext = new Map<string, string | undefined>();
+    const sequenceIndex = new Map<string, number>();
+
+    for (let index = 0; index < branch.sequence.length; index += 1) {
+      const current = branch.sequence[index];
+      sequenceIndex.set(current, index);
+
+      if (index < branch.sequence.length - 1) {
+        defaultNext.set(current, branch.sequence[index + 1]);
+      }
+    }
+
+    const branchMembers = new Map<string, Set<string>>();
+    const branchOwners = new Map<string, string>();
+
+    for (const [conditionId, branches] of branch.branchLookup.entries()) {
+      const members = new Set<string>();
+      for (const target of branches.values()) {
+        members.add(target);
+        branchOwners.set(target, conditionId);
+      }
+      branchMembers.set(conditionId, members);
+    }
+
+    return {
+      defaultNext,
+      branchMembers,
+      sequenceIndex,
+      branchOwners,
+      sequence: [...branch.sequence],
+    };
+  }
+
+  private findParallelPostConditionalNext(
+    navigation: {
+      branchMembers: Map<string, Set<string>>;
+      sequenceIndex: Map<string, number>;
+      sequence: string[];
+    },
+    stepId: string,
+  ): string | undefined {
+    const index = navigation.sequenceIndex.get(stepId);
+    if (index === undefined) {
+      return undefined;
+    }
+
+    const members = navigation.branchMembers.get(stepId);
+    if (!members) {
+      return index < navigation.sequence.length - 1
+        ? navigation.sequence[index + 1]
+        : undefined;
+    }
+
+    for (let cursor = index + 1; cursor < navigation.sequence.length; cursor += 1) {
+      const candidate = navigation.sequence[cursor];
+      if (!members.has(candidate)) {
+        return candidate;
+      }
+    }
+
+    return undefined;
+  }
+
+  private resolveParallelDefaultNext(
+    parallelId: string,
+    branchId: string,
+    stepId: string,
+    branchResolved: boolean,
+  ): string | undefined {
+    const navigation = this.parallelBranchNavigation.get(
+      this.buildParallelBranchKey(parallelId, branchId),
+    );
+    if (!navigation) {
+      return undefined;
+    }
+
+    if (!branchResolved && navigation.branchMembers.has(stepId)) {
+      return this.findParallelPostConditionalNext(navigation, stepId);
+    }
+
+    const owner = navigation.branchOwners.get(stepId);
+    if (owner) {
+      return this.findParallelPostConditionalNext(navigation, owner);
+    }
+
+    return navigation.defaultNext.get(stepId);
+  }
+
+  private async runParallelBranch({
+    parallelId,
+    branchId,
+    branch,
+    input,
+    stepRuntime,
+    signal,
+  }: {
+    parallelId: string;
+    branchId: string;
+    branch: WorkflowParallelBranchGraph<Meta, Input, Ctx>;
+    input: unknown;
+    stepRuntime: WorkflowStepRuntimeContext<Meta, Input, Ctx>;
+    signal: AbortSignal;
+  }): Promise<unknown> {
+    const navigation = this.parallelBranchNavigation.get(
+      this.buildParallelBranchKey(parallelId, branchId),
+    );
+    if (!navigation) {
+      throw new WorkflowExecutionError(
+        `Missing navigation metadata for parallel branch ${branchId} in ${parallelId}`,
+      );
+    }
+
+    if (signal.aborted) {
+      throw signal.reason ?? new WorkflowAbortError();
+    }
+
+    let current = input;
+    let currentStepId: string | undefined = branch.entryId;
+
+    while (currentStepId) {
+      if (signal.aborted || this.composedSignal.aborted) {
+        throw signal.reason ?? this.composedSignal.reason ?? new WorkflowAbortError();
+      }
+
+      const step = branch.steps.get(currentStepId);
+      if (!step) {
+        throw new WorkflowExecutionError(
+          `Parallel branch ${branchId} in ${parallelId} references unknown step ${currentStepId}`,
+        );
+      }
+
+      if (step instanceof HumanWorkflowStep) {
+        throw new WorkflowExecutionError(
+          `Parallel branch ${branchId} in ${parallelId} cannot contain human steps`,
+        );
+      }
+
+      const started = new Date();
+      const occurrence = (this.stepOccurrences.get(step.id) ?? 0) + 1;
+      const stepHandle = this.telemetry?.startStep({
+        step,
+        stepId: step.id,
+        occurrence,
+        startedAt: started,
+        parallel: {
+          groupId: parallelId,
+          branchId,
+        },
+      });
+      this.activeStepTelemetry = stepHandle;
+
+      this.emit({
+        type: "step:start",
+        stepId: step.id,
+        parallelGroupId: parallelId,
+        parallelBranchId: branchId,
+      });
+
+      const branchStepRuntime: WorkflowStepRuntimeContext<Meta, Input, Ctx> = {
+        ...stepRuntime,
+        getCtx: () => this.getCtxSnapshot(),
+        updateCtx: () => {
+          throw new WorkflowExecutionError(
+            `Parallel branch ${branchId} in ${parallelId} cannot update workflow context`,
+          );
+        },
+      };
+
+      const ctxSnapshot = this.getCtxSnapshot();
+
+      const executeStep = () =>
+        step.execute({
+          input: current,
+          ctx: ctxSnapshot,
+          stepRuntime: branchStepRuntime,
+          context: branchStepRuntime,
+          signal,
+        });
+
+      try {
+        const { input: validatedInput, output } = await (
+          this.telemetry
+            ? this.telemetry.runWithStepContext(stepHandle, executeStep)
+            : executeStep()
+        );
+
+        const finished = new Date();
+        this.stepOccurrences.set(step.id, occurrence);
+
+        const transitionContext = {
+          input: validatedInput,
+          output,
+          context: branchStepRuntime,
+          ctx: this.getCtxSnapshot(),
+        };
+
+        const resolveBranch = () => step.resolveBranch(transitionContext);
+        const resolvedBranchId = await (
+          this.telemetry
+            ? this.telemetry.runWithStepContext(stepHandle, resolveBranch)
+            : resolveBranch()
+        );
+        let branchNext: string | undefined;
+
+        if (resolvedBranchId !== undefined) {
+          const branchMap = branch.branchLookup.get(step.id);
+          if (!branchMap) {
+            throw new WorkflowBranchResolutionError(
+              `Parallel branch ${branchId} in ${parallelId} has no branches configured for step ${step.id}`,
+            );
+          }
+
+          branchNext = branchMap.get(resolvedBranchId);
+          if (!branchNext) {
+            throw new WorkflowBranchResolutionError(
+              `Parallel branch ${branchId} in ${parallelId} referenced unknown branch ${String(resolvedBranchId)} on step ${step.id}`,
+            );
+          }
+
+          this.emit({
+            type: "step:branch",
+            stepId: step.id,
+            data: {
+              branchId: resolvedBranchId,
+              nextStepId: branchNext,
+              conditionStepId: step.id,
+            },
+            parallelGroupId: parallelId,
+            parallelBranchId: branchId,
+          });
+        }
+
+        const resolveNext = () => step.resolveNext(transitionContext);
+        const resolvedNext = await (
+          this.telemetry
+            ? this.telemetry.runWithStepContext(stepHandle, resolveNext)
+            : resolveNext()
+        );
+
+        if (resolvedNext && !branch.steps.has(resolvedNext)) {
+          throw new WorkflowExecutionError(
+            `Parallel branch ${branchId} in ${parallelId} resolved next to unknown step ${resolvedNext}`,
+          );
+        }
+
+        const nextStepId = branchNext
+          ?? resolvedNext
+          ?? this.resolveParallelDefaultNext(
+            parallelId,
+            branchId,
+            step.id,
+            resolvedBranchId !== undefined,
+          );
+
+        this.stepsSnapshot[step.id] ??= [];
+        this.stepsSnapshot[step.id].push({
+          status: "success",
+          input: validatedInput,
+          output,
+          startedAt: started,
+          finishedAt: finished,
+          occurrence,
+          branchId: resolvedBranchId,
+          nextStepId,
+          parallelGroupId: parallelId,
+          parallelBranchId: branchId,
+        });
+
+        this.history.set(step.id, { input: validatedInput, output });
+
+        this.telemetry?.recordStepSuccess(stepHandle, {
+          finishedAt: finished,
+          input: validatedInput,
+          output,
+          branchId: resolvedBranchId,
+          nextStepId,
+        });
+
+        this.emit({
+          type: "step:success",
+          stepId: step.id,
+          data: output,
+          parallelGroupId: parallelId,
+          parallelBranchId: branchId,
+        });
+
+        current = output;
+        currentStepId = nextStepId;
+        this.activeStepTelemetry = undefined;
+      } catch (error) {
+        const finished = new Date();
+        this.stepOccurrences.set(step.id, occurrence);
+
+        this.stepsSnapshot[step.id] ??= [];
+        this.stepsSnapshot[step.id].push({
+          status: "failed",
+          input: current,
+          error,
+          startedAt: started,
+          finishedAt: finished,
+          occurrence,
+          nextStepId: undefined,
+          parallelGroupId: parallelId,
+          parallelBranchId: branchId,
+        });
+
+        this.telemetry?.recordStepError(stepHandle, {
+          finishedAt: finished,
+          input: current,
+          error,
+        });
+
+        this.emit({
+          type: "step:error",
+          stepId: step.id,
+          data: error,
+          parallelGroupId: parallelId,
+          parallelBranchId: branchId,
+        });
+        this.activeStepTelemetry = undefined;
+        throw error;
+      }
+    }
+
+    return current;
+  }
+
+  private async executeParallelStep(
+    step: ParallelWorkflowStep<any, any, Meta, Input, Ctx>,
+    stepRuntime: WorkflowStepRuntimeContext<Meta, Input, Ctx>,
+    signal: AbortSignal,
+    stepHandle: StepTelemetryHandle | undefined,
+  ): Promise<{ input: unknown; output: unknown; results: Record<string, unknown> }> {
+    const strategy = step.getErrorStrategy();
+    const input = step.validateInput(this.current);
+    const branches = Array.from(step.getParallelBranches().entries());
+
+    if (branches.length === 0) {
+      throw new WorkflowExecutionError(`Parallel step ${step.id} requires at least one branch`);
+    }
+
+    const controllers = new Map<string, AbortController>();
+
+    const branchPromises = branches.map(([branchId, branch]) => {
+      const controller = new AbortController();
+      controllers.set(branchId, controller);
+      const branchSignal = mergeSignals([signal, controller.signal]);
+
+      return this.runParallelBranch({
+        parallelId: step.id,
+        branchId,
+        branch,
+        input,
+        stepRuntime,
+        signal: branchSignal,
+      })
+        .then(output => ({
+          branchId,
+          output,
+        }))
+        .catch(error => {
+          if (strategy === "fail-fast") {
+            for (const [otherId, otherController] of controllers.entries()) {
+              if (otherId !== branchId && !otherController.signal.aborted) {
+                otherController.abort(error);
+              }
+            }
+          }
+          throw {
+            branchId,
+            error,
+          };
+        });
+    });
+
+    const settled = await Promise.allSettled(branchPromises);
+    const results: Record<string, unknown> = {};
+    const errors: Array<{ branchId: string; error: unknown }> = [];
+
+    for (const outcome of settled) {
+      if (outcome.status === "fulfilled") {
+        results[outcome.value.branchId] = outcome.value.output;
+      } else {
+        const reason = outcome.reason as { branchId: string; error: unknown };
+        errors.push(reason);
+      }
+    }
+
+    if (errors.length > 0) {
+      if (strategy === "fail-fast") {
+        throw errors[0].error;
+      }
+
+      const aggregatedError = new WorkflowExecutionError(
+        `Parallel step ${step.id} encountered errors in branches: ${errors.map(entry => entry.branchId).join(", ")}`,
+        errors[0].error,
+      );
+      (aggregatedError as WorkflowExecutionError & { parallelErrors: Array<{ branchId: string; error: unknown }> }).parallelErrors = errors;
+      throw aggregatedError;
+    }
+
+    const aggregatedOutput = await (
+      this.telemetry
+        ? this.telemetry.runWithStepContext(stepHandle, () =>
+            step.aggregateResults({
+              input,
+              results,
+              ctx: this.getCtxSnapshot(),
+              stepRuntime,
+              signal,
+            }),
+          )
+        : step.aggregateResults({
+            input,
+            results,
+            ctx: this.getCtxSnapshot(),
+            stepRuntime,
+            signal,
+          })
+    );
+
+    const output = step.validateOutput(aggregatedOutput);
+
+    return {
+      input,
+      output,
+      results,
+    };
   }
 
   watch(watcher: WorkflowWatcher<Meta>) {
@@ -599,33 +1075,51 @@ export class WorkflowRun<
         return this.handleHumanStep(step, stepRuntime, started, stepHandle, occurrence);
       }
 
-      const executeStep = () =>
-        step.execute({
-          input: this.current,
-          ctx: this.getCtxSnapshot(),
-          stepRuntime,
-          context: stepRuntime,
-          signal: this.composedSignal,
-        });
-
       try {
-        const { input, output } = await (
-          this.telemetry
-            ? this.telemetry.runWithStepContext(stepHandle, executeStep)
-            : executeStep()
-        );
+        let executionInput: unknown;
+        let executionOutput: unknown;
+
+        if (step instanceof ParallelWorkflowStep) {
+          const result = await this.executeParallelStep(
+            step,
+            stepRuntime,
+            this.composedSignal,
+            stepHandle,
+          );
+          executionInput = result.input;
+          executionOutput = result.output;
+        } else {
+          const executeStep = () =>
+            step.execute({
+              input: this.current,
+              ctx: this.getCtxSnapshot(),
+              stepRuntime,
+              context: stepRuntime,
+              signal: this.composedSignal,
+            });
+
+          const result = await (
+            this.telemetry
+              ? this.telemetry.runWithStepContext(stepHandle, executeStep)
+              : executeStep()
+          );
+          executionInput = result.input;
+          executionOutput = result.output;
+        }
 
         const finished = new Date();
         this.stepOccurrences.set(step.id, occurrence);
 
-        const transitionContext = {
-          input,
-          output,
+        const ctxSnapshot = this.getCtxSnapshot();
+        const transitionContext: StepTransitionContext<unknown, unknown, Meta, Input, Ctx> = {
+          input: executionInput,
+          output: executionOutput,
           context: stepRuntime,
-          ctx: this.getCtxSnapshot(),
+          ctx: ctxSnapshot,
         };
+        const typedStep = step as WorkflowStep<unknown, unknown, Meta, Input, Ctx>;
 
-        const resolveBranch = () => step.resolveBranch(transitionContext);
+        const resolveBranch = () => typedStep.resolveBranch(transitionContext);
         const resolvedBranchId = await (
           this.telemetry
             ? this.telemetry.runWithStepContext(stepHandle, resolveBranch)
@@ -659,7 +1153,7 @@ export class WorkflowRun<
           });
         }
 
-        const resolveNext = () => step.resolveNext(transitionContext);
+        const resolveNext = () => typedStep.resolveNext(transitionContext);
         const resolvedNext = await (
           this.telemetry
             ? this.telemetry.runWithStepContext(stepHandle, resolveNext)
@@ -677,8 +1171,8 @@ export class WorkflowRun<
         this.stepsSnapshot[step.id] ??= [];
         this.stepsSnapshot[step.id].push({
           status: "success",
-          input,
-          output,
+          input: executionInput,
+          output: executionOutput,
           startedAt: started,
           finishedAt: finished,
           occurrence,
@@ -686,18 +1180,18 @@ export class WorkflowRun<
           nextStepId,
         });
 
-        this.history.set(step.id, { input, output });
+        this.history.set(step.id, { input: executionInput, output: executionOutput });
 
         this.telemetry?.recordStepSuccess(stepHandle, {
           finishedAt: finished,
-          input,
-          output,
+          input: executionInput,
+          output: executionOutput,
           branchId,
           nextStepId,
         });
 
-        this.emit({ type: "step:success", stepId: step.id, data: output });
-        this.current = output;
+        this.emit({ type: "step:success", stepId: step.id, data: executionOutput });
+        this.current = executionOutput;
         this.currentStepId = nextStepId;
         this.activeStepTelemetry = undefined;
       } catch (error) {

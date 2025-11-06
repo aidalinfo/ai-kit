@@ -74,6 +74,8 @@ export interface WorkflowEvent<Meta extends Record<string, unknown> = Record<str
   timestamp: number;
   metadata: Meta;
   data?: unknown;
+  parallelGroupId?: string;
+  parallelBranchId?: string;
 }
 
 export type WorkflowWatcher<Meta extends Record<string, unknown> = Record<string, unknown>> = (
@@ -173,6 +175,8 @@ export interface WorkflowStepSnapshot {
   occurrence: number;
   branchId?: BranchId;
   nextStepId?: string;
+  parallelGroupId?: string;
+  parallelBranchId?: string;
 }
 
 export type WorkflowRunStatus = "success" | "failed" | "cancelled" | "waiting_human";
@@ -208,6 +212,58 @@ export interface WorkflowRunOptions<
 export type MaybePromise<T> = T | Promise<T>;
 
 export type BranchId = string | number;
+
+export type ParallelErrorStrategy = "fail-fast" | "wait-all";
+
+export type ParallelAggregateFn<
+  Input,
+  BranchResults extends Record<string, unknown>,
+  Aggregate,
+  Meta extends Record<string, unknown> = Record<string, unknown>,
+  RootInput = unknown,
+  Ctx extends Record<string, unknown> | undefined = undefined,
+> = (args: {
+  input: Input;
+  results: BranchResults;
+  ctx: WorkflowCtxValue<Ctx>;
+  stepRuntime: WorkflowStepRuntimeContext<Meta, RootInput, Ctx>;
+  signal: AbortSignal;
+}) => MaybePromise<Aggregate>;
+
+export interface WorkflowParallelBranchGraph<
+  Meta extends Record<string, unknown>,
+  RootInput,
+  Ctx extends Record<string, unknown> | undefined,
+> {
+  steps: Map<string, WorkflowStep<unknown, unknown, Meta, RootInput, Ctx>>;
+  sequence: string[];
+  branchLookup: Map<string, Map<BranchId, string>>;
+  conditionSteps: Set<string>;
+  entryId: string;
+}
+
+export interface WorkflowParallelGroupGraph<
+  Meta extends Record<string, unknown>,
+  RootInput,
+  Ctx extends Record<string, unknown> | undefined,
+> {
+  id: string;
+  branches: Map<string, WorkflowParallelBranchGraph<Meta, RootInput, Ctx>>;
+  aggregate?: ParallelAggregateFn<
+    unknown,
+    Record<string, unknown>,
+    unknown,
+    Meta,
+    RootInput,
+    Ctx
+  >;
+  errorStrategy: ParallelErrorStrategy;
+}
+
+export interface WorkflowParallelLookupEntry {
+  groupId: string;
+  branchId: string;
+}
 
 export interface StepTransitionContext<
   Input,
@@ -362,7 +418,7 @@ export interface WorkflowGraphNode {
 export interface WorkflowGraphEdge {
   from: string;
   to: string;
-  kind: "sequence" | "branch";
+  kind: "sequence" | "branch" | "parallel";
   branchId?: BranchId;
 }
 
