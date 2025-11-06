@@ -1,0 +1,31 @@
+---
+title: "Getting started"
+description: "Installer AI Kit, préparer l’environnement et comprendre les briques principales."
+locale: fr
+---
+
+AI Kit s’appuie sur le SDK `ai` pour dialoguer avec vos modèles et propose une surcouche opinionée pour créer des agents et des workflows typés. Cette page récapitule les prérequis et les ressources indispensables pour prendre le framework en main.
+
+## Prérequis
+
+- Node.js 18+ (ou toute runtime disposant de `fetch`).
+- Un gestionnaire de packages (`pnpm`, `npm` ou `yarn`).
+- L’accès à un provider LLM compatible AI SDK (Scaleway, OpenAI, Google, etc.).
+
+## Installation rapide
+
+```bash
+pnpm add @ai_kit/core ai zod
+# ou
+npm install @ai_kit/core ai zod
+```
+
+Ajoutez également le client du provider cible (`@ai-sdk/openai`, `@ai-sdk/google`, …).
+
+## Étapes suivantes
+
+- Créez votre premier agent avec le guide [Créer un agent en 5 minutes](/fr/getting-started/first-agent).
+- Montez un workflow typé avec [Assembler un workflow simple](/fr/workflows/introduction).
+- Configurez la télémétrie Langfuse via [Instrumentation & télémétrie](/fr/telemetrie/langfuse).
+
+Pour la structure détaillée du dépôt, consultez [Architecture du projet](/fr/getting-started/project-structure).

@@ -1,0 +1,75 @@
+---
+title: "Streaming"
+description: "Consume agent responses token by token and access the final aggregates."
+locale: en
+---
+
+`agent.stream` returns an async iterable that emits tokens while exposing promises to retrieve the final state.
+
+```ts
+const stream = await assistant.stream({
+  prompt: "Draft an outline for an AI Kit guide.",
+  temperature: 0.5,
+});
+
+for await (const chunk of stream.textStream) {
+  process.stdout.write(chunk);
+}
+
+const finalText = await stream.text;
+console.log("\n---\n", finalText);
+```
+
+### Key properties
+
+- `textStream` – `AsyncIterable<string>` with generated tokens.
+- `fullStream` – complete stream (text, reasoning, tool calls, errors).
+- `text`, `response`, `usage`, `steps` – promises that resolve once the stream completes.
+- `loopTool` – boolean flag set when the tool loop runs.
+- `toAIStreamResponse()` / `toDataStreamResponse()` – pipe the stream into HTTP responses (Next.js, Remix, …).
+
+## Conversational streaming
+
+```ts
+const streamedChat = await assistant.stream({
+  messages: [
+    { role: "user", content: "Describe the lifecycle of an AI Kit agent." },
+  ],
+});
+
+for await (const delta of streamedChat.textStream) {
+  process.stdout.write(delta);
+}
+```
+
+## Structured outputs while streaming
+
+Combine `agent.stream` with `structuredOutput` to receive partial fragments during the stream and the validated object at the end.
+
+```ts
+const streamWithSchema = await assistant.stream({
+  prompt: "Provide a structured test profile.",
+  structuredOutput: personSpec,
+});
+
+let lastPartial;
+for await (const partial of streamWithSchema.experimental_partialOutputStream) {
+  lastPartial = partial;
+  console.log("partial", partial);
+}
+
+const parsedOutput = await personSpec.parseOutput(
+  { text: await streamWithSchema.text },
+  {
+    response: await streamWithSchema.response,
+    usage: await streamWithSchema.usage,
+    finishReason: await streamWithSchema.finishReason,
+  },
+);
+
+console.log({ lastPartial, parsedOutput });
+```
+
+`experimental_partialOutputStream` emits schema-compliant fragments. Cache the last one for a provisional UI, then call `parseOutput` to obtain the final typed object.
+
+> Structured streaming is experimental—plan retries when parsing fails.

@@ -97,8 +97,43 @@ export const chunkingWorkflow = createWorkflow({
 - Les steps déclarés dans `createParallelStep` s'exécutent simultanément et leurs sorties sont regroupées dans un objet.
 - Combinez parallel et foreach pour optimiser vos pipelines sans sacrifier la lisibilité.
 
+## Branches parallèles dans un builder
+
+Avec `createWorkflow`, préférez le helper fluide `.branchParallel()` au câblage manuel d'un `createParallelStep`. Vous décrivez ainsi une séquence complète pour chaque branche, réutilisez vos steps existants et contrôlez agrégation ou stratégie d'erreur au même endroit.
+
+```ts
+import { createStep, createWorkflow } from "@ai_kit/core";
+
+const provisionInfra = createStep({
+  id: "provision-infra",
+  handler: async ({ input }) => ({ clusterId: `cluster-${input}` }),
+});
+
+const bootstrapObservabilite = createStep({
+  id: "bootstrap-observabilite",
+  handler: async ({ input }) => ({ dashboardUrl: `https://dash/${input}` }),
+});
+
+export const setupWorkflow = createWorkflow({ id: "setup" })
+  .branchParallel("prepare-environnement", parallel =>
+    parallel
+      .branch("infra", branch => branch.then(provisionInfra))
+      .branch("observabilite", branch => branch.then(bootstrapObservabilite))
+      .onError("wait-all")
+      .aggregate(({ results }) => ({
+        cluster: results.infra.clusterId,
+        tableauDeBord: results.observabilite.dashboardUrl,
+      })),
+  )
+  .commit();
+```
+
+- Chaque branche reçoit l'entrée courante et peut enchaîner n'importe quel step (`then`, `while`, `conditions`, …). L'imbrication d'un autre `branchParallel` est pour l'instant interdite et lève une `WorkflowSchemaError`.
+- Le contexte (`ctx`) reste en lecture seule dans les branches ; un appel à `stepRuntime.updateCtx()` provoque une `WorkflowExecutionError`.
+- La stratégie d'erreur est **fail-fast** par défaut. Passez à `"wait-all"` pour attendre toutes les branches avant de rejeter. Sans agrégateur personnalisé, la sortie est un dictionnaire `{ nomDeBranche: résultat }` — utilisez `.aggregate()` pour le transformer selon vos besoins.
+
 ## Observabilité
 
-Chaque sous-exécution émet des événements (`step:parallel:start`, `step:parallel:success`, etc.). Surveillez-les avec `run.watch()` pour savoir quelles branches sont actives et comment évoluent les temps de traitement.
+Chaque branche émet les événements `step:*` habituels enrichis des attributs `parallelGroupId` et `parallelBranchId`. Surveillez-les avec `run.watch()` pour suivre l'activité des branches et mesurer leurs durées.
 
 Envie de conditionner l'exécution à la volée ? Consultez les [`branches conditionnelles`](./branches-conditionnelles). Pour répéter une étape jusqu'à satisfaction d'un prédicat, rendez-vous sur les [`boucles while`](./boucles-while).

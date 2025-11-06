@@ -1,0 +1,21 @@
+---
+title: "Télémétrie"
+description: "Configurer l’observabilité des agents et workflows AI Kit."
+locale: fr
+---
+
+AI Kit s’appuie sur OpenTelemetry pour exposer des traces détaillées de vos agents et workflows. Cette section regroupe les guides d’intégration avec Langfuse et les options spécifiques aux workflows.
+
+## Parcours recommandé
+
+- [Télémétrie Langfuse](/fr/telemetrie/langfuse) – installer le SDK, initialiser `ensureLangfuseTelemetry`, activer la télémétrie côté agents.
+- [Télémétrie workflows](/fr/workflows/telemetry) – personnaliser les spans `ai_kit.workflow.*`, tracer les étapes humaines et ajouter des métadonnées.
+
+## Concepts clés
+
+- `telemetry: true | false | {...}` – active la télémétrie au niveau des agents et workflows.
+- `telemetry.metadata` – ajoute des attributs personnalisés visibles dans Langfuse.
+- `telemetry.userId` – relie vos runs à un utilisateur final avec propagation automatique (`langfuse.user.id`).
+- `ensureLangfuseTelemetry` – initialise le provider OTEL, gère le flush et rend la dépendance optionnelle.
+
+Intégrez toujours la télémétrie dès l’initialisation de votre application afin de ne pas perdre d’événements durant le démarrage.

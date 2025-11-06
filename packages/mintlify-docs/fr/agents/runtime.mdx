@@ -1,0 +1,86 @@
+---
+title: "Runtime des agents"
+description: "Partager des ressources binaires et un état mutable entre vos outils."
+locale: fr
+---
+
+Le runtime des agents fournit un magasin mutable, isolé par requête, pour partager des données entre votre code applicatif et les outils exécutés par le modèle. Il remplace les abus d’`experimental_context` et évite d’injecter des chemins sensibles dans les prompts.
+
+## Initialiser un runtime
+
+```ts
+import { Agent, RuntimeStore, scaleway } from "@ai_kit/core";
+
+const runtime = new RuntimeStore<{ workbook: Workbook }>();
+runtime.set("workbook", await loadWorkbookFromBase64(payload));
+runtime.onCleanup("workbook", workbook => workbook?.destroy());
+
+const assistant = new Agent({
+  name: "assistant-ops",
+  model: scaleway("gpt-oss-120b"),
+});
+
+const result = await assistant.generate({
+  prompt: "Analyse la feuille `Synthese` et propose deux KPI.",
+  runtime,
+});
+```
+
+- `RuntimeStore<T>` accepte des valeurs typées ; `get`, `set`, `require`, `delete` fonctionnent comme une `Map`.
+- `onCleanup` enregistre une fonction appelée automatiquement à la fin de la requête (y compris en streaming).
+- Le runtime est cloné pour chaque appel afin d’éviter les fuites d’état.
+
+## Outils orientés runtime
+
+```ts
+import { createRuntimeTool } from "@ai_kit/core";
+import { z } from "zod";
+
+const previewSheet = createRuntimeTool({
+  id: "excel.preview",
+  description: "Renvoie un aperçu d'une feuille XLSX déjà chargée",
+  inputSchema: z.object({ sheet: z.string() }),
+  async execute({ sheet }, { runtime }) {
+    const workbook = runtime.require<Workbook>("workbook");
+    const data = extractPreview(workbook, sheet);
+    return { rows: data.slice(0, 5) };
+  },
+});
+
+const assistant = new Agent({
+  name: "assistant-xlsx",
+  model: scaleway("gpt-oss-120b"),
+  tools: { previewSheet },
+});
+```
+
+`createRuntimeTool` injecte automatiquement le runtime courant dans la signature `execute`. Si aucun runtime n’est disponible (par exemple si l’appelant oublie `runtime`), l’exécution échoue immédiatement.
+
+## Ressources déclaratives
+
+```ts
+import { registerRuntimeResource } from "@ai_kit/core";
+
+registerRuntimeResource("excelWorkbook", {
+  async loader(source: string, runtime) {
+    const buffer = Buffer.from(source, "base64");
+    const workbook = await ExcelJS.Workbook.fromBuffer(buffer);
+    runtime.set("workbook", workbook);
+    return workbook;
+  },
+  dispose(workbook) {
+    workbook?.destroy();
+  },
+});
+
+await runtime.load("excelWorkbook", payload.base64);
+```
+
+`registerRuntimeResource` centralise l’encodage/décodage et garantit un nettoyage cohérent via `dispose`. `runtime.load` invoque le loader, stocke la valeur puis déclenche le cleanup après la réponse.
+
+## Bonnes pratiques
+
+- **Isolation asynchrone** – chaque appel `generate`/`stream` s’exécute dans un contexte `AsyncLocalStorage`. Les outils peuvent récupérer le runtime actif sans paramètre supplémentaire.
+- **Streaming** – le runtime reste actif jusqu’à la fermeture du flux ; les `onCleanup` sont déclenchés dès que la génération se termine ou échoue.
+- **Runtimes multiples** – instanciez plusieurs `RuntimeStore` pour séparer les domaines fonctionnels (ex. fichiers, utilisateurs).
+- **Typage fort** – paramétrez `RuntimeStore<{ ... }>` et `createRuntimeTool<INPUT, OUTPUT, RuntimeState>` pour conserver le typage bout en bout.

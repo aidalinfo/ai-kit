@@ -1,0 +1,22 @@
+---
+title: "Agents"
+description: "Design, configure, and operate AI Kit agents."
+locale: en
+---
+
+Agents bundle a model, system instructions, and optional tools so you can industrialise your AI assistants. This section covers instantiation, tool management, structured outputs, streaming, and the shared runtime.
+
+## Key guides
+
+- [`Build an agent`](/en/getting-started/first-agent) – install the package and craft your first generation.
+- [`Tools & tool loop`](/en/agents/tools) – declare tools and control the orchestration loop.
+- [`Structured outputs`](/en/agents/structured-output) – validate responses with `structuredOutput` and the `Output` helpers.
+- [`Real-time streaming`](/en/agents/streaming) – consume tokens on the fly and supervise live generations.
+- [`Shared runtime`](/en/agents/runtime) – store binary resources and expose them to your tools.
+
+## Best practices
+
+- Override `system` per call to adapt instructions without reinstantiating the agent.
+- Tune `maxOutputTokens`, `temperature`, `topP`, and more directly in `generate` or `stream`.
+- Compose specialised agents (drafting, validation, summarisation) to cover an entire flow.
+- Combine agents with workflows to orchestrate richer decision loops.

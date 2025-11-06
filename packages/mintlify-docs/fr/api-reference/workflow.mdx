@@ -1,0 +1,120 @@
+---
+title: "Classe Workflow"
+description: "Créer et exécuter des workflows typés avec AI Kit."
+locale: fr
+---
+
+```ts
+import {
+  createWorkflow,
+  type Workflow,
+  type WorkflowConfig,
+  type WorkflowRunOptions,
+  type WorkflowRunResult,
+} from "@ai_kit/core";
+```
+
+## `WorkflowConfig`
+
+| Propriété | Type | Défaut | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | requis | Identifiant unique du workflow. |
+| `description` | `string` | `undefined` | Description optionnelle (DX). |
+| `inputSchema` | `SchemaLike<Input>` | `undefined` | Validation de l’entrée. |
+| `outputSchema` | `SchemaLike<Output>` | `undefined` | Validation de la sortie (appliquée après `finalize`). |
+| `metadata` | `Meta` | `undefined` | Métadonnées initiales partagées entre les steps. |
+| `finalize` | `(value: unknown) => Output` | identité | Transforme la valeur finale avant validation. |
+| `telemetry` | `boolean \| WorkflowTelemetryOverrides` | `undefined` | Active et configure la télémétrie (Langfuse/OTEL). |
+| `ctx` | `WorkflowCtxInit<Ctx>` | `undefined` | Contexte partagé initial (immuable côté handlers). |
+
+## Création
+
+```ts
+const workflow = createWorkflow<Input, Output>({
+  id: "my-workflow",
+  inputSchema,
+  outputSchema,
+  metadata: { source: "app" },
+  telemetry: { recordInputs: true },
+})
+  .then(stepA)
+  .human(reviewStep)
+  .while(loopStep)
+  .conditions(conditionStep)
+  .then({ low: lowStep, high: highStep })
+  .commit();
+```
+
+### Builder (`WorkflowBuilder`)
+
+- `.then(step)` – ajoute une étape automatique (`createStep`, `createMapStep`, etc.).
+- `.human(config | step)` – ajoute une étape humaine (`createHuman`).
+- `.while(config | step)` – ajoute une boucle contrôlée (`createWhileStep`).
+- `.conditions(step)` – déclare un step de condition ; enchaînez ensuite `.then(...)` avec un objet `{ brancheId: step }` ou une liste de steps.
+- `.commit()` – valide la structure, vérifie l’absence de cycles et retourne une instance immuable de `Workflow`.
+
+Chaque step doit posséder un `id` unique. Les branches conditionnelles doivent être renseignées avant l’appel à `commit()`.
+
+## Méthodes de `Workflow`
+
+### `createRun(runId?: string)`
+
+Instancie un `WorkflowRun` réutilisable. Par défaut, un identifiant unique est généré (`createRunId()`).
+
+### `run(options)`
+
+```ts
+run(options: WorkflowRunOptions<Input, Meta, Ctx>): Promise<WorkflowRunResult<Output, Meta, Ctx>>;
+```
+
+Exécute le workflow en une seule fois (équivalent à `createRun().start(options)`).
+
+### `validateInput(value)`
+
+Applique `inputSchema` et lève `WorkflowSchemaError` si la validation échoue.
+
+### `validateOutput(value)`
+
+Applique `finalize`, puis `outputSchema`. Utile pour tester vos steps isolément.
+
+### `getInitialMetadata()`
+
+Retourne une copie profonde des métadonnées initiales (peut être `undefined`).
+
+### `getTelemetryConfig()`
+
+Expose la configuration de télémétrie courante (`boolean` ou objet overrides).
+
+### `getBaseContext()`
+
+Retourne le contexte partagé initial (`ctx`) utilisé pour les runs suivants.
+
+### `withTelemetry(option = true)`
+
+Active/désactive la télémétrie par mutation et renvoie `this`. Utilisez `withTelemetry(workflow, option)` pour une version fonctionnelle.
+
+### `inspect()`
+
+Retourne la représentation du graphe (`nodes`, `edges`, `entryId`) pour visualiser ou déboguer votre pipeline.
+
+## Options de run (`WorkflowRunOptions`)
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `inputData` | `Input` | Données d’entrée. |
+| `metadata` | `Meta` | Métadonnées initiales (fusionnées avec celles du workflow). |
+| `ctx` | `Partial<Ctx> \| Ctx` | Contexte partagé injecté pour ce run. |
+| `signal` | `AbortSignal` | Permet d’annuler l’exécution. |
+| `telemetry` | `WorkflowTelemetryOption` | Overrides ponctuels (trace name, metadata, userId, flags `record*`). |
+
+Le résultat (`WorkflowRunResult`) contient :
+
+- `status` (`"success" \| "failed" \| "cancelled" \| "waiting_human"`);
+- `result` (sortie finale du workflow) ;
+- `error` (le cas échéant) ;
+- `steps` (snapshots par step, occurrences, branche suivie) ;
+- `metadata`, `ctx` (états finaux) ;
+- `startedAt`, `finishedAt` ;
+- `pendingHuman` si l’exécution attend un opérateur.
+
+Pour les interactions avancées (stream, reprise, surveillance), consultez [`WorkflowRun`](/fr/api-reference/workflow-run).

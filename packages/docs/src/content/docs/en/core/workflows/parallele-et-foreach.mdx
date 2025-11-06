@@ -97,8 +97,43 @@ export const chunkingWorkflow = createWorkflow({
 - Steps declared in `createParallelStep` execute simultaneously and their outputs are grouped into an object.
 - Combine parallel and foreach to optimize pipelines without sacrificing readability.
 
+## Parallel branches in workflow builders
+
+When you compose workflows with `createWorkflow`, prefer the fluent `.branchParallel()` helper instead of wiring `createParallelStep` manually. It lets you describe full branch sequences, reuse existing steps, and configure error handling or aggregation in one place.
+
+```ts
+import { createStep, createWorkflow } from "@ai_kit/core";
+
+const provisionInfra = createStep({
+  id: "provision-infra",
+  handler: async ({ input }) => ({ clusterId: `cluster-${input}` }),
+});
+
+const bootstrapObservability = createStep({
+  id: "bootstrap-observability",
+  handler: async ({ input }) => ({ dashboardUrl: `https://dash/${input}` }),
+});
+
+export const setupWorkflow = createWorkflow({ id: "setup" })
+  .branchParallel("prepare-environment", parallel =>
+    parallel
+      .branch("infra", branch => branch.then(provisionInfra))
+      .branch("observability", branch => branch.then(bootstrapObservability))
+      .onError("wait-all")
+      .aggregate(({ results }) => ({
+        cluster: results.infra.clusterId,
+        dashboard: results.observability.dashboardUrl,
+      })),
+  )
+  .commit();
+```
+
+- Branches receive the current input and can run any step sequence (`then`, `while`, `conditions`, …). Attempting to nest another `branchParallel` currently throws a `WorkflowSchemaError`.
+- The workflow context (`ctx`) is read-only inside branches; calling `stepRuntime.updateCtx()` results in a `WorkflowExecutionError`.
+- Error strategy defaults to **fail-fast**; switch to `"wait-all"` to collect every failure before rejecting. Aggregation defaults to the raw `{ [branchName]: output }` map—override it with `.aggregate()` to transform or combine branch outputs.
+
 ## Observability
 
-Each sub-execution emits events (`step:parallel:start`, `step:parallel:success`, etc.). Monitor them with `run.watch()` to see which branches are active and how processing times evolve.
+Each branch execution emits the usual `step:*` events with extra metadata (`parallelGroupId`, `parallelBranchId`). Tap into `run.watch()` to follow branch lifecycles and inspect durations.
 
 Want to conditionally control execution instead? Check [`Conditional branches`](./branches-conditionnelles). To repeat a step until a predicate is satisfied, visit the [`While loops`](./boucles-while) page.

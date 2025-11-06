@@ -1,0 +1,159 @@
+---
+title: "Scaleway provider"
+description: "Use Scaleway AI models with AI Kit."
+locale: en
+---
+
+The `scaleway` provider targets the OpenAI-compatible API exposed by [Scaleway AI](https://www.scaleway.com/en/ai/). It works seamlessly with AI Kit agents and workflows.
+
+## Installation
+
+```bash
+pnpm add @ai_kit/core @ai-sdk/openai ai
+```
+
+## Configuration
+
+```bash
+export SCALEWAY_API_KEY="skw-..."
+```
+
+Retrieve the key from the [Scaleway console](https://console.scaleway.com/iam/api-keys).
+
+## Use with an agent
+
+```ts
+import { Agent, scaleway } from "@ai_kit/core";
+
+const assistant = new Agent({
+  name: "scaleway-assistant",
+  instructions: "You are a helpful and accurate assistant.",
+  model: scaleway("gpt-oss-120b"),
+});
+
+const result = await assistant.generate({
+  prompt: "What is the capital of France?",
+});
+
+console.log(result.text);
+```
+
+## Available models
+
+| Model | Description | Size |
+| --- | --- | --- |
+| `gpt-oss-120b` | High-performing general model | 120B |
+| `llama-3.3-70b-instruct` | Meta Llama 3.3 tuned for instruction | 70B |
+| `llama-3.1-8b-instruct` | Compact Llama 3.1 | 8B |
+| `mistral-small-3.2-24b-instruct-2506` | Latest Mistral Small | 24B |
+| `mistral-nemo-instruct-2407` | Mistral Nemo optimised | 12B |
+| `qwen3-235b-a22b-instruct-2507` | Large Qwen 3 | 235B |
+| `qwen3-coder-30b-a3b-instruct` | Qwen 3 code-specialised | 30B |
+| `deepseek-r1-distill-llama-70b` | Distilled DeepSeek R1 | 70B |
+| `gemma-3-27b-it` | Google Gemma 3 instruction | 27B |
+| `voxtral-small-24b-2507` | Voxtral Small | 24B |
+| `devstral-small-2505` | Devstral for development use cases | 25B |
+| `pixtral-12b-2409` | Multimodal Pixtral | 12B |
+
+## Examples
+
+### Structured output
+
+```ts
+import { Agent, scaleway, Output } from "@ai_kit/core";
+import { z } from "zod";
+
+const codeSchema = Output.object({
+  schema: z.object({
+    language: z.string(),
+    code: z.string(),
+    explanation: z.string(),
+  }),
+});
+
+const assistant = new Agent({
+  name: "code-assistant",
+  instructions: "You are a programming expert.",
+  model: scaleway("qwen3-coder-30b-a3b-instruct"),
+});
+
+const result = await assistant.generate({
+  prompt: "Write a Python function for the Fibonacci sequence.",
+  structuredOutput: codeSchema,
+});
+
+console.log(result.experimental_output);
+```
+
+### Inside a workflow
+
+```ts
+import { Agent, createStep, createWorkflow, scaleway } from "@ai_kit/core";
+import { z } from "zod";
+
+const assistant = new Agent({
+  name: "analyzer",
+  instructions: "Analyse the sentiment of the text.",
+  model: scaleway("mistral-small-3.2-24b-instruct-2506"),
+});
+
+const analyzeStep = createStep({
+  id: "analyze-text",
+  inputSchema: z.object({ text: z.string() }),
+  handler: async ({ input }) => {
+    const result = await assistant.generate({
+      prompt: `Analyse the sentiment of this text: "${input.text}"`,
+    });
+
+    return { sentiment: result.text };
+  },
+});
+
+const workflow = createWorkflow({
+  id: "sentiment-analysis",
+  inputSchema: z.object({ text: z.string() }),
+  outputSchema: z.object({ sentiment: z.string() }),
+})
+  .then(analyzeStep)
+  .commit();
+```
+
+### Streaming
+
+```ts
+const assistant = new Agent({
+  name: "stream-assistant",
+  instructions: "You are a creative assistant.",
+  model: scaleway("llama-3.3-70b-instruct"),
+});
+
+const stream = await assistant.stream({
+  prompt: "Tell a short story about a robot learning to cook.",
+  temperature: 0.7,
+});
+
+for await (const chunk of stream.textStream) {
+  process.stdout.write(chunk);
+}
+```
+
+## Model selection tips
+
+- Code generation: `qwen3-coder-30b-a3b-instruct`, `devstral-small-2505`.
+- General-purpose tasks: `gpt-oss-120b`, `llama-3.3-70b-instruct`.
+- Lightweight workloads: `llama-3.1-8b-instruct`, `mistral-nemo-instruct-2407`.
+- Reasoning-heavy tasks: `deepseek-r1-distill-llama-70b`, `qwen3-235b-a22b-instruct-2507`.
+- Multimodal scenarios: `pixtral-12b-2409`.
+
+## Best practices
+
+1. **Security** – store API keys in a secret manager, never commit them.
+2. **Error handling** – wrap calls in `try/catch` and log failures.
+3. **Cost control** – set `maxOutputTokens` and monitor usage.
+4. **Temperature** – pick the right creativity level (`0.0-0.3` precise, `0.4-0.7` balanced, `0.8+` creative).
+
+## Resources
+
+- [Scaleway AI documentation](https://www.scaleway.com/en/docs/ai-data/)
+- [Scaleway console](https://console.scaleway.com/)
+- [Scaleway AI pricing](https://www.scaleway.com/en/pricing/#ai-data)

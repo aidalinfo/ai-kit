@@ -1,0 +1,97 @@
+---
+title: "Boucles while"
+description: "Répéter une étape jusqu’à satisfaire une condition tout en conservant l’historique."
+locale: fr
+---
+
+`createWhileStep` encapsule une boucle contrôlée : vous fournissez une condition, un `maxIterations` obligatoire et l’étape à répéter. L’API enchaîne les exécutions, transmet l’output précédent comme nouvel input et collecte les résultats.
+
+## Exemple de polling
+
+```ts
+import {
+  createMapStep,
+  createWhileStep,
+  createWorkflow,
+} from "@ai_kit/core";
+import { z } from "zod";
+
+const pollingStateSchema = z.object({
+  jobId: z.string().min(1),
+  attempt: z.number().int().min(0),
+  done: z.boolean().optional(),
+});
+
+type PollingState = z.infer<typeof pollingStateSchema>;
+type PollingResult = PollingState & { done: boolean };
+
+const checkStatus = createMapStep<PollingState, PollingResult>({
+  id: "check-status",
+  inputSchema: pollingStateSchema,
+  outputSchema: pollingStateSchema.extend({
+    done: z.boolean(),
+  }),
+  handler: async ({ input }) => {
+    const attempt = input.attempt;
+
+    const done = await fetch(`/jobs/${input.jobId}/status?attempt=${attempt}`)
+      .then(res => res.json())
+      .then(body => body.done === true);
+
+    return {
+      jobId: input.jobId,
+      attempt: attempt + 1,
+      done,
+    };
+  },
+});
+
+const pollUntilDone = createWhileStep({
+  id: "poll-job",
+  description: "Relance checkStatus jusqu'à completion ou timeout",
+  inputSchema: z.object({
+    jobId: z.string().min(1),
+    attempt: z.number().int().min(0).default(0),
+  }),
+  loopStep: checkStatus,
+  maxIterations: 12,
+  condition: ({ lastOutput }) => {
+    return lastOutput?.done !== true;
+  },
+});
+
+export const pollWorkflow = createWorkflow({
+  id: "polling",
+  inputSchema: z.object({
+    jobId: z.string().min(1),
+    attempt: z.number().int().min(0).default(0),
+  }),
+  outputSchema: z.object({
+    lastResult: pollingStateSchema.extend({ done: z.boolean() }).optional(),
+    allResults: z.array(pollingStateSchema.extend({ done: z.boolean() })),
+  }),
+})
+  .while(pollUntilDone)
+  .commit();
+```
+
+Par défaut, le step retourne `{ lastResult, allResults }` avec `lastResult` potentiellement `undefined` si aucune itération n’a eu lieu. `maxIterations` est obligatoire et déclenche un `WorkflowExecutionError` si la condition voudrait poursuivre au-delà de la limite.
+
+## Condition & garde-fous
+
+- `condition({ input, lastOutput, iteration, context, signal })` est évaluée avant chaque itération. Retournez `false` pour sortir de la boucle.
+- `maxIterations` protège contre les boucles infinies ; une erreur explicite est levée lorsque la limite est atteinte.
+- L’`AbortSignal` est propagé automatiquement : `WorkflowAbortError` est levée en cas d’annulation externe.
+
+## Préparer l’input et collecter les résultats
+
+- `prepareNextInput` est optionnel. Sans lui, l’input initial est passé lors de la première itération puis chaque output devient l’input suivant.
+- `collect` reçoit `{ input, results, lastResult, iterations, context }` et laisse façonner la sortie (agrégation, mapping métier). Sans `collect`, la forme `{ lastResult, allResults }` est renvoyée.
+
+## ForEach ou While ?
+
+- `createForEachStep` itère sur une collection connue d’avance et peut paralléliser (`concurrency`).
+- `createWhileStep` s’utilise quand le nombre d’itérations est inconnu (polling, raffinements successifs, validations).
+- Combinez les deux pour des pipelines complexes (ex. `while` pour surveiller une file puis `forEach` pour traiter les éléments disponibles).
+
+Besoin de bifurquer la logique ? Consultez les [branches conditionnelles](/fr/workflows/branches).

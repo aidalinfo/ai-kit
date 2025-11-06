@@ -1,0 +1,39 @@
+---
+title: "Architecture du projet"
+description: "Comprendre l’organisation des packages AI Kit et les outils disponibles."
+locale: fr
+---
+
+Le dépôt est un workspace PNPM composé de plusieurs packages. Cette page décrit le rôle de chacun afin de faciliter vos contributions.
+
+## Packages principaux
+
+- `packages/core` – implémente les agents, workflows, runtime partagé, providers et la télémétrie.
+- `packages/types` – regroupe les types publics et utilitaires partagés.
+- `packages/mcp` – composants liés au Model Context Protocol et aux intégrations agents.
+- `packages/mcp-docs-server` – serveur MCP exposant la documentation AI Kit.
+
+## Documentation
+
+- `packages/mintlify-docs` – documentation Mintlify (ce site). Structurez-y vos pages guides et API reference.
+- `packages/docs` – documentation historique Astro. Son contenu a été porté dans Mintlify pour centraliser les ressources.
+
+## Scripts utiles
+
+Les commandes suivantes sont exposées à la racine du monorepo :
+
+```bash
+pnpm lint        # Vérifie le format et les règles TypeScript
+pnpm test        # Lance la suite de tests Jest/Vitest (selon le package)
+pnpm dev docs    # Démarre la prévisualisation locale de la documentation
+```
+
+Utilisez `pnpm --filter <package>` pour cibler un package spécifique (ex. `pnpm --filter @ai_kit/core test`).
+
+## Contribution
+
+1. Ouvrez une branche, implémentez vos changements et ajoutez des tests lorsque c’est pertinent.
+2. Actualisez la documentation Mintlify si l’API évolue.
+3. Vérifiez que la télémétrie reste optionnelle et correctement contrôlée par feature flag.
+
+Les pull requests sont revues avec une attention particulière sur la stabilité des agents et la compatibilité des workflows existants.

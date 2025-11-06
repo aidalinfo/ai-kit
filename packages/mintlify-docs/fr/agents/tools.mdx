@@ -1,0 +1,64 @@
+---
+title: "Outils & tool loop"
+description: "Déclarer des outils sur un agent et contrôler la boucle loopTools."
+locale: fr
+---
+
+Les outils permettent à vos agents de déclencher du code applicatif (recherche, API internes, calculs métier…). AI Kit les enregistre directement sur l’agent et les injecte dans chaque appel `generate` ou `stream`.
+
+## Ajouter des outils par défaut
+
+```ts
+import { Agent, google } from "@ai_kit/core";
+
+const assistant = new Agent({
+  name: "assistant-vie",
+  instructions: "Assistant de vie",
+  model: google("gemini-2.5-flash"),
+  tools: {
+    google_search: google.tools.googleSearch({}),
+  },
+  loopTools: true,
+  maxStepTools: 15,
+});
+
+await assistant.generate({ prompt: "Quelle est la météo à Paris ?" });
+```
+
+- L’option `tools` expose des outils sur tous les appels.
+- `loopTools` et `maxStepTools` définis au niveau de l’agent servent de valeurs par défaut.
+- Vous pouvez surcharger ces valeurs à l’appel (`agent.generate({ tools, loopTools, maxStepTools })`).
+
+## Boucle d’outils automatique
+
+Lorsque `loopTools` est activé et qu’au moins un outil est disponible, AI Kit orchestre automatiquement les appels : après chaque `toolCall`, l’outil correspondant est exécuté puis la conversation reprend jusqu’à obtenir une réponse finale. Le résultat expose un indicateur `loopTool: true` pour faciliter l’inspection DX.
+
+```ts
+const result = await assistant.generate({
+  prompt: "Cherche la documentation du workflow « tool loop ».",
+  loopTools: true,
+});
+
+if (result.loopTool) {
+  console.log("Des outils ont été exécutés pendant la conversation.");
+}
+```
+
+## Paramètres de contrôle
+
+- `loopTools?: boolean` – active ou désactive la boucle (désactivée par défaut).
+- `maxStepTools?: number` – plafonne le nombre total d’outils exécutés avant d’interrompre la boucle (défaut : `20`).
+- Les appels individuels peuvent toujours forcer `loopTools` ou `maxStepTools`.
+
+```ts
+await assistant.generate({
+  prompt: "Réponds sans exécuter d'outils.",
+  loopTools: false,
+});
+```
+
+## Bonnes pratiques
+
+- Préfixez vos IDs d’outils (`search.customer`, `support.lookup`) pour faciliter le monitoring.
+- Limitez `maxStepTools` lorsqu’un outil peut déclencher des actions coûteuses.
+- Logguez les `toolCalls` dans vos systèmes pour auditer les décisions des modèles.

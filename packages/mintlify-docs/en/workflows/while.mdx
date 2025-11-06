@@ -1,0 +1,97 @@
+---
+title: "While loops"
+description: "Repeat a step until a condition is met while keeping full history."
+locale: en
+---
+
+`createWhileStep` encapsulates a controlled loop: you provide a condition, a mandatory `maxIterations`, and the step to repeat. The loop chains executions, feeds the previous output as the next input, and collects results.
+
+## Polling example
+
+```ts
+import {
+  createMapStep,
+  createWhileStep,
+  createWorkflow,
+} from "@ai_kit/core";
+import { z } from "zod";
+
+const pollingStateSchema = z.object({
+  jobId: z.string().min(1),
+  attempt: z.number().int().min(0),
+  done: z.boolean().optional(),
+});
+
+type PollingState = z.infer<typeof pollingStateSchema>;
+type PollingResult = PollingState & { done: boolean };
+
+const checkStatus = createMapStep<PollingState, PollingResult>({
+  id: "check-status",
+  inputSchema: pollingStateSchema,
+  outputSchema: pollingStateSchema.extend({
+    done: z.boolean(),
+  }),
+  handler: async ({ input }) => {
+    const attempt = input.attempt;
+
+    const done = await fetch(`/jobs/${input.jobId}/status?attempt=${attempt}`)
+      .then(res => res.json())
+      .then(body => body.done === true);
+
+    return {
+      jobId: input.jobId,
+      attempt: attempt + 1,
+      done,
+    };
+  },
+});
+
+const pollUntilDone = createWhileStep({
+  id: "poll-job",
+  description: "Repeat checkStatus until completion or timeout",
+  inputSchema: z.object({
+    jobId: z.string().min(1),
+    attempt: z.number().int().min(0).default(0),
+  }),
+  loopStep: checkStatus,
+  maxIterations: 12,
+  condition: ({ lastOutput }) => {
+    return lastOutput?.done !== true;
+  },
+});
+
+export const pollWorkflow = createWorkflow({
+  id: "polling",
+  inputSchema: z.object({
+    jobId: z.string().min(1),
+    attempt: z.number().int().min(0).default(0),
+  }),
+  outputSchema: z.object({
+    lastResult: pollingStateSchema.extend({ done: z.boolean() }).optional(),
+    allResults: z.array(pollingStateSchema.extend({ done: z.boolean() })),
+  }),
+})
+  .while(pollUntilDone)
+  .commit();
+```
+
+By default the step returns `{ lastResult, allResults }`, with `lastResult` potentially `undefined` when no iteration ran. `maxIterations` is required and throws a `WorkflowExecutionError` when the condition would otherwise continue.
+
+## Condition & safeguards
+
+- `condition({ input, lastOutput, iteration, context, signal })` is evaluated before each iteration. Return `false` to exit gracefully.
+- `maxIterations` prevents infinite loops; an explicit error is raised when the limit is reached.
+- The `AbortSignal` propagates automatically—`WorkflowAbortError` is thrown on external cancellation.
+
+## Prepare input & collect results
+
+- `prepareNextInput` is optional. Without it, the initial input is passed to the first iteration, then each output becomes the next input.
+- `collect` receives `{ input, results, lastResult, iterations, context }` so you can shape the output (aggregation, domain-specific mapping). Without `collect`, `{ lastResult, allResults }` is returned.
+
+## ForEach or While?
+
+- `createForEachStep` iterates over a known collection and can parallelise (`concurrency`).
+- `createWhileStep` shines when the number of iterations is unknown (polling, refinement loops, validations).
+- Combine the two for advanced pipelines (for example a `while` that monitors a queue, then a `forEach` that processes available items).
+
+Need to branch dynamically? See [`Conditional branches`](/en/workflows/branches).

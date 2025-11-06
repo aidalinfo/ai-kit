@@ -53,6 +53,10 @@ interface StartStepArgs<Meta extends Record<string, unknown>> {
   stepId: string;
   occurrence: number;
   startedAt: Date;
+  parallel?: {
+    groupId: string;
+    branchId: string;
+  };
 }
 
 interface StepSuccessArgs {
@@ -360,6 +364,12 @@ export class WorkflowRunTelemetry<
       },
       this.rootContext,
     );
+
+    if (args.parallel) {
+      span.setAttribute("ai_kit.workflow.step.parallel_group_id", args.parallel.groupId);
+      span.setAttribute("ai_kit.workflow.step.parallel_branch_id", args.parallel.branchId);
+      span.setAttribute("ai_kit.workflow.step.parallel", true);
+    }
 
     if (args.step.description) {
       span.setAttribute("ai_kit.workflow.step.description", args.step.description);

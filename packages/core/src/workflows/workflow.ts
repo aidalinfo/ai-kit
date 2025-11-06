@@ -8,6 +8,8 @@ import type {
   WorkflowRunOptions,
   WorkflowRunResult,
   WorkflowCtxInit,
+  WorkflowParallelGroupGraph,
+  WorkflowParallelLookupEntry,
 } from "./types.js";
 import { WorkflowStep } from "./steps/step.js";
 import { WorkflowRun } from "./workflowRun.js";
@@ -31,6 +33,8 @@ interface WorkflowGraph<
   branchLookup: Map<string, Map<BranchId, string>>;
   conditionSteps: Set<string>;
   entryId: string;
+  parallelGroups: Map<string, WorkflowParallelGroupGraph<Meta, Input, Ctx>>;
+  parallelLookup: Map<string, WorkflowParallelLookupEntry>;
 }
 
 export class Workflow<
@@ -139,6 +143,17 @@ export class Workflow<
           from: conditionId,
           to: targetId,
           kind: "branch",
+          branchId,
+        });
+      }
+    }
+
+    for (const [parallelId, group] of this.graph.parallelGroups.entries()) {
+      for (const [branchId, branch] of group.branches.entries()) {
+        edges.push({
+          from: parallelId,
+          to: branch.entryId,
+          kind: "parallel",
           branchId,
         });
       }

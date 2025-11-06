@@ -1,0 +1,75 @@
+---
+title: "Streaming"
+description: "Consommer les réponses d’un agent token par token et récupérer les métadonnées finales."
+locale: fr
+---
+
+`agent.stream` renvoie un flux asynchrone qui diffuse les tokens au fil de l’eau tout en exposant des promesses pour obtenir l’état final.
+
+```ts
+const stream = await assistant.stream({
+  prompt: "Rédige un plan détaillé pour un guide sur AI Kit.",
+  temperature: 0.5,
+});
+
+for await (const chunk of stream.textStream) {
+  process.stdout.write(chunk);
+}
+
+const finalText = await stream.text;
+console.log("\n---\n", finalText);
+```
+
+### Propriétés principales
+
+- `textStream` – `AsyncIterable<string>` des tokens générés.
+- `fullStream` – flux complet incluant texte, raisonnement, tool calls et erreurs.
+- `text`, `response`, `usage`, `steps` – promesses qui consomment le flux pour produire un résultat agrégé.
+- `loopTool` – indicateur booléen déclenché lorsqu’une boucle d’outils est exécutée.
+- `toAIStreamResponse()` / `toDataStreamResponse()` – helpers pour exposer le flux via une réponse HTTP (Next.js, Remix, etc.).
+
+## Streaming conversationnel
+
+```ts
+const streamedChat = await assistant.stream({
+  messages: [
+    { role: "user", content: "Décris le cycle de vie d'un agent AI Kit." },
+  ],
+});
+
+for await (const delta of streamedChat.textStream) {
+  process.stdout.write(delta);
+}
+```
+
+## Sorties structurées en flux
+
+En associant `agent.stream` et `structuredOutput`, vous recevez des fragments partiels pendant le stream, puis l’objet final après validation du schéma.
+
+```ts
+const streamWithSchema = await assistant.stream({
+  prompt: "Fournis un profil de test au format structuré.",
+  structuredOutput: personSpec,
+});
+
+let lastPartial;
+for await (const partial of streamWithSchema.experimental_partialOutputStream) {
+  lastPartial = partial;
+  console.log("partial", partial);
+}
+
+const parsedOutput = await personSpec.parseOutput(
+  { text: await streamWithSchema.text },
+  {
+    response: await streamWithSchema.response,
+    usage: await streamWithSchema.usage,
+    finishReason: await streamWithSchema.finishReason,
+  },
+);
+
+console.log({ lastPartial, parsedOutput });
+```
+
+`experimental_partialOutputStream` diffuse des mises à jour incrémentales conformes au schéma Zod. Conservez le dernier fragment pour un rendu provisoire, puis parsez la réponse complète avec `parseOutput`.
+
+> L’association `stream` + `structuredOutput` reste expérimentale : prévoyez des stratégies de retry lorsque le parsing échoue.

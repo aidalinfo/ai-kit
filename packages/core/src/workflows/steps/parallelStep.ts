@@ -1,5 +1,15 @@
-import { WorkflowExecutionError } from "../errors.js";
-import type { SchemaLike, StepHandlerArgs, WorkflowStepLike } from "../types.js";
+import { WorkflowExecutionError, WorkflowSchemaError } from "../errors.js";
+import { parseWithSchema } from "../utils/validation.js";
+import type {
+  SchemaLike,
+  StepHandlerArgs,
+  WorkflowStepLike,
+  ParallelErrorStrategy,
+  ParallelAggregateFn,
+  WorkflowParallelBranchGraph,
+  WorkflowCtxValue,
+  WorkflowStepRuntimeContext,
+} from "../types.js";
 import { createStep, WorkflowStep, WorkflowStepOutput } from "./step.js";
 
 export type ParallelStepOutputs<
@@ -65,3 +75,113 @@ export const createParallelStep = <
       return Object.fromEntries(results) as ParallelStepOutputs<Steps>;
     },
   });
+
+export interface ParallelWorkflowStepConfig<
+  Input,
+  Output,
+  Meta extends Record<string, unknown> = Record<string, unknown>,
+  RootInput = unknown,
+  Ctx extends Record<string, unknown> | undefined = undefined,
+> {
+  id: string;
+  description?: string;
+  inputSchema?: SchemaLike<Input>;
+  outputSchema?: SchemaLike<Output>;
+  branches: Map<string, WorkflowParallelBranchGraph<Meta, RootInput, Ctx>>;
+  aggregate?: ParallelAggregateFn<
+    Input,
+    Record<string, unknown>,
+    Output,
+    Meta,
+    RootInput,
+    Ctx
+  >;
+  errorStrategy: ParallelErrorStrategy;
+}
+
+export class ParallelWorkflowStep<
+  Input,
+  Output,
+  Meta extends Record<string, unknown> = Record<string, unknown>,
+  RootInput = unknown,
+  Ctx extends Record<string, unknown> | undefined = undefined,
+> extends WorkflowStep<Input, Output, Meta, RootInput, Ctx> {
+  private readonly branches: Map<string, WorkflowParallelBranchGraph<Meta, RootInput, Ctx>>;
+  private readonly aggregateFn?: ParallelAggregateFn<
+    Input,
+    Record<string, unknown>,
+    Output,
+    Meta,
+    RootInput,
+    Ctx
+  >;
+  private readonly strategy: ParallelErrorStrategy;
+
+  constructor(config: ParallelWorkflowStepConfig<Input, Output, Meta, RootInput, Ctx>) {
+    super({
+      id: config.id,
+      description: config.description,
+      inputSchema: config.inputSchema,
+      outputSchema: config.outputSchema,
+      handler: async () => {
+        throw new WorkflowExecutionError(
+          `Parallel workflow step ${config.id} requires runtime support for execution`,
+        );
+      },
+    });
+
+    if (config.branches.size === 0) {
+      throw new WorkflowSchemaError(`Parallel workflow step ${config.id} requires at least one branch`);
+    }
+
+    this.branches = config.branches;
+    this.aggregateFn = config.aggregate;
+    this.strategy = config.errorStrategy;
+  }
+
+  getParallelBranches() {
+    return this.branches;
+  }
+
+  getAggregate() {
+    return this.aggregateFn;
+  }
+
+  getErrorStrategy(): ParallelErrorStrategy {
+    return this.strategy;
+  }
+
+  async aggregateResults({
+    input,
+    results,
+    ctx,
+    stepRuntime,
+    signal,
+  }: {
+    input: Input;
+    results: Record<string, unknown>;
+    ctx: WorkflowCtxValue<Ctx>;
+    stepRuntime: WorkflowStepRuntimeContext<Meta, RootInput, Ctx>;
+    signal: AbortSignal;
+  }): Promise<Output> {
+    if (!this.aggregateFn) {
+      return results as Output;
+    }
+
+    return this.aggregateFn({
+      input,
+      results,
+      ctx,
+      stepRuntime,
+      signal,
+    });
+  }
+
+  validateInput(value: unknown): Input {
+    return parseWithSchema(this.inputSchema, value, `step ${this.id} input`);
+  }
+
+  validateOutput(value: unknown): Output {
+    return parseWithSchema(this.outputSchema, value, `step ${this.id} output`);
+  }
+}
