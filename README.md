@@ -42,7 +42,7 @@ const result = await assistant.generate({
 console.log(result.text);
 ```
 
-👉 Guides détaillés : [Agents](http://ai.aidalinfo.fr/fr/agents/index)
+👉 Guides détaillés : [Agents](https://ai.aidalinfo.fr/fr/agents)
 
 ### Activer la télémétrie Langfuse
 
@@ -68,7 +68,7 @@ await workflow.run({
 });
 ```
 
-👉 Configuration complète : [Télémétrie Langfuse](http://ai.aidalinfo.fr/fr/telemetrie/langfuse)
+👉 Configuration complète : [Télémétrie Langfuse](https://ai.aidalinfo.fr/fr/telemetrie/langfuse)
 
 ### Découper du contenu
 
@@ -89,7 +89,7 @@ const passages = chunks.map((chunk) => ({
 }));
 ```
 
-👉 Plus d’exemples : [Chunks](http://ai.aidalinfo.fr/fr/utils/chunking)
+👉 Plus d’exemples : [Chunks](https://ai.aidalinfo.fr/fr/utils/chunking)
 
 ### Orchestrer un workflow
 
@@ -109,7 +109,7 @@ const outcome = await pipeline.run({ inputData: { id: "123" } });
 console.log(outcome.result);
 ```
 
-👉 Documentation complète : [Workflows](http://ai.aidalinfo.fr/fr/workflows/index)
+👉 Documentation complète : [Workflows](https://ai.aidalinfo.fr/fr/workflows)
 
 ## Structure du dépôt
 
@@ -194,9 +194,9 @@ Le DSL accepte également des ressources (fichiers statiques ou dynamiques via t
 
 ## Ressources
 
-- [Documentation Agents](http://ai.aidalinfo.fr/fr/agents/index)
-- [Documentation Chunks](http://ai.aidalinfo.fr/fr/utils/chunking)
-- [Documentation Workflows](http://ai.aidalinfo.fr/fr/workflows/index)
-- [Documentation MCP](http://ai.aidalinfo.fr/fr/mcp/usage)
+- [Documentation Agents](https://ai.aidalinfo.fr/fr/agents)
+- [Documentation Chunks](https://ai.aidalinfo.fr/fr/utils/chunking)
+- [Documentation Workflows](https://ai.aidalinfo.fr/fr/workflows)
+- [Documentation MCP](https://ai.aidalinfo.fr/fr/mcp/usage)
 
 L’objectif est de renforcer notre autonomie technique autour des assistants et pipelines AI : n’hésitez pas à compléter ces ressources et à proposer des améliorations.
