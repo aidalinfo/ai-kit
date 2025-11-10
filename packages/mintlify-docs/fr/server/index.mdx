@@ -63,6 +63,40 @@ Par défaut, le serveur écoute sur `0.0.0.0` et le port `PORT` (ou 8787). Les i
 
 Les payloads workflow doivent inclure `inputData` et peuvent ajouter `metadata`. Pour les agents, fournissez soit `prompt`, soit `messages` (aligné sur AI SDK).
 
+## Consommer depuis ClientKit
+
+Pour appeler le serveur depuis un autre service Node.js ou un worker edge, installez [`@ai_kit/client-kit`](https://www.npmjs.com/package/@ai_kit/client-kit) et pointez-le vers l’URL publique du serveur :
+
+```ts
+import { ClientKit } from "@ai_kit/client-kit";
+
+const client = new ClientKit({
+  baseUrl: "https://agents.internal.aidalinfo.fr",
+  headers: { Authorization: `Bearer ${process.env.SERVER_TOKEN}` },
+});
+
+const generation = await client.generateAgent("support", {
+  prompt: "Quelles sont les nouveautés de cette semaine ?",
+  runtime: {
+    metadata: { tenant: "aidalinfo" },
+    ctx: { locale: "fr-FR" },
+  },
+});
+
+const run = await client.runWorkflow("enrich-ticket", {
+  inputData: { contactId: "123" },
+  metadata: { requestId: "run_abc" },
+  runtime: {
+    metadata: { tenant: "aidalinfo" },
+    ctx: { locale: "fr-FR" },
+  },
+});
+```
+
+- Les propriétés `runtime` ou `runtimeContext` fusionnent leurs `metadata`/`ctx` avec celles passées directement (`metadata`, `ctx`).
+- `resumeWorkflow` reste disponible pour débloquer un run en attente humaine avec `{ stepId, data }`.
+- Passez `signal` dans les options pour annuler une requête (compatible fetch standard).
+
 ## Streaming et reprise
 
 - `stream` utilise un `ReadableStream` SSE : l’événement `run` contient le `runId`, puis chaque étape déclenche un événement dont le nom = `event.type`.

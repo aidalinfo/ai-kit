@@ -48,20 +48,24 @@ const client = new ClientKit({
   headers: {
     Authorization: `Bearer ${process.env.SERVER_TOKEN}`,
   },
+});
+
+const supportAgent = await client.getAgent("support");
+const response = await client.generateAgent("support", {
+  prompt: "Quelles sont les nouveautés de cette semaine ?",
   runtime: {
     metadata: { tenant: "aidalinfo" },
     ctx: { locale: "fr-FR" },
   },
 });
 
-const supportAgent = await client.getAgent("support");
-const response = await client.generateAgent("support", {
-  prompt: "Quelles sont les nouveautés de cette semaine ?",
-});
-
 const workflowResult = await client.runWorkflow("enrich-contact", {
   inputData: { contactId: "42" },
   metadata: { requestId: "run-123" },
+  runtime: {
+    metadata: { tenant: "aidalinfo" },
+    ctx: { locale: "fr-FR" },
+  },
 });
 
 if (workflowResult.status === "waiting_human" && workflowResult.pendingHuman) {
@@ -72,7 +76,7 @@ if (workflowResult.status === "waiting_human" && workflowResult.pendingHuman) {
 }
 ```
 
-Le client fournit également `resumeWorkflow` pour répondre à une étape humaine et fusionne automatiquement les métadonnées/contexts par défaut avec celles passées à l’appel.
+Le client fournit également `resumeWorkflow` pour répondre à une étape humaine et fusionne automatiquement les métadonnées/contexts fournies via `runtime`/`runtimeContext` avec celles passées directement dans `metadata`/`ctx`.
 
 ## Utilisation rapide
 
