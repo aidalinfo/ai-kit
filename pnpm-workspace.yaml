@@ -5,3 +5,4 @@ packages:
   - packages/mcp
   - packages/docs
   - packages/server
+  - packages/create-ai-kit

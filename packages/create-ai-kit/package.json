@@ -1,0 +1,38 @@
+{
+  "name": "@ai_kit/create-ai-kit",
+  "version": "0.1.0",
+  "description": "CLI to bootstrap ai-kit projects",
+  "type": "module",
+  "bin": {
+    "create-ai-kit": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsup src/index.ts --format esm --dts --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ai-kit",
+    "cli",
+    "create",
+    "boilerplate",
+    "template"
+  ],
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "dependencies": {
+    "commander": "^11.1.0",
+    "prompts": "^2.4.2",
+    "chalk": "^5.3.0",
+    "ora": "^8.0.1",
+    "fs-extra": "^11.2.0"
+  },
+  "devDependencies": {
+    "@types/prompts": "^2.4.9",
+    "@types/fs-extra": "^11.0.4",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3"
+  }
+}
