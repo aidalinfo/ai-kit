@@ -57,6 +57,7 @@
                 "group": "Serveur",
                 "pages": [
                   "fr/server/index",
+                  "fr/server/auth",
                   "fr/server/routes-middleware"
                 ]
               },
@@ -147,6 +148,7 @@
                 "group": "Server",
                 "pages": [
                   "en/server/index",
+                  "en/server/auth",
                   "en/server/custom-routes"
                 ]
               },

@@ -1,0 +1,116 @@
+---
+title: "Authentification"
+description: "Sécuriser les endpoints ServerKit avec des tokens bearer ou vos propres gardes."
+locale: fr
+---
+
+ServerKit propose deux leviers complémentaires pour protéger votre API HTTP :
+
+- un garde bearer optionnel qui vérifie des JSON Web Tokens (JWT) avant d’exécuter les routes intégrées ;
+- la possibilité d’enchaîner du [middleware Hono](https://hono.dev/api/middleware) ou de déclarer des routes sur mesure avec leurs propres contrôles.
+
+Les sections ci-dessous expliquent comment activer le garde intégré, émettre des tokens compatibles et le combiner avec vos règles d’accès.
+
+## Activer le garde bearer
+
+Passez un objet `server.auth` lors de l’instanciation de `ServerKit` pour exiger un token bearer sur chaque requête. Le garde s’active dès que vous fournissez un `secret` non vide ; le champ `enabled` vaut `true` par défaut, vous ne devez le préciser que pour désactiver temporairement la vérification.
+
+```ts
+import { ServerKit } from "@ai_kit/server";
+
+const server = new ServerKit({
+  agents: { /* ... */ },
+  workflows: { /* ... */ },
+  server: {
+    auth: {
+      secret: process.env.SERVER_AUTH_SECRET!,
+      // enabled: true, // activé par défaut dès que auth est défini
+    },
+  },
+});
+```
+
+Avec cette configuration :
+
+- les requêtes sans en-tête `Authorization` reçoivent `401 Missing Authorization header` ;
+- un schéma différent de `Bearer` (ex. `Basic` ou une valeur vide) entraîne `401 Authorization header must use the Bearer scheme` ;
+- les tokens expirés ou invalides produisent `401 Invalid authorization token`.
+
+Positionnez `enabled: false` pour conserver la configuration tout en court-circuitant le garde (utile en développement local).
+
+## Émettre des tokens compatibles
+
+Le garde attend un JWT signé avec le secret partagé via un algorithme HMAC comme `HS256`. Vous pouvez générer ces tokens avec [`jose`](https://github.com/panva/jose), déjà inclus dans les dépendances AI Kit.
+
+```ts
+import { SignJWT } from "jose";
+
+async function createServerToken() {
+  const secret = new TextEncoder().encode(process.env.SERVER_AUTH_SECRET!);
+
+  return await new SignJWT({
+    sub: "user-123",
+    roles: ["support", "admin"],
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("15m")
+    .sign(secret);
+}
+```
+
+Envoyez ensuite le token dans l’en-tête `Authorization: Bearer <token>` sur l’ensemble des endpoints (agents, workflows, SSE, routes custom, Swagger, etc.).
+
+## Lire la charge utile décodée
+
+Après vérification, le middleware stocke le token brut et sa charge utile décodée dans le contexte Hono (`c.set("auth", { token, payload })`). Tout middleware ou handler en aval peut les lire pour adapter le comportement à l’utilisateur courant.
+
+```ts
+const middleware = async (c, next) => {
+  const auth = c.get("auth");
+  if (auth?.payload.roles?.includes("admin")) {
+    await next();
+    return;
+  }
+
+  return c.json({ error: "Forbidden" }, 403);
+};
+```
+
+Ce pattern facilite l’implémentation d’un contrôle d’accès basé sur les rôles sans devoir re-parser le token dans chaque handler.
+
+## Combiner avec vos stratégies
+
+Besoin de clés API, de listes blanches IP ou de découper par tenant ? Chaînez du middleware supplémentaire via `server.middleware` ou directement dans `registerApiRoute`.
+
+```ts
+import { ServerKit, registerApiRoute } from "@ai_kit/server";
+
+const server = new ServerKit({
+  agents: {},
+  workflows: {},
+  server: {
+    auth: { secret: process.env.SERVER_AUTH_SECRET! },
+    middleware: [
+      async (c, next) => {
+        if (c.req.header("x-api-key") !== process.env.PUBLIC_API_KEY) {
+          return c.json({ error: "invalid api key" }, 401);
+        }
+
+        await next();
+      },
+    ],
+    apiRoutes: [
+      registerApiRoute("/tenant-info", {
+        method: "GET",
+        async handler(c) {
+          const { payload } = c.get("auth");
+          return c.json({ tenantId: payload.tenantId });
+        },
+      }),
+    ],
+  },
+});
+```
+
+Le middleware global s’exécute avant que le garde bearer ne confie la main au handler, ce qui vous permet d’interrompre la requête, d’enrichir le contexte ou de stocker des données complémentaires. Les routes déclarées via `registerApiRoute` héritent automatiquement du garde bearer et du chaînage de middleware pour une protection homogène sur toute votre API.

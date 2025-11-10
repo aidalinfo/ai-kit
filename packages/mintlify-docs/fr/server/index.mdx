@@ -47,6 +47,8 @@ await server.listen({ port: 8787 });
 
 Par défaut, le serveur écoute sur `0.0.0.0` et le port `PORT` (ou 8787). Les instances d’agent et de workflow sont conservées en mémoire et réutilisées à chaque requête.
 
+> Besoin de verrouiller l’API ? Consultez le guide [Authentification](./auth) pour activer les tokens bearer et vos gardes personnalisés.
+
 ## Endpoints exposés
 
 | Route | Description |
