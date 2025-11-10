@@ -63,6 +63,40 @@ The server listens on `HOST` (default `0.0.0.0`) and `PORT` (default `8787`). Ag
 
 Workflow payloads must contain `inputData` (optional `metadata`). Agent payloads must include either `prompt` or `messages`, matching the AI SDK contract.
 
+## Calling the server from ClientKit
+
+Use [`@ai_kit/client-kit`](https://www.npmjs.com/package/@ai_kit/client-kit) to reach the server from another Node.js service or edge worker:
+
+```ts
+import { ClientKit } from "@ai_kit/client-kit";
+
+const client = new ClientKit({
+  baseUrl: "https://agents.internal.aidalinfo.fr",
+  headers: { Authorization: `Bearer ${process.env.SERVER_TOKEN}` },
+});
+
+const generation = await client.generateAgent("support", {
+  prompt: "What changed this week?",
+  runtime: {
+    metadata: { tenant: "aidalinfo" },
+    ctx: { locale: "fr-FR" },
+  },
+});
+
+const run = await client.runWorkflow("enrich-ticket", {
+  inputData: { contactId: "123" },
+  metadata: { requestId: "run_abc" },
+  runtime: {
+    metadata: { tenant: "aidalinfo" },
+    ctx: { locale: "fr-FR" },
+  },
+});
+```
+
+- `runtime` / `runtimeContext` merge their `metadata`/`ctx` with the top-level payload fields.
+- `resumeWorkflow` remains available to unblock human-in-the-loop runs with `{ stepId, data }`.
+- Pass a `signal` option to cancel the underlying `fetch` request.
+
 ## Streaming & resume flow
 
 - `/stream` endpoints emit a first `run` event containing the `runId`, then forward each workflow `event.type` as a dedicated SSE event.

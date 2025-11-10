@@ -8,12 +8,6 @@ export interface ClientKitOptions {
   baseUrl?: string;
   headers?: HeadersInit;
   fetch?: typeof fetch;
-  runtime?: DefaultRuntimeContext;
-}
-
-export interface DefaultRuntimeContext {
-  metadata?: Record<string, unknown>;
-  ctx?: Record<string, unknown>;
 }
 
 export interface RequestOptions {
@@ -46,7 +40,17 @@ export interface WorkflowRunPayload<
   inputData: Input;
   metadata?: Meta;
   ctx?: Ctx;
+  runtime?: WorkflowRunRuntimeOverrides<Meta, Ctx>;
+  runtimeContext?: WorkflowRunRuntimeOverrides<Meta, Ctx>;
   telemetry?: WorkflowRunOptions<Input, Meta, Ctx>["telemetry"];
+}
+
+export interface WorkflowRunRuntimeOverrides<
+  Meta extends Record<string, unknown>,
+  Ctx extends Record<string, unknown>,
+> {
+  metadata?: Meta;
+  ctx?: Ctx;
 }
 
 export interface ResumeWorkflowPayload {
@@ -111,7 +115,6 @@ export class ClientKit {
   private readonly baseUrl: URL;
   private readonly defaultHeaders: Headers;
   private readonly fetchImpl: typeof fetch;
-  private readonly runtimeDefaults: DefaultRuntimeContext;
 
   constructor(options: ClientKitOptions = {}) {
     const baseUrl = options.baseUrl ?? "http://localhost:3000";
@@ -122,8 +125,6 @@ export class ClientKit {
     if (typeof this.fetchImpl !== "function") {
       throw new Error("ClientKit requires a fetch implementation");
     }
-
-    this.runtimeDefaults = options.runtime ?? {};
   }
 
   async listAgents(options?: RequestOptions): Promise<AgentSummary[]> {
@@ -266,12 +267,18 @@ export class ClientKit {
     Meta extends Record<string, unknown>,
     Ctx extends Record<string, unknown>,
   >(payload: WorkflowRunPayload<Input, Meta, Ctx>) {
+    const runtimeOverrides =
+      payload.runtime ?? payload.runtimeContext ?? undefined;
+
     const metadata = mergeRecords(
-      this.runtimeDefaults.metadata,
+      runtimeOverrides?.metadata as Meta | undefined,
       payload.metadata,
     );
 
-    const ctx = mergeRecords(this.runtimeDefaults.ctx, payload.ctx);
+    const ctx = mergeRecords(
+      runtimeOverrides?.ctx as Ctx | undefined,
+      payload.ctx,
+    );
 
     const body: Record<string, unknown> = {
       inputData: payload.inputData,

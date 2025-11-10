@@ -54,32 +54,29 @@ describe("ClientKit", () => {
     ).rejects.toThrowError(ClientKitError);
   });
 
-  it("merges default runtime metadata and ctx for workflow runs", async () => {
+  it("merges runtime metadata and ctx for workflow runs", async () => {
     const now = new Date().toISOString();
     const fetchMock = vi.fn().mockResolvedValue(
       createJsonResponse({
         runId: "run-xyz",
         status: "success",
         steps: {},
-        metadata: { tenant: "aidalinfo", userId: "42" },
+        metadata: { tenant: "aidalinfo", requestId: "payload" },
         ctx: { traceId: "trace-123", locale: "fr-FR" },
         startedAt: now,
         finishedAt: now,
       }),
     );
 
-    const client = new ClientKit({
-      baseUrl,
-      fetch: fetchMock,
+    const client = new ClientKit({ baseUrl, fetch: fetchMock });
+
+    await client.runWorkflow("enrich-data", {
+      inputData: { id: "1" },
       runtime: {
         metadata: { tenant: "aidalinfo" },
         ctx: { traceId: "trace-123" },
       },
-    });
-
-    await client.runWorkflow("enrich-data", {
-      inputData: { id: "1" },
-      metadata: { userId: "42" },
+      metadata: { requestId: "payload" },
       ctx: { locale: "fr-FR" },
     });
 
@@ -88,8 +85,40 @@ describe("ClientKit", () => {
     const [, init] = call!;
     expect(init?.method).toBe("POST");
     const body = JSON.parse(init?.body as string);
-    expect(body.metadata).toEqual({ tenant: "aidalinfo", userId: "42" });
+    expect(body.metadata).toEqual({ tenant: "aidalinfo", requestId: "payload" });
     expect(body.ctx).toEqual({ traceId: "trace-123", locale: "fr-FR" });
+    expect(body.runtime).toBeUndefined();
+  });
+
+  it("allows providing metadata and ctx directly on workflow runs", async () => {
+    const now = new Date().toISOString();
+    const fetchMock = vi.fn().mockResolvedValue(
+      createJsonResponse({
+        runId: "run-xyz",
+        status: "success",
+        steps: {},
+        metadata: { requestId: "payload" },
+        ctx: { locale: "fr-CA" },
+        startedAt: now,
+        finishedAt: now,
+      }),
+    );
+
+    const client = new ClientKit({ baseUrl, fetch: fetchMock });
+
+    await client.runWorkflow("enrich-data", {
+      inputData: { id: "1" },
+      metadata: { requestId: "payload" },
+      ctx: { locale: "fr-CA" },
+    });
+
+    const call = fetchMock.mock.calls.at(-1);
+    expect(call).toBeDefined();
+    const [, init] = call!;
+    expect(init?.method).toBe("POST");
+    const body = JSON.parse(init?.body as string);
+    expect(body.metadata).toEqual({ requestId: "payload" });
+    expect(body.ctx).toEqual({ locale: "fr-CA" });
   });
 
   it("resumes workflow runs", async () => {
