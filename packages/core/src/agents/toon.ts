@@ -30,11 +30,14 @@ export function buildToonSystemPrompt(
     "Respect the schema below, output only the TOON block, and keep [N] equal to the number of rows you emit.",
     "Replace the placeholder values with the actual answer.",
     "",
-    "CRITICAL: For inline string arrays (items[N]: val1,val2,val3):",
-    "- If a value contains comma (,), colon (:), or special characters, wrap it in double quotes",
-    "- Example: notes[2]: \"Text with, comma\",\"Text with: colon\"",
-    "- Strings can be long, but MUST be quoted if they contain commas or colons",
-    "- Never use list format (- item) for arrays, always use inline format",
+    "CRITICAL RULES:",
+    "1. Array lengths MUST match: If you write items[5], you MUST provide exactly 5 items",
+    "2. For inline string arrays (items[N]: val1,val2,val3):",
+    "   - If a value contains comma (,), colon (:), or special characters, wrap it in double quotes",
+    "   - Example: notes[2]: \"Text with, comma\",\"Text with: colon\"",
+    "   - Strings can be long, but MUST be quoted if they contain commas or colons",
+    "   - Never use list format (- item) for string arrays, always use inline format",
+    "3. For object arrays, you can use list format (- item) with nested properties",
     "",
     "```toon",
     example,
@@ -64,16 +67,24 @@ export async function parseToonStructuredOutput<OUTPUT>(
     decoded = decode(payload);
   } catch (error) {
     // Enhanced error with the actual TOON content for debugging
-    const previewLength = 500;
+    const previewLength = 1000; // Increased from 500 for better visibility
     const preview =
       payload.length > previewLength
-        ? `${payload.slice(0, previewLength)}...[truncated ${payload.length - previewLength} chars]`
+        ? `${payload.slice(0, previewLength)}...\n[truncated ${payload.length - previewLength} chars]\n...${payload.slice(-200)}`
         : payload;
 
-    throw new Error(
-      `Failed to decode TOON output. TOON content:\n${preview}`,
-      { cause: error },
-    );
+    // Extract error details if it's an array length mismatch
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const arrayMismatch = errorMsg.match(/Expected (\d+) .* items, but got (\d+)/);
+
+    let detailedMessage = `Failed to decode TOON output.\n`;
+    if (arrayMismatch) {
+      detailedMessage += `\nArray length mismatch: Expected ${arrayMismatch[1]} items but got ${arrayMismatch[2]}.\n`;
+      detailedMessage += `This usually means the LLM declared an array size but didn't provide all items.\n`;
+    }
+    detailedMessage += `\nTOON content (${payload.length} chars):\n${preview}`;
+
+    throw new Error(detailedMessage, { cause: error });
   }
 
   // Apply minimal type coercion based on schema expectations

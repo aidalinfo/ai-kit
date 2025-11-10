@@ -568,6 +568,53 @@ describe("toon helpers", () => {
         parseToonStructuredOutput(result, structured),
       ).rejects.toThrow("Failed to decode TOON output");
     });
+
+    it("throws helpful error on array length mismatch", async () => {
+      const structured = Output.object({
+        schema: z.object({
+          columns: z.array(
+            z.object({
+              name: z.string(),
+              range: z.object({
+                start: z.string(),
+                end: z.string(),
+              }),
+            }),
+          ),
+        }),
+      });
+
+      // Invalid TOON: declares 3 items but provides only 2
+      const result = {
+        text: [
+          "```toon",
+          "columns[3]:",
+          "  - name: Column A",
+          "    range:",
+          "      start: A1",
+          "      end: A10",
+          "  - name: Column B",
+          "    range:",
+          "      start: B1",
+          "      end: B10",
+          "```",
+        ].join("\n"),
+        response: {},
+        usage: {},
+        finishReason: "stop",
+      } as unknown as GenerateTextResult<ToolSet, any>;
+
+      try {
+        await parseToonStructuredOutput(result, structured);
+        throw new Error("Should have thrown");
+      } catch (error: any) {
+        expect(error.message).toContain("Array length mismatch");
+        expect(error.message).toContain("Expected 3 items but got 2");
+        expect(error.message).toContain(
+          "LLM declared an array size but didn't provide all items",
+        );
+      }
+    });
   });
 
   describe("prompt generation", () => {
@@ -584,10 +631,11 @@ describe("toon helpers", () => {
 
       const prompt = buildToonSystemPrompt("Base system", schema);
 
-      expect(prompt).toContain("CRITICAL: For inline string arrays");
+      expect(prompt).toContain("CRITICAL RULES:");
+      expect(prompt).toContain("Array lengths MUST match");
       expect(prompt).toContain("comma (,), colon (:)");
       expect(prompt).toContain("wrap it in double quotes");
-      expect(prompt).toContain("Never use list format (- item)");
+      expect(prompt).toContain("Never use list format (- item) for string arrays");
     });
 
     it("generates example with inline format for string arrays", () => {
