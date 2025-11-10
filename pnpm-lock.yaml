@@ -32,8 +32,8 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(@opentelemetry/api@1.9.0)
       '@toon-format/toon':
-        specifier: ^0.8.0
-        version: 0.8.0
+        specifier: ^0.9.0
+        version: 0.9.0
       '@types/node':
         specifier: ^24.5.2
         version: 24.7.0
@@ -736,8 +736,8 @@ packages:
   '@standard-schema/spec@1.0.0':
     resolution: {integrity: sha512-m2bOd0f2RT9k8QJx1JN85cZYyH1RqFBdlwtkSlf4tBDYLCiiZnv1fIIwacK6cqwXavOydf0NPToMQgpKq+dVlA==}
 
-  '@toon-format/toon@0.8.0':
-    resolution: {integrity: sha512-w8o61UiKRDyTDFh05V9k87jCpa6DBmdBSHm9B1vXS3ynSfhvCKF7wn9IaMfglrfs6ARiaqIcCgBIdYbJETwVxQ==}
+  '@toon-format/toon@0.9.0':
+    resolution: {integrity: sha512-BaMhGh1+/z8ceDrF2xL9Drd42hijbUJlivm/1goPR26RgCYsqlMkHbg48hx9a5UjZC7oZqxWPJ6ju5qvALi6Ag==}
 
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
@@ -2118,7 +2118,7 @@ snapshots:
 
   '@standard-schema/spec@1.0.0': {}
 
-  '@toon-format/toon@0.8.0': {}
+  '@toon-format/toon@0.9.0': {}
 
   '@types/estree@1.0.8': {}
 
