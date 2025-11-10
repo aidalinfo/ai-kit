@@ -1,0 +1,83 @@
+name: Publish Client Kit
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'packages/client-kit/package.json'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+          scope: '@ai_kit'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+
+      - name: Get package version
+        id: package
+        run: |
+          VERSION=$(cd packages/client-kit && node -p "require('./package.json').version")
+          PACKAGE_NAME=$(cd packages/client-kit && node -p "require('./package.json').name")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "Package: $PACKAGE_NAME@$VERSION"
+
+      - name: Check if version exists on NPM
+        id: npm-check
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd packages/client-kit
+          if npm view ${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }} version 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Version ${{ steps.package.outputs.version }} already exists on NPM"
+            exit 1
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Version ${{ steps.package.outputs.version }} does not exist on NPM"
+          fi
+
+      - name: Install dependencies
+        run: |
+          cd packages/client-kit
+          pnpm install
+
+      - name: Build package
+        run: |
+          cd packages/client-kit
+          pnpm build
+
+      - name: Publish to NPM
+        run: |
+          cd packages/client-kit
+          pnpm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.package.outputs.version }}
+          name: AI KIT client - Release v${{ steps.package.outputs.version }}
+          body: |
+            ## Changes
+
+            Package ${{ steps.package.outputs.name }} has been updated to version ${{ steps.package.outputs.version }}.
+          draft: false
+          prerelease: false

@@ -6,3 +6,4 @@ packages:
   - packages/docs
   - packages/server
   - packages/create-ai-kit
+  - packages/client-kit

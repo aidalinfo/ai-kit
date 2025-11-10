@@ -1,0 +1,42 @@
+{
+  "name": "@ai_kit/client-kit",
+  "version": "0.1.0",
+  "description": "Lightweight HTTP client for interacting with AI Kit servers",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "prepare": "pnpm run build",
+    "test": "vitest run"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "workflow",
+    "client"
+  ],
+  "license": "MIT",
+  "packageManager": "pnpm@10.15.0",
+  "dependencies": {
+    "@ai_kit/core": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "^24.7.0",
+    "typescript": "^5.9.2",
+    "vitest": "^2.1.3"
+  }
+}

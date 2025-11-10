@@ -1,0 +1,116 @@
+---
+title: "Authentication"
+description: "Protect ServerKit endpoints with bearer tokens or bespoke guards."
+locale: en
+---
+
+ServerKit ships with two complementary layers to secure your HTTP API:
+
+- an opt-in bearer-token guard that validates JSON Web Tokens (JWT) before any built-in route executes;
+- the ability to chain custom [Hono middleware](https://hono.dev/api/middleware) or register bespoke routes with their own protections.
+
+Use the sections below to enable the built-in guard, mint compatible tokens, and combine it with your own access control logic.
+
+## Enabling the bearer guard
+
+Provide a `server.auth` object when instantiating `ServerKit` to require a bearer token on every request. The guard is active as soon as you pass a non-empty `secret`; the `enabled` flag defaults to `true` so you only need to flip it when turning the guard off temporarily.
+
+```ts
+import { ServerKit } from "@ai_kit/server";
+
+const server = new ServerKit({
+  agents: { /* ... */ },
+  workflows: { /* ... */ },
+  server: {
+    auth: {
+      secret: process.env.SERVER_AUTH_SECRET!,
+      // enabled: true, // defaults to true when auth is provided
+    },
+  },
+});
+```
+
+With this configuration:
+
+- requests missing the `Authorization` header receive `401 Missing Authorization header`;
+- headers that do not use the `Bearer` scheme (for example `Basic` or an empty value) receive `401 Authorization header must use the Bearer scheme`;
+- malformed or expired tokens raise `401 Invalid authorization token`.
+
+Set `enabled: false` to keep the configuration around while bypassing the guard, for example in local development.
+
+## Issuing compatible tokens
+
+The guard expects a JWT signed with the shared secret using an HMAC algorithm such as `HS256`. A quick way to mint tokens is with the [`jose`](https://github.com/panva/jose) package that AI Kit already depends on.
+
+```ts
+import { SignJWT } from "jose";
+
+async function createServerToken() {
+  const secret = new TextEncoder().encode(process.env.SERVER_AUTH_SECRET!);
+
+  return await new SignJWT({
+    sub: "user-123",
+    roles: ["support", "admin"],
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("15m")
+    .sign(secret);
+}
+```
+
+Send the token in an `Authorization: Bearer <token>` header when calling any server endpoint (agents, workflows, streaming SSE, custom routes, Swagger, etc.).
+
+## Reading the decoded payload
+
+Once the middleware verifies a token, it stores the raw token and decoded payload on the Hono context under the `auth` key. Any downstream middleware or handler can read it to tailor behaviour to the current principal.
+
+```ts
+const middleware = async (c, next) => {
+  const auth = c.get("auth");
+  if (auth?.payload.roles?.includes("admin")) {
+    await next();
+    return;
+  }
+
+  return c.json({ error: "Forbidden" }, 403);
+};
+```
+
+Use this pattern to implement role-based access control without having to re-parse the token inside each handler.
+
+## Combining with custom strategies
+
+Need API keys, IP allow-lists, or multi-tenant scoping? Chain additional middleware via the `server.middleware` array or directly inside `registerApiRoute`.
+
+```ts
+import { ServerKit, registerApiRoute } from "@ai_kit/server";
+
+const server = new ServerKit({
+  agents: {},
+  workflows: {},
+  server: {
+    auth: { secret: process.env.SERVER_AUTH_SECRET! },
+    middleware: [
+      async (c, next) => {
+        if (c.req.header("x-api-key") !== process.env.PUBLIC_API_KEY) {
+          return c.json({ error: "invalid api key" }, 401);
+        }
+
+        await next();
+      },
+    ],
+    apiRoutes: [
+      registerApiRoute("/tenant-info", {
+        method: "GET",
+        async handler(c) {
+          const { payload } = c.get("auth");
+          return c.json({ tenantId: payload.tenantId });
+        },
+      }),
+    ],
+  },
+});
+```
+
+Global middleware runs before the bearer guard hands control to your handlers, so you can bail out early, enrich the context, or even set additional data for later steps. Custom routes declared through `registerApiRoute` automatically inherit both the bearer guard and the middleware chain, ensuring consistent protection across your API.
