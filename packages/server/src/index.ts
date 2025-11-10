@@ -7,4 +7,8 @@ export {
   type ServerMiddlewareConfig,
   type ServerRuntimeOptions,
   createServerKit,
+  registerApiRoute,
+  type ApiRouteMethod,
+  type ApiRouteConfig,
+  type ApiRouteDefinition,
 } from "./ServerKit.js";

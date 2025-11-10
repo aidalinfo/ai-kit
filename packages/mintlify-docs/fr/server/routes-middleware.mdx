@@ -1,0 +1,75 @@
+---
+title: "Routes custom & middleware"
+description: "Étendre l’API HTTP de ServerKit avec des endpoints dédiés et des gardes de requête."
+locale: fr
+---
+
+ServerKit reprend désormais l’expérience Mastra : ajoutez vos propres endpoints HTTP en plus des routes agents/workflows intégrées et branchez du middleware au niveau global ou route par route.
+
+## Démarrage rapide
+
+Utilisez le helper `registerApiRoute` exporté par `@ai_kit/server` pour déclarer une route. Ajoutez-la au tableau `server.apiRoutes` et ServerKit la montera automatiquement à la racine du serveur.
+
+```ts
+import { ServerKit, registerApiRoute } from "@ai_kit/server";
+
+const server = new ServerKit({
+  agents: {},
+  workflows: {},
+  server: {
+    apiRoutes: [
+      registerApiRoute("/healthz", {
+        method: "GET",
+        handler: (c) => c.json({ status: "ok" }),
+      }),
+    ],
+  },
+});
+```
+
+Chaque handler reçoit le [contexte Hono](https://hono.dev/api/context), ce qui vous permet de lire les en-têtes, les paramètres de requête ou de retourner n’importe quel type de réponse. Le helper normalise également le chemin pour éviter les `/` manquants ou en double.
+
+## Accéder aux internes de ServerKit
+
+Depuis un handler vous pouvez récupérer l’instance `ServerKit` via `c.get("serverKit")`, ou l’objet compatible Mastra via `c.get("mastra")`. Pratique pour réutiliser vos agents et workflows existants.
+
+```ts
+registerApiRoute("/workload", {
+  method: "GET",
+  handler: async (c) => {
+    const serverKit = c.get("serverKit");
+    const workflows = await serverKit.runtime.getWorkflows();
+
+    return c.json({
+      workflows,
+      requestedAt: new Date().toISOString(),
+    });
+  },
+});
+```
+
+## Ajouter du middleware
+
+Les routes custom peuvent embarquer leur propre middleware. Servez-vous-en pour imposer une authentification, logger les requêtes ou enrichir le contexte avant le handler.
+
+```ts
+registerApiRoute("/secure-data", {
+  method: "GET",
+  middleware: [
+    async (c, next) => {
+      if (!c.req.header("authorization")) {
+        return c.text("Missing auth", 401);
+      }
+
+      await next();
+    },
+  ],
+  handler: (c) => c.json({ secret: "42" }),
+});
+```
+
+Vous pouvez toujours déclarer des middlewares globaux via `server.middleware`. Ils s’exécutent avant ceux définis directement sur la route, qui eux-mêmes passent la main au handler final.
+
+## Tester vos routes custom
+
+Les tests d’intégration situés dans `packages/server/src/__tests__/server.test.ts` montrent comment lancer un `ServerKit`, appeler une route custom et vérifier le JSON de réponse. Inspirez-vous de ce patron pour sécuriser vos propres endpoints et scénarios d’authentification.
