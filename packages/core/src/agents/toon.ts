@@ -31,13 +31,16 @@ export function buildToonSystemPrompt(
     "Replace the placeholder values with the actual answer.",
     "",
     "CRITICAL RULES:",
-    "1. Array lengths MUST match: If you write items[5], you MUST provide exactly 5 items",
-    "2. For inline string arrays (items[N]: val1,val2,val3):",
+    "1. Array syntax MUST be complete: ALWAYS write arrayName[N]: or arrayName[N]{cols}: where N is the exact count",
+    "   - CORRECT: columns[5]: or users[3]{name,age}:",
+    "   - WRONG: columns[ or columns[] or columns:",
+    "2. Array lengths MUST match: If you write items[5], you MUST provide exactly 5 items",
+    "3. For inline string arrays (items[N]: val1,val2,val3):",
     "   - If a value contains comma (,), colon (:), or special characters, wrap it in double quotes",
     "   - Example: notes[2]: \"Text with, comma\",\"Text with: colon\"",
     "   - Strings can be long, but MUST be quoted if they contain commas or colons",
     "   - Never use list format (- item) for string arrays, always use inline format",
-    "3. For object arrays, you can use list format (- item) with nested properties",
+    "4. For object arrays, you can use list format (- item) with nested properties",
     "",
     "```toon",
     example,
@@ -61,6 +64,9 @@ export async function parseToonStructuredOutput<OUTPUT>(
       "TOON output expected but the model response did not include a TOON block.",
     );
   }
+
+  // Validate array syntax before attempting to decode
+  validateToonArraySyntax(payload);
 
   let decoded: unknown;
   try {
@@ -117,6 +123,43 @@ function extractToonPayload(text: string): string | undefined {
   }
 
   return trimmed;
+}
+
+/**
+ * Validates TOON array syntax to catch common LLM mistakes early.
+ * Throws descriptive errors for malformed array declarations.
+ */
+function validateToonArraySyntax(payload: string): void {
+  // Check for incomplete array syntax: arrayName[ without a number
+  const incompleteArrayPattern = /^\s*(\w+)\[\s*$/m;
+  const incompleteMatch = payload.match(incompleteArrayPattern);
+
+  if (incompleteMatch) {
+    const arrayName = incompleteMatch[1];
+    throw new Error(
+      `Invalid TOON array syntax: "${arrayName}[" is incomplete.\n` +
+      `Array declarations MUST include the count: ${arrayName}[N]: or ${arrayName}[N]{cols}:\n` +
+      `Examples:\n` +
+      `  - CORRECT: ${arrayName}[5]:\n` +
+      `  - CORRECT: ${arrayName}[3]{id,name}:\n` +
+      `  - WRONG: ${arrayName}[\n` +
+      `  - WRONG: ${arrayName}[]:\n\n` +
+      `This usually means the LLM forgot to specify how many items are in the array.`
+    );
+  }
+
+  // Check for empty brackets: arrayName[]
+  const emptyBracketsPattern = /(\w+)\[\]\s*:/;
+  const emptyMatch = payload.match(emptyBracketsPattern);
+
+  if (emptyMatch) {
+    const arrayName = emptyMatch[1];
+    throw new Error(
+      `Invalid TOON array syntax: "${arrayName}[]:" has empty brackets.\n` +
+      `Array declarations MUST include the count: ${arrayName}[N]:\n` +
+      `Example: ${arrayName}[5]: for an array with 5 items`
+    );
+  }
 }
 
 /**
