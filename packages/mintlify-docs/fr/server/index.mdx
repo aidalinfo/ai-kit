@@ -45,8 +45,10 @@ Par défaut, le serveur écoute sur `0.0.0.0` et le port `PORT` (ou 8787). Les i
 
 | Route | Description |
 | --- | --- |
+| `GET /api/agents` | Liste tous les agents déclarés dans la configuration du serveur. |
 | `POST /api/agents/:id/generate` | Exécute `Agent.generate` une fois et retourne la réponse complète. |
 | `POST /api/agents/:id/stream` | Diffuse `Agent.stream` via SSE ou l’API `DataStreamResponse` fournie par `ai`. |
+| `GET /api/workflows` | Liste tous les workflows déclarés dans la configuration du serveur. |
 | `POST /api/workflows/:id/run` | Démarre un run et renvoie son `runId` + l’état final (ou `waiting_human`). |
 | `POST /api/workflows/:id/stream` | Diffuse chaque `WorkflowEvent` et l’état final via SSE. |
 | `POST /api/workflows/:id/runs/:runId/resume` | Reprend un run suspendu avec des données humaines. |

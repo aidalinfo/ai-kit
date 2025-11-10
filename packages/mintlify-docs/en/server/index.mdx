@@ -45,8 +45,10 @@ The server listens on `HOST` (default `0.0.0.0`) and `PORT` (default `8787`). Ag
 
 | Route | Description |
 | --- | --- |
+| `GET /api/agents` | Lists every agent registered in the server configuration. |
 | `POST /api/agents/:id/generate` | Executes `Agent.generate` once and returns the full result. |
 | `POST /api/agents/:id/stream` | Streams `Agent.stream` via SSE or `DataStreamResponse`. |
+| `GET /api/workflows` | Lists every workflow registered in the server configuration. |
 | `POST /api/workflows/:id/run` | Starts a workflow run and returns `{ runId, ...result }`. |
 | `POST /api/workflows/:id/stream` | Streams every `WorkflowEvent` plus the final status via SSE. |
 | `POST /api/workflows/:id/runs/:runId/resume` | Resumes a suspended run with human input. |

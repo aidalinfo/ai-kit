@@ -30,8 +30,10 @@ await server.listen({ port: 8787 });
 
 The server registers the following endpoints:
 
+- `GET /api/agents` — list registered agents.
 - `POST /api/agents/:id/generate` — synchronously invoke `Agent.generate`.
 - `POST /api/agents/:id/stream` — stream the result of `Agent.stream`.
+- `GET /api/workflows` — list registered workflows.
 - `POST /api/workflows/:id/run` — execute a workflow to completion.
 - `POST /api/workflows/:id/stream` — stream workflow events (Server-Sent Events).
 - `POST /api/workflows/:id/runs/:runId/resume` — resume a suspended workflow run that awaits human input.
