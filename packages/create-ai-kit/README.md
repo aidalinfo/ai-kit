@@ -86,14 +86,14 @@ cd my-ai-app
 npm run dev
 ```
 
-Your server will be running at `http://localhost:3000`
+Your server will be running at `http://localhost:3000` (see `server.listen({ port: 3000 })` in the generated `src/index.ts`).
 
 Test it:
 
 ```bash
-curl -X POST http://localhost:3000/api/workflow \
+curl -X POST http://localhost:3000/api/workflows/support-workflow/run \
   -H "Content-Type: application/json" \
-  -d '{"message": "Hello!"}'
+  -d '{"inputData": {"message": "Hello!"}}'
 ```
 
 ## License

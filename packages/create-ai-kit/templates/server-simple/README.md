@@ -10,14 +10,14 @@ A simple AI Kit server application with a support agent workflow.
 npm run dev
 ```
 
-2. The server will be running at `http://localhost:3000`
+2. The server listens on `http://localhost:3000` (see `server.listen({ port })` in `src/index.ts`).
 
 3. Test the API:
 
 ```bash
-curl -X POST http://localhost:3000/api/workflow \
+curl -X POST http://localhost:3000/api/workflows/support-workflow/run \
   -H "Content-Type: application/json" \
-  -d '{"message": "Hello, can you help me?"}'
+  -d '{"inputData": {"message": "Hello, can you help me?"}}'
 ```
 
 ## Project Structure
@@ -35,9 +35,9 @@ src/
 
 ## Next Steps
 
-- Add more agents to your workflow
-- Customize the agent instructions
-- Add environment variables for configuration
-- Implement custom endpoints
+- Plug a real model into `supportAgent` (e.g. `openai("gpt-4o-mini")` or `scaleway("gpt-oss-120b")`)
+- Add more agents or expose them under `/api/agents/:id/*`
+- Extend the workflow by chaining additional steps with `createStep`
+- Configure environment variables (`PORT`, provider keys, Langfuse, etc.)
 
 Learn more at [AI Kit Documentation](https://docs.ai-kit.dev)

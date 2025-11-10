@@ -59,8 +59,11 @@ export async function parseToonStructuredOutput<OUTPUT>(
     throw new Error("Failed to decode TOON output.", { cause: error });
   }
 
+  // Apply minimal type coercion based on schema expectations
+  // This handles edge cases like numeric IDs that should be strings (e.g., SIRET numbers)
   const schema = getJsonSchemaFromStructuredOutput(structuredOutput);
-  const coerced = schema ? coerceDecodedPayload(decoded, schema) : decoded;
+  const coerced = schema ? coerceBySchema(decoded, schema) : decoded;
+
   const jsonText = JSON.stringify(coerced);
   const parsedOutput = await structuredOutput.parseOutput(
     { text: jsonText },
@@ -88,111 +91,58 @@ function extractToonPayload(text: string): string | undefined {
   return trimmed;
 }
 
-function coerceDecodedPayload(value: unknown, schema: JSONSchema7): unknown {
-  if (value === undefined || schema === undefined || schema === false) {
-    return value;
+/**
+ * Applies type coercion based on JSON Schema expectations.
+ * Only converts numbers to strings when the schema explicitly expects a string type.
+ * This is simpler and more correct than the previous complex recursive approach.
+ */
+function coerceBySchema(value: unknown, schema: JSONSchema7): unknown {
+  const schemaType = resolveType(schema);
+
+  // If schema expects a string and we have a finite number, convert it
+  if (
+    schemaType === "string" &&
+    typeof value === "number" &&
+    Number.isFinite(value)
+  ) {
+    return value.toString();
   }
 
-  if (Array.isArray(schema.allOf) && schema.allOf.length > 0) {
-    return schema.allOf.reduce<unknown>(
-      (
-        current: unknown,
-        definition: SchemaDefinition | JSONSchema7 | boolean | undefined,
-      ) =>
-        coerceDecodedPayload(
-          current,
-          normalizeDefinition(definition as SchemaDefinition),
-        ),
-      value,
-    );
+  // Handle arrays
+  if (schemaType === "array" && Array.isArray(value) && schema.items) {
+    const itemSchema = Array.isArray(schema.items)
+      ? null
+      : normalizeDefinition(schema.items as SchemaDefinition);
+
+    if (itemSchema) {
+      return value.map((item) => coerceBySchema(item, itemSchema));
+    }
   }
 
-  if (Array.isArray(schema.anyOf) && schema.anyOf.length > 0) {
-    return coerceDecodedPayload(
-      value,
-      normalizeDefinition(schema.anyOf[0] as SchemaDefinition),
-    );
-  }
-
-  if (Array.isArray(schema.oneOf) && schema.oneOf.length > 0) {
-    return coerceDecodedPayload(
-      value,
-      normalizeDefinition(schema.oneOf[0] as SchemaDefinition),
-    );
-  }
-
-  const resolvedType = resolveType(schema);
-  switch (resolvedType) {
-    case "object":
-      if (value && typeof value === "object" && !Array.isArray(value)) {
-        const record = value as Record<string, unknown>;
-        const properties = schema.properties ?? {};
-        let mutated = false;
-        const next: Record<string, unknown> = { ...record };
-
-        for (const [key, definition] of Object.entries(properties)) {
-          if (!(key in record)) {
-            continue;
-          }
-
-          const propertySchema = normalizeDefinition(
-            definition as SchemaDefinition,
-          );
-          const coerced = coerceDecodedPayload(record[key], propertySchema);
-          if (coerced !== record[key]) {
-            mutated = true;
-            next[key] = coerced;
-          }
-        }
-
-        return mutated ? next : value;
+  // Handle objects
+  if (
+    schemaType === "object" &&
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    schema.properties
+  ) {
+    const result: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value)) {
+      const propSchema = schema.properties[key];
+      if (propSchema) {
+        result[key] = coerceBySchema(
+          val,
+          normalizeDefinition(propSchema as SchemaDefinition),
+        );
+      } else {
+        result[key] = val;
       }
-      return value;
-    case "array":
-      if (Array.isArray(value)) {
-        if (Array.isArray(schema.items)) {
-          let mutated = false;
-          const coercedArray = value.map((entry, index) => {
-            const itemSchema = schema.items?.[index];
-            if (!itemSchema) {
-              return entry;
-            }
-
-            const coerced = coerceDecodedPayload(
-              entry,
-              normalizeDefinition(itemSchema),
-            );
-            mutated = mutated || coerced !== entry;
-            return coerced;
-          });
-          return mutated ? coercedArray : value;
-        }
-
-        if (schema.items) {
-          const itemSchema = normalizeDefinition(
-            schema.items as SchemaDefinition,
-          );
-          let mutated = false;
-          const coercedArray = value.map((entry) => {
-            const coerced = coerceDecodedPayload(entry, itemSchema);
-            mutated = mutated || coerced !== entry;
-            return coerced;
-          });
-          return mutated ? coercedArray : value;
-        }
-      }
-      return value;
-    case "string":
-      if (typeof value === "number" && Number.isFinite(value)) {
-        return value.toString();
-      }
-      if (typeof value === "bigint") {
-        return value.toString();
-      }
-      return value;
-    default:
-      return value;
+    }
+    return result;
   }
+
+  return value;
 }
 
 function buildExampleFromSchema(
