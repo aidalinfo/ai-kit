@@ -1,0 +1,83 @@
+---
+title: "Mode structuré TOON"
+description: "Exploitez le Token-Oriented Object Notation pour réduire les tokens et fiabiliser les réponses tabulaires."
+locale: fr
+---
+
+[TOON](https://github.com/toon-format/toon) (Token-Oriented Object Notation) est un format texte compact avec schéma explicite, idéal pour les tableaux homogènes. AI Kit peut générer automatiquement les prompts TOON et retransformer la sortie dans votre schéma `structuredOutput`.
+
+## Pourquoi TOON ?
+
+- 30 à 60 % de tokens en moins par rapport au JSON formaté.
+- Un en-tête de schéma (`collection[n]{colonnes}`) qui agit comme garde-fou côté LLM.
+- Aller/retour unifié via `@toon-format/toon`.
+- Le parseur convertit désormais les nombres en chaînes lorsque le schéma attend `string` (utile pour les SIRET/SIREN).
+
+## Activer TOON
+
+TOON nécessite un schéma `structuredOutput`. Ensuite, on peut l’activer par défaut sur l’agent ou seulement sur certains appels.
+
+### Valeur par défaut sur l’agent
+
+```ts
+import { Agent } from "@ai_kit/core";
+import { Output } from "@ai_kit/core/agents";
+import { z } from "zod";
+import { openaiProvider } from "@ai-sdk/openai";
+
+const siretOutput = Output.object({
+  schema: z.object({
+    siret: z.string().length(14, "Le SIRET doit contenir 14 chiffres."),
+  }),
+});
+
+const assistantSiret = new Agent({
+  name: "assistant_siret",
+  instructions:
+    "Tu trouves le SIRET des entreprises en combinant recherche web et registres.",
+  model: openaiProvider("gpt-4.1-mini"),
+  tools: {
+    web_search: openaiProvider.tools.webSearch({}),
+  },
+  toon: true, // TOON activé par défaut sur generate()
+});
+
+const result = await assistantSiret.generate({
+  prompt:
+    'Trouve le SIRET d’« Aidalinfo ». Retourne uniquement l’ID de 14 chiffres sous forme de chaîne.',
+  structuredOutput: siretOutput,
+});
+
+console.log(result.experimental_output);
+// -> { siret: "38347481400100" }
+```
+
+### Override par appel
+
+```ts
+await assistantSiret.generate({
+  prompt: "Rédige un résumé libre au lieu d’un identifiant structuré.",
+  structuredOutput: freeformOutput,
+  toon: false, // force le fallback JSON pour cet appel
+});
+```
+
+Inversement, sur un agent où TOON est inactif, passez `toon: true` au moment de l’appel.
+
+## Comportement du prompt
+
+Quand TOON est actif, AI Kit :
+
+1. Déduit un exemple à partir de votre schéma `structuredOutput` et l’injecte dans le prompt système entre balises ```toon.
+2. Donne l’instruction de répondre uniquement avec ce bloc, en alignant `[N]` sur le nombre de lignes retournées.
+3. Décode la réponse via `@toon-format/toon`, applique une coercition simple (ex. nombres → chaînes) selon le schéma, puis valide avec Zod.
+
+Absence de bloc TOON valide ⇒ `AI_NoObjectGeneratedError`.
+
+## Limites et bonnes pratiques
+
+- `agent.stream` n’est pas encore compatible TOON.
+- Sans `structuredOutput`, l’option est ignorée.
+- Ajoutez une règle claire sur la citation des IDs (ex. « garde les 14 chiffres exactement »).
+- Mesurez l’économie en comparant la longueur du JSON original et celle du bloc TOON.
+- Pour manipuler TOON côté DX, servez-vous du paquet ou de la CLI [`@toon-format/toon`](https://github.com/toon-format/toon).

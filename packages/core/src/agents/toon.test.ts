@@ -64,12 +64,70 @@ describe("toon helpers", () => {
     expect(
       (result as typeof result & {
         experimental_output: { users: Array<{ id: number; name: string }> };
-      }).experimental_output,
+    }).experimental_output,
     ).toEqual({
       users: [
         { id: 1, name: "Alice" },
         { id: 2, name: "Bob" },
       ],
+    });
+  });
+
+  it("coerces numeric fields to strings when schema expects a single string", async () => {
+    const structured = Output.object({
+      schema: z.object({
+        siret: z.string(),
+      }),
+    });
+
+    const result = {
+      text: ["```toon", "siret: 38347481400100", "```"].join("\n"),
+      response: {},
+      usage: {},
+      finishReason: "stop",
+    } as unknown as GenerateTextResult<ToolSet, { siret: string }>;
+
+    await parseToonStructuredOutput(result, structured);
+
+    expect(
+      (result as typeof result & { experimental_output: { siret: string } })
+        .experimental_output,
+    ).toEqual({
+      siret: "38347481400100",
+    });
+  });
+
+  it("coerces numeric fields inside arrays when schema expects strings", async () => {
+    const structured = Output.object({
+      schema: z.object({
+        sirets: z.array(
+          z.object({
+            siret: z.string(),
+          }),
+        ),
+      }),
+    });
+
+    const result = {
+      text: ["```toon", "sirets[1]{siret}:", "  38347481400100", "```"].join(
+        "\n",
+      ),
+      response: {},
+      usage: {},
+      finishReason: "stop",
+    } as unknown as GenerateTextResult<
+      ToolSet,
+      { sirets: Array<{ siret: string }> }
+    >;
+
+    await parseToonStructuredOutput(result, structured);
+
+    expect(
+      (result as typeof result & {
+        experimental_output: { sirets: Array<{ siret: string }> };
+      }).experimental_output,
+    ).toEqual({
+      sirets: [{ siret: "38347481400100" }],
     });
   });
 });

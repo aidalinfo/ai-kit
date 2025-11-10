@@ -1,0 +1,85 @@
+---
+title: "TOON structured mode"
+description: "Use Token-Oriented Object Notation (TOON) to cut token usage and keep tabular outputs reliable."
+locale: en
+---
+
+[TOON](https://github.com/toon-format/toon) (Token-Oriented Object Notation) is a compact, schema-aware textual format well suited to uniform tables. AI Kit can auto-generate TOON prompts and parse the responses back into your `structuredOutput` schema.
+
+## Why TOON?
+
+- 30–60 % fewer tokens compared to pretty-printed JSON for tabular payloads.
+- Explicit schema header (`collection[length]{fields}`) acts as a guardrail for the model.
+- Single code path for generation + parsing thanks to `@toon-format/toon`.
+- Decoder now coerces numeric tokens into strings when the schema expects strings (handy for IDs such as SIRET/SIREN).
+
+## Enabling TOON
+
+TOON requires a `structuredOutput` schema. Once provided, you can enable the format either globally on the agent or per request.
+
+### Default on an agent
+
+```ts
+import { Agent } from "@ai_kit/core";
+import { Output } from "@ai_kit/core/agents";
+import { z } from "zod";
+import { openaiProvider } from "@ai-sdk/openai";
+
+const siretOutput = Output.object({
+  schema: z.object({
+    siret: z.string().length(14, "Must contain 14 digits."),
+  }),
+});
+
+const assistantSiret = new Agent({
+  name: "assistant_siret",
+  instructions:
+    "You find SIRET identifiers by combining web search and business directories.",
+  model: openaiProvider("gpt-4.1-mini"),
+  tools: {
+    web_search: openaiProvider.tools.webSearch({}),
+  },
+  toon: true, // default to TOON for every generate() call
+});
+
+const result = await assistantSiret.generate({
+  prompt:
+    'Find the SIRET of "Aidalinfo". Return only the 14-digit ID as a string.',
+  structuredOutput: siretOutput,
+});
+
+console.log(result.experimental_output);
+// -> { siret: "38347481400100" }
+```
+
+### Override per call
+
+You can still opt out (or in) on a specific call:
+
+```ts
+await assistantSiret.generate({
+  prompt: "Return a free-form summary instead of a structured ID.",
+  structuredOutput: freeformOutput,
+  toon: false, // fallback to regular structured generation
+});
+```
+
+Conversely, for agents where TOON is usually off, pass `toon: true` next to `structuredOutput`.
+
+## Prompt behavior
+
+When TOON is enabled, AI Kit:
+
+1. Builds a schema example from your `structuredOutput` and injects it into the system prompt inside a ```toon block.
+2. Instructs the model to produce only that block, keeping `[N]` equal to the number of rows.
+3. Parses the response with `@toon-format/toon`, coerces numeric literals into strings when the schema wants strings, and finally validates via Zod.
+
+If the response does not contain a valid TOON block, the call throws `AI_NoObjectGeneratedError`.
+
+## Limitations & tips
+
+- `agent.stream` does **not** support TOON yet—stick to `agent.generate`.
+- Always pass a `structuredOutput`; TOON is ignored otherwise.
+- Keep short instructions telling the model how to reference the TOON block (e.g., “quote IDs exactly as shown”).
+- Log token savings by comparing `JSON.stringify` length with the resulting TOON block to measure impact.
+- Need raw conversion utilities? Use the upstream [`@toon-format/toon`](https://github.com/toon-format/toon) package or CLI locally.
