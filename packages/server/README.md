@@ -42,7 +42,7 @@ See `src/ServerKit.ts` for the complete implementation and error-handling behavi
 
 ## Middleware
 
-`ServerKit` lets you register Hono middleware the same way Mastra does: pass either plain middleware functions or `{ handler, path }` tuples via the `server.middleware` option. Path-scoped entries accept any value `app.use` supports (`string`, glob, or `RegExp`). The legacy top-level `middleware` field still works but is deprecated.
+`ServerKit` lets you register Hono middleware the same way Mastra does: pass either plain middleware functions or `{ handler, path }` tuples via the `server.middleware` option. Path-scoped entries accept any string your Hono app would use (e.g. `/api/*`). The legacy top-level `middleware` field still works but is deprecated.
 
 ```ts
 const server = new ServerKit({

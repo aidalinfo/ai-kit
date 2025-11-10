@@ -63,7 +63,7 @@ Les payloads workflow doivent inclure `inputData` et peuvent ajouter `metadata`.
 
 ## Middleware
 
-Vous pouvez brancher des middlewares Hono (même syntaxe que Mastra) via l’option `server.middleware`. Passez soit une simple fonction (middleware global), soit un objet `{ path, handler }` pour limiter la portée à certaines routes (`path` accepte les mêmes valeurs que [`app.use`](https://hono.dev/api/hono#use)). Le champ `middleware` à la racine reste pris en charge pour compatibilité mais sera retiré à terme.
+Vous pouvez brancher des middlewares Hono (même syntaxe que Mastra) via l’option `server.middleware`. Passez soit une simple fonction (middleware global), soit un objet `{ path, handler }` pour limiter la portée à certaines routes (`path` doit être une chaîne Hono valide, par exemple `/api/*`). Le champ `middleware` à la racine reste pris en charge pour compatibilité mais sera retiré à terme.
 
 ```ts
 const server = new ServerKit({

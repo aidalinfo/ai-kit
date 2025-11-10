@@ -47,7 +47,7 @@ export type ServerMiddleware =
   | ServerMiddlewareConfig;
 
 export interface ServerMiddlewareConfig {
-  path?: string | RegExp;
+  path?: string;
   handler: MiddlewareHandler;
 }
 
@@ -365,8 +365,8 @@ export class ServerKit {
         throw new Error("Server middleware entries must define a handler function");
       }
 
-      if (normalized.path !== undefined) {
-        this.app.use(normalized.path as string | RegExp, normalized.handler);
+      if (typeof normalized.path === "string" && normalized.path.length > 0) {
+        this.app.use(normalized.path, normalized.handler);
       } else {
         this.app.use(normalized.handler);
       }
@@ -597,6 +597,10 @@ function resolveTelemetryOptions(
 function normalizeMiddleware(entry: ServerMiddleware): ServerMiddlewareConfig {
   if (typeof entry === "function") {
     return { handler: entry };
+  }
+
+  if (entry.path !== undefined && typeof entry.path !== "string") {
+    throw new Error("Server middleware path must be a string.");
   }
 
   return entry;

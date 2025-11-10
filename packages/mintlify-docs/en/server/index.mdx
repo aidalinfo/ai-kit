@@ -63,7 +63,7 @@ Workflow payloads must contain `inputData` (optional `metadata`). Agent payloads
 
 ## Middleware
 
-Reuse Mastra-style middleware syntax by passing functions (global) or `{ path, handler }` tuples to the `server.middleware` option. `path` accepts whatever [`app.use`](https://hono.dev/api/hono#use) supports. The legacy top-level `middleware` field is still recognized but will be removed in a future version.
+Reuse Mastra-style middleware syntax by passing functions (global) or `{ path, handler }` tuples to the `server.middleware` option. `path` should be a string matching any Hono route pattern (wildcards like `/api/*` are fine). The legacy top-level `middleware` field is still recognized but will be removed in a future version.
 
 ```ts
 const server = new ServerKit({
