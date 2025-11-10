@@ -55,6 +55,7 @@ export interface AgentConfig {
   telemetry?: boolean;
   loopTools?: boolean;
   maxStepTools?: number;
+  toon?: boolean;
 }
 
 export class Agent {
@@ -65,6 +66,7 @@ export class Agent {
   private telemetryEnabled: boolean;
   private loopToolsEnabled: boolean;
   private maxStepTools: number;
+  private toonEnabled: boolean;
 
   constructor({
     name,
@@ -74,6 +76,7 @@ export class Agent {
     telemetry,
     loopTools,
     maxStepTools,
+    toon,
   }: AgentConfig) {
     this.name = name;
     this.instructions = instructions;
@@ -82,6 +85,7 @@ export class Agent {
     this.telemetryEnabled = telemetry ?? false;
     this.loopToolsEnabled = loopTools ?? false;
     this.maxStepTools = maxStepTools ?? DEFAULT_MAX_STEP_TOOLS;
+    this.toonEnabled = toon ?? false;
   }
 
   withTelemetry(enabled: boolean = true) {
@@ -98,7 +102,7 @@ export class Agent {
   ): Promise<AgentGenerateResult<OUTPUT>> {
     const providedSystem = options.system ?? this.instructions;
     const structuredOutput = options.structuredOutput;
-    const useToon = options.toon ?? false;
+    const useToon = options.toon ?? this.toonEnabled;
     if (useToon && !structuredOutput) {
       throw new Error("The toon option requires a structuredOutput schema.");
     }
@@ -342,7 +346,7 @@ export class Agent {
   ): Promise<AgentStreamResult<PARTIAL_OUTPUT>> {
     const system = options.system ?? this.instructions;
     const structuredOutput = options.structuredOutput;
-    const useToon = options.toon ?? false;
+    const useToon = options.toon ?? this.toonEnabled;
     if (useToon) {
       throw new Error("The toon option is not supported with agent.stream yet.");
     }
