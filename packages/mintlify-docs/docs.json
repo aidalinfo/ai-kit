@@ -59,6 +59,7 @@
                   "fr/agents/index",
                   "fr/agents/tools",
                   "fr/agents/structured-output",
+                  "fr/agents/toon",
                   "fr/agents/streaming",
                   "fr/agents/runtime"
                 ]
@@ -141,6 +142,7 @@
                   "en/agents/index",
                   "en/agents/tools",
                   "en/agents/structured-output",
+                  "en/agents/toon",
                   "en/agents/streaming",
                   "en/agents/runtime"
                 ]

@@ -1,17 +1,35 @@
 import { serve } from "@hono/node-server";
+import { swaggerUI } from "@hono/swagger-ui";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import type { Agent, Workflow, WorkflowRun } from "@ai_kit/core";
-import type { WorkflowEvent, WorkflowRunOptions } from "@ai_kit/core";
+import type {
+  Agent,
+  Workflow,
+  WorkflowEvent,
+  WorkflowRun,
+  WorkflowRunOptions,
+  WorkflowRunResult,
+} from "@ai_kit/core";
+import packageJson from "../package.json" with { type: "json" };
+import { buildOpenAPIDocument } from "./swagger.js";
 
 type AnyWorkflow = Workflow<any, any, Record<string, unknown>>;
 type AnyWorkflowRun = WorkflowRun<any, any, Record<string, unknown>>;
 
+export interface SwaggerOptions {
+  enabled?: boolean;
+  route?: string;
+  title?: string;
+  version?: string;
+  description?: string;
+}
+
 export interface ServerKitConfig {
   agents?: Record<string, Agent>;
   workflows?: Record<string, AnyWorkflow>;
+  swagger?: SwaggerOptions | boolean;
 }
 
 export interface ListenOptions {
@@ -24,6 +42,20 @@ interface ResumePayload {
   stepId: string;
   data: unknown;
 }
+
+interface NormalizedSwaggerOptions {
+  enabled: boolean;
+  uiPath: string;
+  jsonPath: string;
+  title: string;
+  version: string;
+  description?: string;
+}
+
+const packageVersion =
+  typeof packageJson?.version === "string" ? packageJson.version : "1.0.0";
+const DEFAULT_SWAGGER_ROUTE = "/swagger";
+const DEFAULT_SWAGGER_TITLE = "AI Kit API";
 
 const invalidAgentPayload = new HTTPException(400, {
   message: "Agent request payload must include either prompt or messages",
@@ -76,18 +108,36 @@ export class ServerKit {
     this.app.notFound(c => c.json({ error: "Not Found" }, 404));
 
     this.registerRoutes();
+
+    const swaggerConfig = resolveSwaggerOptions(config.swagger);
+    if (swaggerConfig.enabled) {
+      this.registerSwaggerRoutes(swaggerConfig);
+    }
   }
 
   listen({ port, hostname, signal }: ListenOptions = {}) {
     const resolvedPort = port ?? Number(process.env.PORT ?? 8787);
     const resolvedHostname = hostname ?? "0.0.0.0";
 
-    return serve({
+    const server = serve({
       fetch: this.app.fetch,
       port: resolvedPort,
       hostname: resolvedHostname,
-      signal,
     });
+
+    if (signal) {
+      const closeServer = () => {
+        server.close();
+      };
+
+      if (signal.aborted) {
+        closeServer();
+      } else {
+        signal.addEventListener("abort", closeServer, { once: true });
+      }
+    }
+
+    return server;
   }
 
   private registerRoutes() {
@@ -109,11 +159,11 @@ export class ServerKit {
 
       const streamResult = await agent.stream(payload as never);
 
-      if (typeof streamResult.toDataStreamResponse === "function") {
+      if (hasDataStreamResponse(streamResult)) {
         return streamResult.toDataStreamResponse();
       }
 
-      if (typeof streamResult.toReadableStream === "function") {
+      if (hasReadableStream(streamResult)) {
         return new Response(streamResult.toReadableStream(), {
           headers: {
             "Content-Type": "text/event-stream",
@@ -188,7 +238,7 @@ export class ServerKit {
             })();
 
             final
-              .then(async result => {
+              .then(async (result: WorkflowRunResult<unknown, Record<string, unknown>>) => {
                 sendSseEvent(controller, "result", { runId: run.runId, result });
                 if (result.status !== "waiting_human") {
                   this.removeRun(workflow.id, run.runId);
@@ -196,7 +246,7 @@ export class ServerKit {
                   close();
                 }
               })
-              .catch(error => {
+              .catch((error: unknown) => {
                 const normalized = normalizeError(error);
                 sendSseEvent(controller, "error", { message: normalized.message });
                 this.removeRun(workflow.id, run.runId);
@@ -252,6 +302,27 @@ export class ServerKit {
         throw normalizeError(error);
       }
     });
+  }
+
+  private registerSwaggerRoutes(options: NormalizedSwaggerOptions) {
+    const document = buildOpenAPIDocument({
+      title: options.title,
+      version: options.version,
+      description: options.description,
+    });
+
+    this.app.get(options.jsonPath, c => c.json(document));
+    this.app.get(
+      options.uiPath,
+      swaggerUI({
+        url: options.jsonPath,
+        title: options.title,
+      }),
+    );
+
+    console.log(
+      `Swagger UI available at ${options.uiPath} (spec: ${options.jsonPath})`,
+    );
   }
 
   private getAgentOrThrow(c: Context) {
@@ -326,7 +397,7 @@ export class ServerKit {
       });
     }
 
-    return result.data;
+    return result.data as ResumePayload;
   }
 
   private storeRun(workflowId: string, run: AnyWorkflowRun) {
@@ -359,4 +430,71 @@ export class ServerKit {
 
 export function createServerKit(config: ServerKitConfig = {}) {
   return new ServerKit(config);
+}
+
+interface AgentStreamLike {
+  toDataStreamResponse?: () => Response;
+  toReadableStream?: () => ReadableStream<Uint8Array>;
+}
+
+function hasDataStreamResponse(value: unknown): value is Required<Pick<AgentStreamLike, "toDataStreamResponse">> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as AgentStreamLike).toDataStreamResponse === "function"
+  );
+}
+
+function hasReadableStream(value: unknown): value is Required<Pick<AgentStreamLike, "toReadableStream">> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as AgentStreamLike).toReadableStream === "function"
+  );
+}
+
+function resolveSwaggerOptions(
+  value: ServerKitConfig["swagger"],
+): NormalizedSwaggerOptions {
+  const defaultEnabled = process.env.NODE_ENV !== "production";
+  const asOptions =
+    typeof value === "object" && value !== null ? (value as SwaggerOptions) : undefined;
+
+  const uiPath = normalizeRoute(asOptions?.route);
+  const jsonPath = deriveJsonPath(uiPath);
+
+  return {
+    enabled:
+      typeof value === "boolean"
+        ? value
+        : asOptions?.enabled ?? defaultEnabled,
+    uiPath,
+    jsonPath,
+    title: asOptions?.title ?? DEFAULT_SWAGGER_TITLE,
+    version: asOptions?.version ?? packageVersion,
+    description: asOptions?.description,
+  };
+}
+
+function normalizeRoute(route?: string) {
+  const target = route?.trim() || DEFAULT_SWAGGER_ROUTE;
+  const withSlash = ensureLeadingSlash(target);
+
+  if (withSlash.length > 1 && withSlash.endsWith("/")) {
+    return withSlash.replace(/\/+$/, "");
+  }
+
+  return withSlash || DEFAULT_SWAGGER_ROUTE;
+}
+
+function ensureLeadingSlash(route: string) {
+  return route.startsWith("/") ? route : `/${route}`;
+}
+
+function deriveJsonPath(uiPath: string) {
+  if (uiPath.endsWith(".json")) {
+    return uiPath;
+  }
+
+  return `${uiPath}.json`;
 }
