@@ -486,7 +486,11 @@ export class ServerKit {
   }
 
   private async parseWorkflowBody(c: Context): Promise<{
-    options: WorkflowRunOptions<unknown, Record<string, unknown>>;
+    options: WorkflowRunOptions<
+      unknown,
+      Record<string, unknown>,
+      Record<string, unknown>
+    >;
   }> {
     const body = await this.parseJsonBody(c);
 
@@ -501,7 +505,21 @@ export class ServerKit {
       metadata: (body.metadata ?? undefined) as
         | Record<string, unknown>
         | undefined,
-    } satisfies WorkflowRunOptions<unknown, Record<string, unknown>>;
+      ctx: (body.ctx ?? undefined) as
+        | Record<string, unknown>
+        | undefined,
+      telemetry: body.telemetry as
+        | WorkflowRunOptions<
+            unknown,
+            Record<string, unknown>,
+            Record<string, unknown>
+          >["telemetry"]
+        | undefined,
+    } satisfies WorkflowRunOptions<
+      unknown,
+      Record<string, unknown>,
+      Record<string, unknown>
+    >;
 
     return { options };
   }

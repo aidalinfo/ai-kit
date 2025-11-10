@@ -32,6 +32,48 @@ npm i @ai_kit/server
 
 Consultez la page npm pour les exemples de configuration détaillés et les options d’exécution.
 
+## Client HTTP
+
+Pour consommer facilement une instance Server Kit à distance, utilisez le package [`@ai_kit/client-kit`](https://www.npmjs.com/package/@ai_kit/client-kit). Il gère l’URL de base, les en-têtes communs et l’hydratation du contexte d’exécution.
+
+```bash
+npm i @ai_kit/client-kit
+```
+
+```ts
+import { ClientKit } from "@ai_kit/client-kit";
+
+const client = new ClientKit({
+  baseUrl: "https://agents.internal.aidalinfo.fr",
+  headers: {
+    Authorization: `Bearer ${process.env.SERVER_TOKEN}`,
+  },
+  runtime: {
+    metadata: { tenant: "aidalinfo" },
+    ctx: { locale: "fr-FR" },
+  },
+});
+
+const supportAgent = await client.getAgent("support");
+const response = await client.generateAgent("support", {
+  prompt: "Quelles sont les nouveautés de cette semaine ?",
+});
+
+const workflowResult = await client.runWorkflow("enrich-contact", {
+  inputData: { contactId: "42" },
+  metadata: { requestId: "run-123" },
+});
+
+if (workflowResult.status === "waiting_human" && workflowResult.pendingHuman) {
+  await client.resumeWorkflow("enrich-contact", workflowResult.runId, {
+    stepId: workflowResult.pendingHuman.stepId,
+    data: { approved: true },
+  });
+}
+```
+
+Le client fournit également `resumeWorkflow` pour répondre à une étape humaine et fusionne automatiquement les métadonnées/contexts par défaut avec celles passées à l’appel.
+
 ## Utilisation rapide
 
 ### Créer un agent
