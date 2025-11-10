@@ -14,6 +14,10 @@ import type {
 } from "@ai_kit/core";
 import packageJson from "../package.json" with { type: "json" };
 import { buildOpenAPIDocument } from "./swagger.js";
+import {
+  instrumentServerTelemetry,
+  type ServerTelemetryOptions,
+} from "./instrument.js";
 
 type AnyWorkflow = Workflow<any, any, Record<string, unknown>>;
 type AnyWorkflowRun = WorkflowRun<any, any, Record<string, unknown>>;
@@ -30,6 +34,7 @@ export interface ServerKitConfig {
   agents?: Record<string, Agent>;
   workflows?: Record<string, AnyWorkflow>;
   swagger?: SwaggerOptions | boolean;
+  telemetry?: boolean | ServerTelemetryOptions;
 }
 
 export interface ListenOptions {
@@ -95,6 +100,13 @@ export class ServerKit {
     this.workflows = new Map(Object.entries(config.workflows ?? {}));
     this.runs = new Map();
     this.app = new Hono();
+    const telemetryOptions = resolveTelemetryOptions(config.telemetry);
+
+    if (telemetryOptions.enabled) {
+      void instrumentServerTelemetry(telemetryOptions).catch(error => {
+        console.error("Failed to initialize Langfuse telemetry", error);
+      });
+    }
 
     this.app.onError((err, c) => {
       const normalized = normalizeError(err);
@@ -497,4 +509,14 @@ function deriveJsonPath(uiPath: string) {
   }
 
   return `${uiPath}.json`;
+}
+
+function resolveTelemetryOptions(
+  value: ServerKitConfig["telemetry"],
+): ServerTelemetryOptions {
+  if (typeof value === "boolean") {
+    return { enabled: value };
+  }
+
+  return value ?? { enabled: false };
 }

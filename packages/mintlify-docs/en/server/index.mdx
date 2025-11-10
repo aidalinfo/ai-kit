@@ -1,0 +1,127 @@
+---
+title: "HTTP Server"
+description: "Expose your AI Kit agents & workflows through a production-ready REST API."
+locale: en
+---
+
+`@ai_kit/server` ships a pre-configured [Hono](https://hono.dev/) application that turns agents and workflows into HTTP endpoints. It handles synchronous calls, streaming (SSE), human-in-the-loop resumes and can publish an OpenAPI spec with Swagger UI.
+
+## Installation
+
+```bash
+npm i @ai_kit/server
+```
+
+Install it next to `@ai_kit/core` so you can reuse the agents and workflows you already defined.
+
+## Minimal example
+
+```ts
+import { Agent, createWorkflow } from "@ai_kit/core";
+import { ServerKit } from "@ai_kit/server";
+
+const supportAgent = new Agent({
+  name: "support",
+  instructions: "Answer internal tickets with short messages.",
+  model: /* plug your ai-sdk provider here */ {} as any,
+});
+
+const enrichWorkflow = createWorkflow({
+  id: "enrich-ticket",
+  description: "Add metadata before dispatching the ticket."
+});
+
+const server = new ServerKit({
+  agents: { support: supportAgent },
+  workflows: { "enrich-ticket": enrichWorkflow },
+});
+
+await server.listen({ port: 8787 });
+```
+
+The server listens on `HOST` (default `0.0.0.0`) and `PORT` (default `8787`). Agents and workflows are stored in memory and reused across requests.
+
+## Exposed endpoints
+
+| Route | Description |
+| --- | --- |
+| `POST /api/agents/:id/generate` | Executes `Agent.generate` once and returns the full result. |
+| `POST /api/agents/:id/stream` | Streams `Agent.stream` via SSE or `DataStreamResponse`. |
+| `POST /api/workflows/:id/run` | Starts a workflow run and returns `{ runId, ...result }`. |
+| `POST /api/workflows/:id/stream` | Streams every `WorkflowEvent` plus the final status via SSE. |
+| `POST /api/workflows/:id/runs/:runId/resume` | Resumes a suspended run with human input. |
+
+Workflow payloads must contain `inputData` (optional `metadata`). Agent payloads must include either `prompt` or `messages`, matching the AI SDK contract.
+
+## Streaming & resume flow
+
+- `/stream` endpoints emit a first `run` event containing the `runId`, then forward each workflow `event.type` as a dedicated SSE event.
+- When a workflow ends with `waiting_human`, the stream closes after emitting the final payload. Resume the run later by POSTing `{ stepId, data }` to `/runs/:runId/resume`.
+- If the client disconnects, the server cancels the run and frees resources.
+
+## Swagger / OpenAPI
+
+Swagger is on by default outside production. Configure it via the `swagger` option:
+
+```ts
+const server = new ServerKit({
+  agents: { support: supportAgent },
+  swagger: {
+    enabled: true,
+    route: "/docs",
+    title: "Support API",
+    description: "AI Kit agents & workflows"
+  }
+});
+```
+
+- UI served from `route` (e.g. `/docs`).
+- JSON spec available from `route + ".json"`.
+- Pass `false` to disable it, or `true` to force-enable it even in production.
+
+## CLI entry point
+
+The package bundles a `server-kit` binary (accessible via `npx @ai_kit/server`) that starts a bare `ServerKit` instance:
+
+```bash
+npx @ai_kit/server --swagger
+```
+
+Available env vars:
+
+- `PORT` (default `8787`).
+- `HOST` (default `0.0.0.0`).
+- `NODE_ENV` toggles the default Swagger behaviour.
+
+The bundled CLI is intentionally lightweight: it does not register agents or workflows for you. Use it as a reference when wiring `ServerKit` inside your own API server (e.g. `apps/api/server.ts`) where you can pass the proper configuration object.
+
+## Configuration options
+
+| Option | Type | Purpose |
+| --- | --- | --- |
+| `agents` | `Record<string, Agent>` | Registers agents exposed under `/api/agents/:id/*`. |
+| `workflows` | `Record<string, Workflow>` | Declares workflows exposed under `/api/workflows/:id/*`. |
+| `swagger` | `boolean \| SwaggerOptions` | Enables Swagger or customizes `route`, `title`, `version`, `description`. |
+| `telemetry` | `boolean \| ServerTelemetryOptions` | Enables Langfuse export and forwards options to `ensureLangfuseTelemetry`. |
+
+`listen({ port, hostname, signal })` also accepts an `AbortSignal` so you can shut the server down gracefully.
+
+See [`packages/server/src/ServerKit.ts`](https://github.com/aidalinfo/ai-kit/blob/main/packages/server/src/ServerKit.ts) for the full implementation.
+
+## Langfuse telemetry
+
+Toggle Langfuse directly from the `ServerKit` config — no extra bootstrap file is required:
+
+```ts
+const server = new ServerKit({
+  agents: { support: supportAgent },
+  workflows: { "enrich-ticket": enrichWorkflow },
+  telemetry: {
+    enabled: true,
+  },
+});
+```
+
+- `telemetry` accepts either `true`/`false` or the full `ensureLangfuseTelemetry` options.
+- Provide `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and optionally `LANGFUSE_BASE_URL` in the environment.
+- The CLI exposes matching `--telemetry` / `--no-telemetry` flags for quick toggles.

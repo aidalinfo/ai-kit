@@ -22,6 +22,16 @@ Configurez vos clés API (ex. Scaleway) dans l’environnement :
 export SCALEWAY_API_KEY="skw-..."
 ```
 
+## Serveur
+
+Besoin d’une API prête à l’emploi pour héberger vos agents et workflows ? Le package [`@ai_kit/server`](https://www.npmjs.com/package/@ai_kit/server) fournit un serveur HTTP minimal déjà câblé avec AI Kit (routing JSON, gestion des secrets, hooks de télémétrie).
+
+```bash
+npm i @ai_kit/server
+```
+
+Consultez la page npm pour les exemples de configuration détaillés et les options d’exécution.
+
 ## Utilisation rapide
 
 ### Créer un agent

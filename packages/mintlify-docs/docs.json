@@ -54,6 +54,12 @@
                 ]
               },
               {
+                "group": "Serveur",
+                "pages": [
+                  "fr/server/index"
+                ]
+              },
+              {
                 "group": "Agents",
                 "pages": [
                   "fr/agents/index",
@@ -134,6 +140,12 @@
                   "en/getting-started/overview",
                   "en/getting-started/first-agent",
                   "en/getting-started/project-structure"
+                ]
+              },
+              {
+                "group": "Server",
+                "pages": [
+                  "en/server/index"
                 ]
               },
               {
