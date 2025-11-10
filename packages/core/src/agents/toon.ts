@@ -67,17 +67,18 @@ export async function parseToonStructuredOutput<OUTPUT>(
 
   // Validate array syntax before attempting to decode
   validateToonArraySyntax(payload);
+  const normalizedPayload = normalizeToonArrayCounts(payload);
 
   let decoded: unknown;
   try {
-    decoded = decode(payload);
+    decoded = decode(normalizedPayload);
   } catch (error) {
     // Enhanced error with the actual TOON content for debugging
     const previewLength = 1000; // Increased from 500 for better visibility
     const preview =
-      payload.length > previewLength
-        ? `${payload.slice(0, previewLength)}...\n[truncated ${payload.length - previewLength} chars]\n...${payload.slice(-200)}`
-        : payload;
+      normalizedPayload.length > previewLength
+        ? `${normalizedPayload.slice(0, previewLength)}...\n[truncated ${normalizedPayload.length - previewLength} chars]\n...${normalizedPayload.slice(-200)}`
+        : normalizedPayload;
 
     // Extract error details if it's an array length mismatch
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -160,6 +161,184 @@ function validateToonArraySyntax(payload: string): void {
       `Example: ${arrayName}[5]: for an array with 5 items`
     );
   }
+}
+
+const ARRAY_DECLARATION_REGEX =
+  /^(\s*)([\w.-]+)\[(\d+)\](\{[^}]+\})?\s*:\s*(.*)$/;
+const PROPERTY_LINE_PATTERN =
+  /^[\w.-]+(?:\[[^\]]+\])?(?:\{[^}]+\})?\s*:/;
+
+function normalizeToonArrayCounts(payload: string): string {
+  const lines = payload.split(/\r?\n/);
+  let changed = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const match = lines[i].match(ARRAY_DECLARATION_REGEX);
+    if (!match) {
+      continue;
+    }
+
+    const [, indent, , declaredCount, tabularSignature = "", inlineContent = ""] = match;
+    const declared = Number(declaredCount);
+
+    let actualCount: number | undefined;
+    const trimmedInline = inlineContent.trim();
+    const hasInlineValues =
+      trimmedInline.length > 0 && !trimmedInline.startsWith("#");
+    if (hasInlineValues) {
+      actualCount = countInlineArrayItems(trimmedInline);
+    } else if (tabularSignature) {
+      actualCount = countTabularArrayRows(lines, i + 1, indent);
+    } else {
+      actualCount = countListArrayItems(lines, i + 1, indent);
+    }
+
+    if (typeof actualCount === "number" && actualCount > 0 && actualCount !== declared) {
+      lines[i] = lines[i].replace(`[${declaredCount}]`, `[${actualCount}]`);
+      changed = true;
+    }
+  }
+
+  return changed ? lines.join("\n") : payload;
+}
+
+function countInlineArrayItems(content: string): number {
+  let count = 0;
+  let buffer = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+    const prev = content[i - 1];
+
+    if (char === "\"" && prev !== "\\") {
+      inQuotes = !inQuotes;
+      buffer += char;
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      if (buffer.trim().length > 0) {
+        count += 1;
+      }
+      buffer = "";
+      continue;
+    }
+
+    buffer += char;
+  }
+
+  if (buffer.trim().length > 0) {
+    count += 1;
+  }
+
+  return count;
+}
+
+function countListArrayItems(
+  lines: string[],
+  startIndex: number,
+  baseIndent: string,
+): number {
+  let count = 0;
+  let itemIndent: number | null = null;
+
+  for (let i = startIndex; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim()) {
+      continue;
+    }
+
+    if (!line.startsWith(baseIndent)) {
+      break;
+    }
+
+    const relative = line.slice(baseIndent.length);
+    const trimmed = relative.trim();
+    const leadingWhitespace = relative.match(/^[ \t]*/)?.[0].length ?? 0;
+    const listMatch = relative.match(/^(\s*)-\s/);
+
+    if (listMatch) {
+      const spacesBeforeDash = listMatch[1].length;
+      if (itemIndent === null) {
+        itemIndent = spacesBeforeDash;
+      }
+
+      if (spacesBeforeDash === itemIndent) {
+        count += 1;
+        continue;
+      }
+    }
+
+    if (itemIndent !== null) {
+      if (leadingWhitespace <= itemIndent && PROPERTY_LINE_PATTERN.test(trimmed)) {
+        break;
+      }
+
+      if (leadingWhitespace < itemIndent) {
+        break;
+      }
+
+      continue;
+    }
+
+    if (trimmed.length > 0) {
+      break;
+    }
+  }
+
+  return count;
+}
+
+function countTabularArrayRows(
+  lines: string[],
+  startIndex: number,
+  baseIndent: string,
+): number {
+  let count = 0;
+  let rowIndent: number | null = null;
+
+  for (let i = startIndex; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim()) {
+      continue;
+    }
+
+    if (!line.startsWith(baseIndent)) {
+      break;
+    }
+
+    const relative = line.slice(baseIndent.length);
+    const leadingWhitespace = relative.match(/^[ \t]*/)?.[0].length ?? 0;
+    const trimmed = relative.trim();
+
+    if (PROPERTY_LINE_PATTERN.test(trimmed) && leadingWhitespace === 0) {
+      break;
+    }
+
+    if (rowIndent === null) {
+      if (trimmed.length === 0) {
+        break;
+      }
+      rowIndent = leadingWhitespace;
+      count += 1;
+      continue;
+    }
+
+    if (leadingWhitespace < rowIndent) {
+      break;
+    }
+
+    if (leadingWhitespace === rowIndent) {
+      count += 1;
+      continue;
+    }
+
+    // Any extra indentation indicates a continuation of the previous row, so skip.
+    continue;
+  }
+
+  return count;
 }
 
 /**

@@ -415,6 +415,128 @@ describe("toon helpers", () => {
     });
   });
 
+  describe("array normalization", () => {
+    it("repairs mismatched counts for object and inline arrays", async () => {
+      const structured = Output.object({
+        schema: z.object({
+          sheetName: z.string(),
+          columns: z.array(
+            z.object({
+              column: z.string(),
+              range: z.object({
+                start: z.string(),
+                end: z.string(),
+              }),
+            }),
+          ),
+          notes: z.array(z.string()),
+        }),
+      });
+
+      const result = {
+        text: [
+          "```toon",
+          "sheetName: Sheet1",
+          "columns[6]:",
+          "  - column: \"1\"",
+          "    range:",
+          "      start: A2",
+          "      end: A100",
+          "  - column: Dulce",
+          "    range:",
+          "      start: B2",
+          "      end: B100",
+          "  - column: Abril",
+          "    range:",
+          "      start: C2",
+          "      end: C100",
+          "  - column: Female",
+          "    range:",
+          "      start: D2",
+          "      end: D100",
+          "  - column: \"United States\"",
+          "    range:",
+          "      start: E2",
+          "      end: E100",
+          "  - column: \"32\"",
+          "    range:",
+          "      start: F2",
+          "      end: F100",
+          "  - column: \"1562\"",
+          "    range:",
+          "      start: H2",
+          "      end: H100",
+          'notes[1]: "Mesures numériques","Dimensions catégorielles"',
+          "```",
+        ].join("\n"),
+        response: {},
+        usage: {},
+        finishReason: "stop",
+      } as unknown as GenerateTextResult<
+        ToolSet,
+        {
+          sheetName: string;
+          columns: Array<{ column: string; range: { start: string; end: string } }>;
+          notes: string[];
+        }
+      >;
+
+      await parseToonStructuredOutput(result, structured);
+
+      const parsed = (result as typeof result & {
+        experimental_output: {
+          sheetName: string;
+          columns: Array<{ column: string; range: { start: string; end: string } }>;
+          notes: string[];
+        };
+      }).experimental_output;
+
+      expect(parsed.columns).toHaveLength(7);
+      expect(parsed.columns[0].column).toBe("1");
+      expect(parsed.notes).toEqual([
+        "Mesures numériques",
+        "Dimensions catégorielles",
+      ]);
+    });
+
+    it("repairs mismatched counts for tabular arrays", async () => {
+      const structured = Output.object({
+        schema: z.object({
+          users: z.array(
+            z.object({
+              id: z.number(),
+              name: z.string(),
+            }),
+          ),
+        }),
+      });
+
+      const result = {
+        text: [
+          "```toon",
+          "users[1]{id,name}:",
+          "  1,Alice",
+          "  2,Bob",
+          "```",
+        ].join("\n"),
+        response: {},
+        usage: {},
+        finishReason: "stop",
+      } as unknown as GenerateTextResult<
+        ToolSet,
+        { users: Array<{ id: number; name: string }> }
+      >;
+
+      await parseToonStructuredOutput(result, structured);
+
+      expect(
+        (result as typeof result & {
+          experimental_output: { users: Array<{ id: number; name: string }> };
+        }).experimental_output.users,
+      ).toHaveLength(2);
+    });
+  });
+
   describe("type coercion in complex structures", () => {
     it("coerces numeric IDs to strings in nested objects", async () => {
       const structured = Output.object({
@@ -584,19 +706,12 @@ describe("toon helpers", () => {
         }),
       });
 
-      // Invalid TOON: declares 3 items but provides only 2
+      // Invalid TOON: declares 3 items but provides none
       const result = {
         text: [
           "```toon",
           "columns[3]:",
-          "  - name: Column A",
-          "    range:",
-          "      start: A1",
-          "      end: A10",
-          "  - name: Column B",
-          "    range:",
-          "      start: B1",
-          "      end: B10",
+          "  # Missing items",
           "```",
         ].join("\n"),
         response: {},
@@ -609,7 +724,7 @@ describe("toon helpers", () => {
         throw new Error("Should have thrown");
       } catch (error: any) {
         expect(error.message).toContain("Array length mismatch");
-        expect(error.message).toContain("Expected 3 items but got 2");
+        expect(error.message).toContain("Expected 3 items but got 0");
         expect(error.message).toContain(
           "LLM declared an array size but didn't provide all items",
         );
