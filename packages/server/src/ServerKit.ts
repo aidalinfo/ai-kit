@@ -1,7 +1,7 @@
 import { serve } from "@hono/node-server";
 import { swaggerUI } from "@hono/swagger-ui";
 import { Hono } from "hono";
-import type { Context } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type {
@@ -33,8 +33,26 @@ export interface SwaggerOptions {
 export interface ServerKitConfig {
   agents?: Record<string, Agent>;
   workflows?: Record<string, AnyWorkflow>;
+  server?: ServerRuntimeOptions;
+  /**
+   * @deprecated Use server.middleware instead.
+   */
+  middleware?: ServerMiddleware[];
   swagger?: SwaggerOptions | boolean;
   telemetry?: boolean | ServerTelemetryOptions;
+}
+
+export type ServerMiddleware =
+  | MiddlewareHandler
+  | ServerMiddlewareConfig;
+
+export interface ServerMiddlewareConfig {
+  path?: string | RegExp;
+  handler: MiddlewareHandler;
+}
+
+export interface ServerRuntimeOptions {
+  middleware?: ServerMiddleware[];
 }
 
 export interface ListenOptions {
@@ -94,6 +112,7 @@ export class ServerKit {
   private readonly agents: Map<string, Agent>;
   private readonly workflows: Map<string, AnyWorkflow>;
   private readonly runs: Map<string, Map<string, AnyWorkflowRun>>;
+  private readonly swaggerOptions?: NormalizedSwaggerOptions;
 
   constructor(config: ServerKitConfig = {}) {
     this.agents = new Map(Object.entries(config.agents ?? {}));
@@ -119,10 +138,12 @@ export class ServerKit {
 
     this.app.notFound(c => c.json({ error: "Not Found" }, 404));
 
+    this.registerMiddleware(resolveMiddlewareEntries(config));
     this.registerRoutes();
 
     const swaggerConfig = resolveSwaggerOptions(config.swagger);
     if (swaggerConfig.enabled) {
+      this.swaggerOptions = swaggerConfig;
       this.registerSwaggerRoutes(swaggerConfig);
     }
   }
@@ -136,6 +157,14 @@ export class ServerKit {
       port: resolvedPort,
       hostname: resolvedHostname,
     });
+
+    if (this.swaggerOptions) {
+      const baseUrl = new URL(`http://${resolvedHostname}:${resolvedPort}`);
+      const uiUrl = new URL(this.swaggerOptions.uiPath, baseUrl);
+      const jsonUrl = new URL(this.swaggerOptions.jsonPath, baseUrl);
+
+      console.log(`Swagger UI available at ${uiUrl.href} (spec: ${jsonUrl.href})`);
+    }
 
     if (signal) {
       const closeServer = () => {
@@ -322,6 +351,26 @@ export class ServerKit {
         throw normalizeError(error);
       }
     });
+  }
+
+  private registerMiddleware(middleware?: ServerMiddleware[]) {
+    if (!middleware?.length) {
+      return;
+    }
+
+    for (const entry of middleware) {
+      const normalized = normalizeMiddleware(entry);
+
+      if (!normalized.handler) {
+        throw new Error("Server middleware entries must define a handler function");
+      }
+
+      if (normalized.path !== undefined) {
+        this.app.use(normalized.path as string | RegExp, normalized.handler);
+      } else {
+        this.app.use(normalized.handler);
+      }
+    }
   }
 
   private registerSwaggerRoutes(options: NormalizedSwaggerOptions) {
@@ -543,4 +592,23 @@ function resolveTelemetryOptions(
   }
 
   return value ?? { enabled: false };
+}
+
+function normalizeMiddleware(entry: ServerMiddleware): ServerMiddlewareConfig {
+  if (typeof entry === "function") {
+    return { handler: entry };
+  }
+
+  return entry;
+}
+
+function resolveMiddlewareEntries(config: ServerKitConfig) {
+  const legacy = config.middleware ?? [];
+  const nested = config.server?.middleware ?? [];
+
+  if (legacy.length && !config.server?.middleware?.length) {
+    console.warn("ServerKitConfig.middleware is deprecated. Use server.middleware instead.");
+  }
+
+  return [...legacy, ...nested];
 }

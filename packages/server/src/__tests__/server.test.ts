@@ -215,6 +215,69 @@ describe("ServerKit", () => {
     expect(payload).toContain('"output":"stream"');
   });
 
+  it("runs global middleware before routes", async () => {
+    const middleware = vi.fn(async (_c, next) => {
+      await next();
+    });
+
+    const server = new ServerKit({ server: { middleware: [middleware] } });
+
+    const response = await server.app.request("/api/agents");
+
+    expect(response.status).toBe(200);
+    expect(middleware).toHaveBeenCalledTimes(1);
+  });
+
+  it("supports legacy middleware option but warns", async () => {
+    const middleware = vi.fn(async (_c, next) => {
+      await next();
+    });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const server = new ServerKit({ middleware: [middleware] });
+
+    const response = await server.app.request("/api/agents");
+
+    expect(response.status).toBe(200);
+    expect(middleware).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "ServerKitConfig.middleware is deprecated. Use server.middleware instead.",
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  it("supports path-scoped middleware objects", async () => {
+    const secureMiddleware = vi.fn(async (c, next) => {
+      if (!c.req.header("x-auth")) {
+        return c.json({ error: "unauthorized" }, 401);
+      }
+
+      await next();
+    });
+
+    const server = new ServerKit({
+      server: { middleware: [{ path: "/secure/*", handler: secureMiddleware }] },
+    });
+
+    server.app.get("/secure/ping", c => c.json({ ok: true }));
+
+    const unauthorized = await server.app.request("/secure/ping");
+    expect(unauthorized.status).toBe(401);
+    await expect(unauthorized.json()).resolves.toEqual({ error: "unauthorized" });
+
+    const authorized = await server.app.request("/secure/ping", {
+      headers: { "x-auth": "token" },
+    });
+
+    expect(authorized.status).toBe(200);
+    await expect(authorized.json()).resolves.toEqual({ ok: true });
+
+    await server.app.request("/api/agents");
+    expect(secureMiddleware).toHaveBeenCalledTimes(2);
+  });
+
   it("resumes a waiting workflow run", async () => {
     const waitingResult: WorkflowRunResult<unknown, Record<string, unknown>> = {
       status: "waiting_human",

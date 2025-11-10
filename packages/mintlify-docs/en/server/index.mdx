@@ -61,6 +61,36 @@ Workflow payloads must contain `inputData` (optional `metadata`). Agent payloads
 - When a workflow ends with `waiting_human`, the stream closes after emitting the final payload. Resume the run later by POSTing `{ stepId, data }` to `/runs/:runId/resume`.
 - If the client disconnects, the server cancels the run and frees resources.
 
+## Middleware
+
+Reuse Mastra-style middleware syntax by passing functions (global) or `{ path, handler }` tuples to the `server.middleware` option. `path` accepts whatever [`app.use`](https://hono.dev/api/hono#use) supports. The legacy top-level `middleware` field is still recognized but will be removed in a future version.
+
+```ts
+const server = new ServerKit({
+  agents: { support: supportAgent },
+  workflows: { "enrich-ticket": enrichWorkflow },
+  server: {
+    middleware: [
+      {
+        path: "/api/*",
+        handler: async (c, next) => {
+          const authHeader = c.req.header("Authorization");
+          if (!authHeader) {
+            return new Response("Unauthorized", { status: 401 });
+          }
+
+          await next();
+        },
+      },
+      async (c, next) => {
+        console.log(`${c.req.method} ${c.req.url}`);
+        await next();
+      },
+    ],
+  },
+});
+```
+
 ## Swagger / OpenAPI
 
 Swagger is on by default outside production. Configure it via the `swagger` option:
@@ -103,6 +133,7 @@ The bundled CLI is intentionally lightweight: it does not register agents or wor
 | --- | --- | --- |
 | `agents` | `Record<string, Agent>` | Registers agents exposed under `/api/agents/:id/*`. |
 | `workflows` | `Record<string, Workflow>` | Declares workflows exposed under `/api/workflows/:id/*`. |
+| `server.middleware` | `ServerMiddleware[]` | Adds global or path-scoped Hono middleware before built-in routes. |
 | `swagger` | `boolean \| SwaggerOptions` | Enables Swagger or customizes `route`, `title`, `version`, `description`. |
 | `telemetry` | `boolean \| ServerTelemetryOptions` | Enables Langfuse export and forwards options to `ensureLangfuseTelemetry`. |
 
