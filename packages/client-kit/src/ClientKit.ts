@@ -8,12 +8,6 @@ export interface ClientKitOptions {
   baseUrl?: string;
   headers?: HeadersInit;
   fetch?: typeof fetch;
-  runtime?: DefaultRuntimeContext;
-}
-
-export interface DefaultRuntimeContext {
-  metadata?: Record<string, unknown>;
-  ctx?: Record<string, unknown>;
 }
 
 export interface RequestOptions {
@@ -121,7 +115,6 @@ export class ClientKit {
   private readonly baseUrl: URL;
   private readonly defaultHeaders: Headers;
   private readonly fetchImpl: typeof fetch;
-  private readonly runtimeDefaults: DefaultRuntimeContext;
 
   constructor(options: ClientKitOptions = {}) {
     const baseUrl = options.baseUrl ?? "http://localhost:3000";
@@ -132,8 +125,6 @@ export class ClientKit {
     if (typeof this.fetchImpl !== "function") {
       throw new Error("ClientKit requires a fetch implementation");
     }
-
-    this.runtimeDefaults = options.runtime ?? {};
   }
 
   async listAgents(options?: RequestOptions): Promise<AgentSummary[]> {
@@ -280,18 +271,12 @@ export class ClientKit {
       payload.runtime ?? payload.runtimeContext ?? undefined;
 
     const metadata = mergeRecords(
-      mergeRecords(
-        this.runtimeDefaults.metadata as Meta | undefined,
-        runtimeOverrides?.metadata,
-      ),
+      runtimeOverrides?.metadata as Meta | undefined,
       payload.metadata,
     );
 
     const ctx = mergeRecords(
-      mergeRecords(
-        this.runtimeDefaults.ctx as Ctx | undefined,
-        runtimeOverrides?.ctx,
-      ),
+      runtimeOverrides?.ctx as Ctx | undefined,
       payload.ctx,
     );
 
