@@ -64,7 +64,7 @@ jobs:
       - name: Publish to NPM
         run: |
           cd packages/client-kit
-          npm publish --access public
+          pnpm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
