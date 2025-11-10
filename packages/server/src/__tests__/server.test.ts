@@ -74,6 +74,30 @@ describe("ServerKit", () => {
     await expect(response.json()).resolves.toEqual({ message: "ok" });
   });
 
+  it("lists registered agents", async () => {
+    const agent = {
+      name: "Demo Agent",
+      instructions: "Be helpful",
+      generate: vi.fn(),
+      stream: vi.fn(),
+    } as unknown as Agent;
+
+    const server = new ServerKit({ agents: { demo: agent } });
+
+    const response = await server.app.request("/api/agents");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      agents: [
+        {
+          id: "demo",
+          name: "Demo Agent",
+          instructions: "Be helpful",
+        },
+      ],
+    });
+  });
+
   it("returns 404 for unknown workflows", async () => {
     const server = new ServerKit();
 
@@ -120,6 +144,29 @@ describe("ServerKit", () => {
 
     expect(run.start).toHaveBeenCalled();
     expect(run.lastStartOptions?.inputData).toEqual({ foo: "bar" });
+  });
+
+  it("lists registered workflows", async () => {
+    const workflow = {
+      id: "workflow-demo",
+      description: "Demo workflow",
+      createRun: vi.fn(),
+    } as unknown as Workflow<any, any, Record<string, unknown>>;
+
+    const server = new ServerKit({ workflows: { demo: workflow } });
+
+    const response = await server.app.request("/api/workflows");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      workflows: [
+        {
+          id: "demo",
+          workflowId: "workflow-demo",
+          description: "Demo workflow",
+        },
+      ],
+    });
   });
 
   it("streams workflow events and final result", async () => {
@@ -242,7 +289,9 @@ describe("ServerKit", () => {
       openapi: "3.0.3",
       info: expect.objectContaining({ title: "AI Kit API" }),
       paths: expect.objectContaining({
+        "/api/agents": expect.any(Object),
         "/api/agents/{id}/generate": expect.any(Object),
+        "/api/workflows": expect.any(Object),
       }),
     });
 

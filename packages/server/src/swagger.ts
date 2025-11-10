@@ -58,6 +58,70 @@ const agentInvocationSchema: OpenAPIV3.SchemaObject = {
   ],
 };
 
+const agentSummarySchema: OpenAPIV3.SchemaObject = {
+  type: "object",
+  required: ["id"],
+  properties: {
+    id: {
+      type: "string",
+      description: "Identifier used to address the agent via the API.",
+    },
+    name: {
+      type: "string",
+      description: "Human-friendly agent name configured at creation time.",
+    },
+    instructions: {
+      type: "string",
+      description: "System instructions associated with the agent, when provided.",
+    },
+  },
+  additionalProperties: false,
+};
+
+const workflowSummarySchema: OpenAPIV3.SchemaObject = {
+  type: "object",
+  required: ["id", "workflowId"],
+  properties: {
+    id: {
+      type: "string",
+      description: "Identifier used to address the workflow via the API.",
+    },
+    workflowId: {
+      type: "string",
+      description: "Internal workflow identifier declared during creation.",
+    },
+    description: {
+      type: "string",
+      description: "Optional workflow description configured at creation time.",
+    },
+  },
+  additionalProperties: false,
+};
+
+const agentListResponseSchema: OpenAPIV3.SchemaObject = {
+  type: "object",
+  required: ["agents"],
+  properties: {
+    agents: {
+      type: "array",
+      items: { $ref: "#/components/schemas/AgentSummary" },
+    },
+  },
+  additionalProperties: false,
+};
+
+const workflowListResponseSchema: OpenAPIV3.SchemaObject = {
+  type: "object",
+  required: ["workflows"],
+  properties: {
+    workflows: {
+      type: "array",
+      items: { $ref: "#/components/schemas/WorkflowSummary" },
+    },
+  },
+  additionalProperties: false,
+};
+
 const workflowRunRequestSchema: OpenAPIV3.SchemaObject = {
   type: "object",
   required: ["inputData"],
@@ -189,6 +253,20 @@ export function buildOpenAPIDocument(config: SwaggerDocumentConfig): OpenAPIV3.D
       { name: "Workflows", description: "Manage workflow runs." },
     ],
     paths: {
+      "/api/agents": {
+        get: {
+          tags: ["Agents"],
+          summary: "List all registered agents.",
+          responses: {
+            200: {
+              description: "Collection of available agents.",
+              content: {
+                "application/json": { schema: agentListResponseSchema },
+              },
+            },
+          },
+        },
+      },
       "/api/agents/{id}/generate": {
         post: {
           tags: ["Agents"],
@@ -351,9 +429,27 @@ export function buildOpenAPIDocument(config: SwaggerDocumentConfig): OpenAPIV3.D
           },
         },
       },
+      "/api/workflows": {
+        get: {
+          tags: ["Workflows"],
+          summary: "List all registered workflows.",
+          responses: {
+            200: {
+              description: "Collection of available workflows.",
+              content: {
+                "application/json": { schema: workflowListResponseSchema },
+              },
+            },
+          },
+        },
+      },
     },
     components: {
       schemas: {
+        AgentSummary: agentSummarySchema,
+        WorkflowSummary: workflowSummarySchema,
+        AgentListResponse: agentListResponseSchema,
+        WorkflowListResponse: workflowListResponseSchema,
         AgentInvocation: agentInvocationSchema,
         WorkflowRunRequest: workflowRunRequestSchema,
         WorkflowRunResponse: workflowRunResponseSchema,

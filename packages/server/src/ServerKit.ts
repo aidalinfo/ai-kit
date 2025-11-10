@@ -153,6 +153,14 @@ export class ServerKit {
   }
 
   private registerRoutes() {
+    this.app.get("/api/agents", c => {
+      return c.json({ agents: this.listAgents() });
+    });
+
+    this.app.get("/api/workflows", c => {
+      return c.json({ workflows: this.listWorkflows() });
+    });
+
     this.app.post("/api/agents/:id/generate", async c => {
       const agent = this.getAgentOrThrow(c);
       const payload = await this.parseJsonBody(c);
@@ -410,6 +418,22 @@ export class ServerKit {
     }
 
     return result.data as ResumePayload;
+  }
+
+  private listAgents() {
+    return Array.from(this.agents.entries()).map(([id, agent]) => ({
+      id,
+      name: agent.name,
+      instructions: agent.instructions,
+    }));
+  }
+
+  private listWorkflows() {
+    return Array.from(this.workflows.entries()).map(([id, workflow]) => ({
+      id,
+      workflowId: workflow.id,
+      description: workflow.description,
+    }));
   }
 
   private storeRun(workflowId: string, run: AnyWorkflowRun) {
