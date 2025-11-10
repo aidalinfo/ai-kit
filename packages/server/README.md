@@ -28,6 +28,12 @@ const server = new ServerKit({
 await server.listen({ port: 8787 });
 ```
 
+Need a ready-made project? Scaffold one with the template:
+
+```bash
+npx @ai_kit/create-ai-kit server-kit
+```
+
 The server registers the following endpoints:
 
 - `GET /api/agents` — list registered agents.
