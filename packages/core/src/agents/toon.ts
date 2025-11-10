@@ -23,22 +23,18 @@ export function buildToonSystemPrompt(
   baseSystem: string | undefined,
   schema: JSONSchema7,
 ): string {
-  const rawExample = encode(buildExampleFromSchema(schema), { indent: 2 });
-
-  // Convert inline string arrays to list format for better LLM guidance
-  // This helps prevent parsing errors when LLMs generate long string values
-  const example = convertInlineStringArraysToListFormat(rawExample);
+  const example = encode(buildExampleFromSchema(schema), { indent: 2 });
 
   const instructions = [
     "You MUST respond using Token-Oriented Object Notation (TOON).",
     "Respect the schema below, output only the TOON block, and keep [N] equal to the number of rows you emit.",
     "Replace the placeholder values with the actual answer.",
     "",
-    "IMPORTANT: For arrays of strings, always use list format with hyphens (-):",
-    "✅ CORRECT:   items[2]:",
-    "              - first item",
-    "              - second item",
-    "❌ WRONG:     items[2]: first item, second item",
+    "CRITICAL: For inline string arrays (items[N]: val1,val2,val3):",
+    "- If a value contains comma (,), colon (:), or special characters, wrap it in double quotes",
+    "- Example: notes[2]: \"Text with, comma\",\"Text with: colon\"",
+    "- Strings can be long, but MUST be quoted if they contain commas or colons",
+    "- Never use list format (- item) for arrays, always use inline format",
     "",
     "```toon",
     example,
@@ -67,7 +63,17 @@ export async function parseToonStructuredOutput<OUTPUT>(
   try {
     decoded = decode(payload);
   } catch (error) {
-    throw new Error("Failed to decode TOON output.", { cause: error });
+    // Enhanced error with the actual TOON content for debugging
+    const previewLength = 500;
+    const preview =
+      payload.length > previewLength
+        ? `${payload.slice(0, previewLength)}...[truncated ${payload.length - previewLength} chars]`
+        : payload;
+
+    throw new Error(
+      `Failed to decode TOON output. TOON content:\n${preview}`,
+      { cause: error },
+    );
   }
 
   // Apply minimal type coercion based on schema expectations
@@ -100,43 +106,6 @@ function extractToonPayload(text: string): string | undefined {
   }
 
   return trimmed;
-}
-
-/**
- * Converts inline string arrays to list format in TOON examples.
- * This prevents LLMs from generating inline format for long strings which causes parsing errors.
- *
- * Example:
- *   notes[2]: first,second
- * Becomes:
- *   notes[2]:
- *     - first
- *     - second
- */
-function convertInlineStringArraysToListFormat(toon: string): string {
-  // Match patterns like: key[N]: value1,value2,value3
-  // where values contain alphabetic characters (indicating strings, not just numbers)
-  const inlineArrayPattern = /^(\s*)(\w+)\[(\d+)\]:\s*(.+)$/gm;
-
-  return toon.replace(inlineArrayPattern, (match, indent, key, count, values) => {
-    // Check if this looks like a string array (contains letters, not just numbers/special chars)
-    const hasLetters = /[a-zA-Z]/.test(values);
-    if (!hasLetters) {
-      return match; // Keep numeric arrays as inline
-    }
-
-    // Split by comma and trim
-    const items = values.split(',').map((v: string) => v.trim());
-
-    // Only convert if the count matches the actual items
-    if (items.length !== parseInt(count, 10)) {
-      return match;
-    }
-
-    // Build list format
-    const listItems = items.map((item: string) => `${indent}  - ${item}`).join('\n');
-    return `${indent}${key}[${count}]:\n${listItems}`;
-  });
 }
 
 /**
