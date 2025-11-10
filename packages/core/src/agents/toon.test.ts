@@ -632,6 +632,9 @@ describe("toon helpers", () => {
       const prompt = buildToonSystemPrompt("Base system", schema);
 
       expect(prompt).toContain("CRITICAL RULES:");
+      expect(prompt).toContain("Array syntax MUST be complete");
+      expect(prompt).toContain("CORRECT: columns[5]: or users[3]{name,age}:");
+      expect(prompt).toContain("WRONG: columns[ or columns[] or columns:");
       expect(prompt).toContain("Array lengths MUST match");
       expect(prompt).toContain("comma (,), colon (:)");
       expect(prompt).toContain("wrap it in double quotes");
@@ -653,6 +656,91 @@ describe("toon helpers", () => {
 
       expect(prompt).toContain("```toon");
       expect(prompt).toMatch(/tags\[\d+\]/);
+    });
+  });
+
+  describe("array syntax validation", () => {
+    it("detects incomplete array syntax (missing count)", async () => {
+      const structured = Output.object({
+        schema: z.object({
+          columns: z.array(
+            z.object({
+              name: z.string(),
+            }),
+          ),
+        }),
+      });
+
+      // Invalid TOON: columns[ without the count
+      const result = {
+        text: [
+          "```toon",
+          "columns[",
+          "  - name: Column A",
+          "  - name: Column B",
+          "```",
+        ].join("\n"),
+        response: {},
+        usage: {},
+        finishReason: "stop",
+      } as unknown as GenerateTextResult<ToolSet, any>;
+
+      try {
+        await parseToonStructuredOutput(result, structured);
+        throw new Error("Should have thrown");
+      } catch (error: any) {
+        expect(error.message).toContain("Invalid TOON array syntax");
+        expect(error.message).toContain('"columns[" is incomplete');
+        expect(error.message).toContain("CORRECT: columns[5]:");
+        expect(error.message).toContain("WRONG: columns[");
+      }
+    });
+
+    it("detects empty bracket array syntax", async () => {
+      const structured = Output.object({
+        schema: z.object({
+          items: z.array(z.string()),
+        }),
+      });
+
+      // Invalid TOON: items[]: without count
+      const result = {
+        text: ["```toon", "items[]: value1,value2", "```"].join("\n"),
+        response: {},
+        usage: {},
+        finishReason: "stop",
+      } as unknown as GenerateTextResult<ToolSet, any>;
+
+      try {
+        await parseToonStructuredOutput(result, structured);
+        throw new Error("Should have thrown");
+      } catch (error: any) {
+        expect(error.message).toContain("Invalid TOON array syntax");
+        expect(error.message).toContain('"items[]:" has empty brackets');
+        expect(error.message).toContain("items[5]:");
+      }
+    });
+
+    it("allows valid array syntax with count", async () => {
+      const structured = Output.object({
+        schema: z.object({
+          items: z.array(z.string()),
+        }),
+      });
+
+      // Valid TOON
+      const result = {
+        text: ["```toon", "items[2]: value1,value2", "```"].join("\n"),
+        response: {},
+        usage: {},
+        finishReason: "stop",
+      } as unknown as GenerateTextResult<ToolSet, any>;
+
+      await parseToonStructuredOutput(result, structured);
+
+      expect((result as any).experimental_output).toEqual({
+        items: ["value1", "value2"],
+      });
     });
   });
 });
