@@ -38,6 +38,7 @@ export type BaseAgentOptions<
 > = Omit<T, "model" | "system" | "experimental_output" | "tools"> & {
   system?: string;
   structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
+  toon?: boolean;
   runtime?: RuntimeStore<STATE>;
   telemetry?: AgentTelemetryOverrides;
   loopTools?: boolean;

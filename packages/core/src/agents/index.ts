@@ -34,6 +34,8 @@ import {
   DEFAULT_MAX_STEP_TOOLS,
   runAgentWithToolLoop,
 } from "./toolLoop.js";
+import { buildToonSystemPrompt, parseToonStructuredOutput } from "./toon.js";
+import { getJsonSchemaFromStructuredOutput } from "./structuredOutputSchema.js";
 
 export { Output } from "ai";
 export type {
@@ -94,8 +96,20 @@ export class Agent {
   >(
     options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>,
   ): Promise<AgentGenerateResult<OUTPUT>> {
-    const system = options.system ?? this.instructions;
+    const providedSystem = options.system ?? this.instructions;
     const structuredOutput = options.structuredOutput;
+    const useToon = options.toon ?? false;
+    if (useToon && !structuredOutput) {
+      throw new Error("The toon option requires a structuredOutput schema.");
+    }
+
+    const system =
+      useToon && structuredOutput
+        ? buildToonSystemPrompt(
+            providedSystem,
+            getJsonSchemaFromStructuredOutput(structuredOutput),
+          )
+        : providedSystem;
     const runtime = options.runtime;
     const loopToolsOption = options.loopTools;
     const maxStepToolsOption = options.maxStepTools;
@@ -104,37 +118,50 @@ export class Agent {
       tools: this.tools,
       maxStepTools: maxStepToolsOption ?? this.maxStepTools,
     });
+    const finalizeResult = async (
+      resultPromise: Promise<AgentGenerateResult<OUTPUT>>,
+    ) => {
+      const resolved = await resultPromise;
+      if (useToon && structuredOutput) {
+        await parseToonStructuredOutput(resolved, structuredOutput);
+      }
+      return resolved;
+    };
 
     const callGenerate = async (runtimeForCall?: RuntimeStore<STATE>) => {
       const toolSet = toToolSet(this.tools);
       if (
         structuredOutput &&
-        shouldUseStructuredPipeline(this.model, this.tools, structuredOutput)
+        shouldUseStructuredPipeline(this.model, this.tools, structuredOutput, {
+          toon: useToon,
+        })
       ) {
         const preparedOptions = prepareOptionsForRuntime(options, runtimeForCall);
-        return runAgentWithToolLoop({
-          settings: loopSettings,
-          existingStopWhen: (preparedOptions as { stopWhen?: GenerateTextParams["stopWhen"] })
-            .stopWhen,
-          execute: async (stopWhenOverride) => {
-            const optionsWithStopWhen =
-              stopWhenOverride !== undefined
-                ? { ...preparedOptions, stopWhen: stopWhenOverride }
-                : preparedOptions;
+        return finalizeResult(
+          runAgentWithToolLoop({
+            settings: loopSettings,
+            existingStopWhen: (preparedOptions as { stopWhen?: GenerateTextParams["stopWhen"] })
+              .stopWhen,
+            execute: async (stopWhenOverride) => {
+              const optionsWithStopWhen =
+                stopWhenOverride !== undefined
+                  ? { ...preparedOptions, stopWhen: stopWhenOverride }
+                  : preparedOptions;
 
-            const result = await generateWithStructuredPipeline({
-              model: this.model,
-              tools: this.tools,
-              system,
-              structuredOutput,
-              options: optionsWithStopWhen,
-              telemetryEnabled: this.telemetryEnabled,
-              loopToolsEnabled: loopSettings.enabled,
-            });
+              const result = await generateWithStructuredPipeline({
+                model: this.model,
+                tools: this.tools,
+                system,
+                structuredOutput,
+                options: optionsWithStopWhen,
+                telemetryEnabled: this.telemetryEnabled,
+                loopToolsEnabled: loopSettings.enabled,
+              });
 
-            return result;
-          },
-        });
+              return result;
+            },
+          })
+        );
       }
 
       if ("prompt" in options && options.prompt !== undefined) {
@@ -142,6 +169,7 @@ export class Agent {
           system: _system,
           structuredOutput: _structured,
           runtime: _runtime,
+          toon: _toon,
           ...rest
         } = options;
         const {
@@ -168,46 +196,48 @@ export class Agent {
           system,
           model: this.model,
           ...(toolSet ? { tools: toolSet } : {}),
-          ...(structuredOutput
+          ...(structuredOutput && !useToon
             ? { experimental_output: structuredOutput }
             : {}),
         };
 
-        return runAgentWithToolLoop({
-          settings: loopSettings,
-          existingStopWhen,
-          execute: async (stopWhenOverride) => {
-            const payload: PromptPayload =
-              stopWhenOverride !== undefined
-                ? { ...basePayload, stopWhen: stopWhenOverride }
-                : basePayload;
+        return finalizeResult(
+          runAgentWithToolLoop({
+            settings: loopSettings,
+            existingStopWhen,
+            execute: async (stopWhenOverride) => {
+              const payload: PromptPayload =
+                stopWhenOverride !== undefined
+                  ? { ...basePayload, stopWhen: stopWhenOverride }
+                  : basePayload;
 
-            if (loopSettings.enabled) {
-              applyDefaultStopWhen(payload, this.tools);
-            }
+              if (loopSettings.enabled) {
+                applyDefaultStopWhen(payload, this.tools);
+              }
 
-            const mergedContext = RuntimeStore.mergeExperimentalContext(
-              experimental_context,
-              runtimeForCall,
-            );
+              const mergedContext = RuntimeStore.mergeExperimentalContext(
+                experimental_context,
+                runtimeForCall,
+              );
 
-            if (mergedContext !== undefined) {
-              payload.experimental_context = mergedContext;
-            }
+              if (mergedContext !== undefined) {
+                payload.experimental_context = mergedContext;
+              }
 
-            const mergedTelemetry = mergeTelemetryConfig({
-              agentTelemetryEnabled: this.telemetryEnabled,
-              overrides: telemetryOverrides,
-              existing: experimental_telemetry,
-            });
+              const mergedTelemetry = mergeTelemetryConfig({
+                agentTelemetryEnabled: this.telemetryEnabled,
+                overrides: telemetryOverrides,
+                existing: experimental_telemetry,
+              });
 
-            if (mergedTelemetry !== undefined) {
-              payload.experimental_telemetry = mergedTelemetry;
-            }
+              if (mergedTelemetry !== undefined) {
+                payload.experimental_telemetry = mergedTelemetry;
+              }
 
-            return generateText(payload);
-          },
-        });
+              return generateText(payload);
+            },
+          })
+        );
       }
 
       if ("messages" in options && options.messages !== undefined) {
@@ -215,6 +245,7 @@ export class Agent {
           system: _system,
           structuredOutput: _structured,
           runtime: _runtime,
+          toon: _toon,
           ...rest
         } = options;
         const {
@@ -241,46 +272,48 @@ export class Agent {
           system,
           model: this.model,
           ...(toolSet ? { tools: toolSet } : {}),
-          ...(structuredOutput
+          ...(structuredOutput && !useToon
             ? { experimental_output: structuredOutput }
             : {}),
         };
 
-        return runAgentWithToolLoop({
-          settings: loopSettings,
-          existingStopWhen,
-          execute: async (stopWhenOverride) => {
-            const payload: MessagesPayload =
-              stopWhenOverride !== undefined
-                ? { ...basePayload, stopWhen: stopWhenOverride }
-                : basePayload;
+        return finalizeResult(
+          runAgentWithToolLoop({
+            settings: loopSettings,
+            existingStopWhen,
+            execute: async (stopWhenOverride) => {
+              const payload: MessagesPayload =
+                stopWhenOverride !== undefined
+                  ? { ...basePayload, stopWhen: stopWhenOverride }
+                  : basePayload;
 
-            if (loopSettings.enabled) {
-              applyDefaultStopWhen(payload, this.tools);
-            }
+              if (loopSettings.enabled) {
+                applyDefaultStopWhen(payload, this.tools);
+              }
 
-            const mergedContext = RuntimeStore.mergeExperimentalContext(
-              experimental_context,
-              runtimeForCall,
-            );
+              const mergedContext = RuntimeStore.mergeExperimentalContext(
+                experimental_context,
+                runtimeForCall,
+              );
 
-            if (mergedContext !== undefined) {
-              payload.experimental_context = mergedContext;
-            }
+              if (mergedContext !== undefined) {
+                payload.experimental_context = mergedContext;
+              }
 
-            const mergedTelemetry = mergeTelemetryConfig({
-              agentTelemetryEnabled: this.telemetryEnabled,
-              overrides: telemetryOverrides,
-              existing: experimental_telemetry,
-            });
+              const mergedTelemetry = mergeTelemetryConfig({
+                agentTelemetryEnabled: this.telemetryEnabled,
+                overrides: telemetryOverrides,
+                existing: experimental_telemetry,
+              });
 
-            if (mergedTelemetry !== undefined) {
-              payload.experimental_telemetry = mergedTelemetry;
-            }
+              if (mergedTelemetry !== undefined) {
+                payload.experimental_telemetry = mergedTelemetry;
+              }
 
-            return generateText(payload);
-          },
-        });
+              return generateText(payload);
+            },
+          })
+        );
       }
 
       throw new Error("Agent.generate requires a prompt or messages option");
@@ -309,6 +342,10 @@ export class Agent {
   ): Promise<AgentStreamResult<PARTIAL_OUTPUT>> {
     const system = options.system ?? this.instructions;
     const structuredOutput = options.structuredOutput;
+    const useToon = options.toon ?? false;
+    if (useToon) {
+      throw new Error("The toon option is not supported with agent.stream yet.");
+    }
     const runtime = options.runtime;
     const loopToolsOption = options.loopTools;
     const maxStepToolsOption = options.maxStepTools;
@@ -322,7 +359,9 @@ export class Agent {
       const toolSet = toToolSet(this.tools);
       if (
         structuredOutput &&
-        shouldUseStructuredPipeline(this.model, this.tools, structuredOutput)
+        shouldUseStructuredPipeline(this.model, this.tools, structuredOutput, {
+          toon: useToon,
+        })
       ) {
         const preparedOptions = prepareOptionsForRuntime(options, runtimeForCall);
         const streamResult = await runAgentWithToolLoop({
@@ -356,6 +395,7 @@ export class Agent {
           system: _system,
           structuredOutput: _structured,
           runtime: _runtime,
+          toon: _toon,
           ...rest
         } = options;
         const {
@@ -382,7 +422,7 @@ export class Agent {
           system,
           model: this.model,
           ...(toolSet ? { tools: toolSet } : {}),
-          ...(structuredOutput
+          ...(structuredOutput && !useToon
             ? { experimental_output: structuredOutput }
             : {}),
         };
@@ -431,6 +471,7 @@ export class Agent {
           system: _system,
           structuredOutput: _structured,
           runtime: _runtime,
+          toon: _toon,
           ...rest
         } = options;
         const {
@@ -457,7 +498,7 @@ export class Agent {
           system,
           model: this.model,
           ...(toolSet ? { tools: toolSet } : {}),
-          ...(structuredOutput
+          ...(structuredOutput && !useToon
             ? { experimental_output: structuredOutput }
             : {}),
         };
