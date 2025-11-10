@@ -74,6 +74,30 @@ describe("ServerKit", () => {
     await expect(response.json()).resolves.toEqual({ message: "ok" });
   });
 
+  it("lists registered agents", async () => {
+    const agent = {
+      name: "Demo Agent",
+      instructions: "Be helpful",
+      generate: vi.fn(),
+      stream: vi.fn(),
+    } as unknown as Agent;
+
+    const server = new ServerKit({ agents: { demo: agent } });
+
+    const response = await server.app.request("/api/agents");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      agents: [
+        {
+          id: "demo",
+          name: "Demo Agent",
+          instructions: "Be helpful",
+        },
+      ],
+    });
+  });
+
   it("returns 404 for unknown workflows", async () => {
     const server = new ServerKit();
 
@@ -122,6 +146,29 @@ describe("ServerKit", () => {
     expect(run.lastStartOptions?.inputData).toEqual({ foo: "bar" });
   });
 
+  it("lists registered workflows", async () => {
+    const workflow = {
+      id: "workflow-demo",
+      description: "Demo workflow",
+      createRun: vi.fn(),
+    } as unknown as Workflow<any, any, Record<string, unknown>>;
+
+    const server = new ServerKit({ workflows: { demo: workflow } });
+
+    const response = await server.app.request("/api/workflows");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      workflows: [
+        {
+          id: "demo",
+          workflowId: "workflow-demo",
+          description: "Demo workflow",
+        },
+      ],
+    });
+  });
+
   it("streams workflow events and final result", async () => {
     const baseResult: WorkflowRunResult<unknown, Record<string, unknown>> = {
       status: "success",
@@ -166,6 +213,69 @@ describe("ServerKit", () => {
     expect(payload).toContain('event: workflow:start');
     expect(payload).toContain('event: result');
     expect(payload).toContain('"output":"stream"');
+  });
+
+  it("runs global middleware before routes", async () => {
+    const middleware = vi.fn(async (_c, next) => {
+      await next();
+    });
+
+    const server = new ServerKit({ server: { middleware: [middleware] } });
+
+    const response = await server.app.request("/api/agents");
+
+    expect(response.status).toBe(200);
+    expect(middleware).toHaveBeenCalledTimes(1);
+  });
+
+  it("supports legacy middleware option but warns", async () => {
+    const middleware = vi.fn(async (_c, next) => {
+      await next();
+    });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const server = new ServerKit({ middleware: [middleware] });
+
+    const response = await server.app.request("/api/agents");
+
+    expect(response.status).toBe(200);
+    expect(middleware).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "ServerKitConfig.middleware is deprecated. Use server.middleware instead.",
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  it("supports path-scoped middleware objects", async () => {
+    const secureMiddleware = vi.fn(async (c, next) => {
+      if (!c.req.header("x-auth")) {
+        return c.json({ error: "unauthorized" }, 401);
+      }
+
+      await next();
+    });
+
+    const server = new ServerKit({
+      server: { middleware: [{ path: "/secure/*", handler: secureMiddleware }] },
+    });
+
+    server.app.get("/secure/ping", c => c.json({ ok: true }));
+
+    const unauthorized = await server.app.request("/secure/ping");
+    expect(unauthorized.status).toBe(401);
+    await expect(unauthorized.json()).resolves.toEqual({ error: "unauthorized" });
+
+    const authorized = await server.app.request("/secure/ping", {
+      headers: { "x-auth": "token" },
+    });
+
+    expect(authorized.status).toBe(200);
+    await expect(authorized.json()).resolves.toEqual({ ok: true });
+
+    await server.app.request("/api/agents");
+    expect(secureMiddleware).toHaveBeenCalledTimes(2);
   });
 
   it("resumes a waiting workflow run", async () => {
@@ -242,7 +352,9 @@ describe("ServerKit", () => {
       openapi: "3.0.3",
       info: expect.objectContaining({ title: "AI Kit API" }),
       paths: expect.objectContaining({
+        "/api/agents": expect.any(Object),
         "/api/agents/{id}/generate": expect.any(Object),
+        "/api/workflows": expect.any(Object),
       }),
     });
 

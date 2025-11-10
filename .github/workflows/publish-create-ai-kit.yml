@@ -1,64 +1,83 @@
-name: Publish create-ai-kit
+name: NPM Publish Create AI Kit
 
 on:
   push:
-    tags:
-      - 'create-ai-kit-v*'
+    branches: [ main ]
+    paths:
+      - 'packages/create-ai-kit/package.json'
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to publish (e.g., 1.0.0)'
-        required: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
+          scope: '@ai_kit'
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v4
         with:
           version: 10.15.0
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Get package version
+        id: package
+        run: |
+          VERSION=$(cd packages/create-ai-kit && node -p "require('./package.json').version")
+          PACKAGE_NAME=$(cd packages/create-ai-kit && node -p "require('./package.json').name")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "Package: $PACKAGE_NAME@$VERSION"
 
-      - name: Build create-ai-kit
+      - name: Check if version exists on NPM
+        id: npm-check
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd packages/create-ai-kit
+          if npm view ${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }} version 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Version ${{ steps.package.outputs.version }} already exists on NPM"
+            exit 1
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Version ${{ steps.package.outputs.version }} does not exist on NPM"
+          fi
+
+      - name: Install dependencies
+        run: |
+          cd packages/create-ai-kit
+          pnpm install
+
+      - name: Build package
         run: |
           cd packages/create-ai-kit
           pnpm build
 
-      - name: Publish to npm
+      - name: Publish to NPM
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           cd packages/create-ai-kit
           pnpm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/create-release@v1
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref_name }}
-          release_name: create-ai-kit ${{ github.ref_name }}
+          tag_name: v${{ steps.package.outputs.version }}-create
+          name: AI KIT create - Release v${{ steps.package.outputs.version }}
           body: |
-            ## Installation
-            ```bash
-            npx @ai_kit/create-ai-kit my-app
-            ```
+            ## Changes
+
+            Package ${{ steps.package.outputs.name }} has been updated to version ${{ steps.package.outputs.version }}.
           draft: false
           prerelease: false

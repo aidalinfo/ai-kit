@@ -45,8 +45,10 @@ Par défaut, le serveur écoute sur `0.0.0.0` et le port `PORT` (ou 8787). Les i
 
 | Route | Description |
 | --- | --- |
+| `GET /api/agents` | Liste tous les agents déclarés dans la configuration du serveur. |
 | `POST /api/agents/:id/generate` | Exécute `Agent.generate` une fois et retourne la réponse complète. |
 | `POST /api/agents/:id/stream` | Diffuse `Agent.stream` via SSE ou l’API `DataStreamResponse` fournie par `ai`. |
+| `GET /api/workflows` | Liste tous les workflows déclarés dans la configuration du serveur. |
 | `POST /api/workflows/:id/run` | Démarre un run et renvoie son `runId` + l’état final (ou `waiting_human`). |
 | `POST /api/workflows/:id/stream` | Diffuse chaque `WorkflowEvent` et l’état final via SSE. |
 | `POST /api/workflows/:id/runs/:runId/resume` | Reprend un run suspendu avec des données humaines. |
@@ -58,6 +60,36 @@ Les payloads workflow doivent inclure `inputData` et peuvent ajouter `metadata`.
 - `stream` utilise un `ReadableStream` SSE : l’événement `run` contient le `runId`, puis chaque étape déclenche un événement dont le nom = `event.type`.
 - Lorsque le workflow passe en `waiting_human`, le stream se ferme après avoir envoyé l’état. Utilisez ensuite `resume` avec `{ stepId, data }` pour relancer l’exécution.
 - La route `/stream` annule automatiquement le run si le client ferme la connexion.
+
+## Middleware
+
+Vous pouvez brancher des middlewares Hono (même syntaxe que Mastra) via l’option `server.middleware`. Passez soit une simple fonction (middleware global), soit un objet `{ path, handler }` pour limiter la portée à certaines routes (`path` accepte les mêmes valeurs que [`app.use`](https://hono.dev/api/hono#use)). Le champ `middleware` à la racine reste pris en charge pour compatibilité mais sera retiré à terme.
+
+```ts
+const server = new ServerKit({
+  agents: { support: supportAgent },
+  workflows: { "enrich-ticket": enrichWorkflow },
+  server: {
+    middleware: [
+      {
+        path: "/api/*",
+        handler: async (c, next) => {
+          const authHeader = c.req.header("Authorization");
+          if (!authHeader) {
+            return new Response("Unauthorized", { status: 401 });
+          }
+
+          await next();
+        },
+      },
+      async (c, next) => {
+        console.log(`${c.req.method} ${c.req.url}`);
+        await next();
+      },
+    ],
+  },
+});
+```
 
 ## Swagger / OpenAPI
 
@@ -99,6 +131,7 @@ Le binaire fourni sert surtout de point de départ : il ne déclare aucun agent
 | --- | --- | --- |
 | `agents` | `Record<string, Agent>` | Enregistre les agents disponibles sous `/api/agents/:id/*`. |
 | `workflows` | `Record<string, Workflow>` | Déclare les workflows exposés sous `/api/workflows/:id/*`. |
+| `server.middleware` | `ServerMiddleware[]` | Ajoute des middlewares globaux ou scoped avant les routes intégrées. |
 | `swagger` | `boolean \| SwaggerOptions` | Active/désactive Swagger ou précise `route`, `title`, `version`, `description`. |
 | `telemetry` | `boolean \| ServerTelemetryOptions` | Active l’export Langfuse et transmet les options à `ensureLangfuseTelemetry`. |
 
