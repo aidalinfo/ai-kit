@@ -1,0 +1,225 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "maple",
+  "name": "ai_kit",
+  "colors": {
+    "primary": "#E91E63",
+    "light": "#07C983",
+    "dark": "#15803D"
+  },
+  "favicon": "/favicon.svg",
+  "i18n": {
+    "defaultLocale": "fr",
+    "locales": [
+      {
+        "code": "fr",
+        "name": "Français"
+      },
+      {
+        "code": "en",
+        "name": "English"
+      }
+    ]
+  },
+  "navigation": {
+    "global": {
+      "anchors": [
+        {
+          "anchor": "Repository",
+          "href": "https://github.com/aidalinfo/ai-kit",
+          "icon": "book"
+        },
+        {
+          "anchor": "Issues",
+          "href": "https://github.com/aidalinfo/ai-kit/issues",
+          "icon": "message-lines"
+        }
+      ]
+    },
+    "languages": [
+      {
+        "language": "fr",
+        "default": true,
+        "tabs": [
+          {
+            "tab": "Guides",
+            "groups": [
+              {
+                "group": "Getting started",
+                "pages": [
+                  "fr/index",
+                  "fr/getting-started/overview",
+                  "fr/getting-started/first-agent",
+                  "fr/getting-started/project-structure"
+                ]
+              },
+              {
+                "group": "Agents",
+                "pages": [
+                  "fr/agents/index",
+                  "fr/agents/tools",
+                  "fr/agents/structured-output",
+                  "fr/agents/streaming",
+                  "fr/agents/runtime"
+                ]
+              },
+              {
+                "group": "Workflows",
+                "pages": [
+                  "fr/workflows/index",
+                  "fr/workflows/introduction",
+                  "fr/workflows/branches",
+                  "fr/workflows/parallel",
+                  "fr/workflows/branch-parallel",
+                  "fr/workflows/human-steps",
+                  "fr/workflows/while",
+                  "fr/workflows/telemetry"
+                ]
+              },
+              {
+                "group": "Utils",
+                "pages": [
+                  "fr/utils/chunking"
+                ]
+              },
+              {
+                "group": "Télémétrie",
+                "pages": [
+                  "fr/telemetrie/index",
+                  "fr/telemetrie/langfuse"
+                ]
+              },
+              {
+                "group": "Providers",
+                "pages": [
+                  "fr/providers/scaleway"
+                ]
+              },
+              {
+                "group": "MCP",
+                "pages": [
+                  "fr/mcp/usage"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "API reference",
+            "groups": [
+              {
+                "group": "Classes centrales",
+                "pages": [
+                  "fr/api-reference/introduction",
+                  "fr/api-reference/agent",
+                  "fr/api-reference/workflow",
+                  "fr/api-reference/workflow-run",
+                  "fr/api-reference/runtime-store"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "language": "en",
+        "tabs": [
+          {
+            "tab": "Guides",
+            "groups": [
+              {
+                "group": "Getting started",
+                "pages": [
+                  "en/index",
+                  "en/getting-started/overview",
+                  "en/getting-started/first-agent",
+                  "en/getting-started/project-structure"
+                ]
+              },
+              {
+                "group": "Agents",
+                "pages": [
+                  "en/agents/index",
+                  "en/agents/tools",
+                  "en/agents/structured-output",
+                  "en/agents/streaming",
+                  "en/agents/runtime"
+                ]
+              },
+              {
+                "group": "Workflows",
+                "pages": [
+                  "en/workflows/index",
+                  "en/workflows/introduction",
+                  "en/workflows/branches",
+                  "en/workflows/parallel",
+                  "en/workflows/branch-parallel",
+                  "en/workflows/human-steps",
+                  "en/workflows/while",
+                  "en/workflows/telemetry"
+                ]
+              },
+              {
+                "group": "Utilities",
+                "pages": [
+                  "en/utils/chunking"
+                ]
+              },
+              {
+                "group": "Telemetry",
+                "pages": [
+                  "en/telemetry/index",
+                  "en/telemetry/langfuse"
+                ]
+              },
+              {
+                "group": "Providers",
+                "pages": [
+                  "en/providers/scaleway"
+                ]
+              },
+              {
+                "group": "MCP",
+                "pages": [
+                  "en/mcp/usage"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "API reference",
+            "groups": [
+              {
+                "group": "Core classes",
+                "pages": [
+                  "en/api-reference/introduction",
+                  "en/api-reference/agent",
+                  "en/api-reference/workflow",
+                  "en/api-reference/workflow-run",
+                  "en/api-reference/runtime-store"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "contextual": {
+    "options": [
+     "view",
+     "chatgpt",
+     "claude",
+     "perplexity",
+     "mcp",
+     "cursor",
+     "vscode"
+   ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/aidalinfo/ai-kit",
+      "linkedin": "https://www.linkedin.com/company/aidalinfo",
+      "x": "https://x.com/Ninapepite_"
+    }
+  }
+}

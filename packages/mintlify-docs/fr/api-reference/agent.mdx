@@ -1,0 +1,89 @@
+---
+title: "Classe Agent"
+description: "Configuration, méthodes et options d’exécution d’un agent AI Kit."
+locale: fr
+---
+
+```ts
+import { Agent, type AgentConfig } from "@ai_kit/core";
+```
+
+## `AgentConfig`
+
+| Propriété | Type | Défaut | Description |
+| --- | --- | --- | --- |
+| `name` | `string` | requis | Identifiant de l’agent (journalisation, télémétrie). |
+| `instructions` | `string` | `undefined` | Prompt système appliqué à chaque appel (surchargé via `system`). |
+| `model` | `LanguageModel` | requis | Modèle issu du SDK `ai`. |
+| `tools` | `AgentTools` | `undefined` | Ensemble d’outils exposés par défaut (`ToolSet` ou provider). |
+| `telemetry` | `boolean` | `false` | Active l’export OTEL / Langfuse par défaut. |
+| `loopTools` | `boolean` | `false` | Active la boucle automatique de tool calls. |
+| `maxStepTools` | `number` | `20` (`DEFAULT_MAX_STEP_TOOLS`) | Nombre maximal d’outils déclenchés avant d’interrompre la boucle. |
+
+## Constructeur
+
+```ts
+const agent = new Agent(config: AgentConfig);
+```
+
+### Méthodes d’instance
+
+#### `agent.generate(options)`
+
+```ts
+generate<OUTPUT = never, PARTIAL = never, STATE extends RuntimeState = RuntimeState>(
+  options: AgentGenerateOptions<OUTPUT, PARTIAL, STATE>
+): Promise<AgentGenerateResult<OUTPUT>>;
+```
+
+Options héritent des paramètres `generateText` du SDK `ai` (`prompt` ou `messages`) avec les extensions suivantes :
+
+- `system?: string` – surcharge des instructions.
+- `structuredOutput?: Output.Output<OUTPUT, PARTIAL>` – génération typée (Zod).
+- `runtime?: RuntimeStore<STATE>` – runtime partagé (voir [`RuntimeStore`](/fr/api-reference/runtime-store)).
+- `telemetry?: AgentTelemetryOverrides` – fusionne `functionId`, `metadata`, `recordInputs`, `recordOutputs`.
+- `loopTools?: boolean` / `maxStepTools?: number` – overrides ponctuels de la boucle d’outils.
+
+Valeur de retour : résultat `GenerateTextResult` enrichi de `loopTool?: boolean`.
+
+#### `agent.stream(options)`
+
+```ts
+stream<OUTPUT = never, PARTIAL = never, STATE extends RuntimeState = RuntimeState>(
+  options: AgentStreamOptions<OUTPUT, PARTIAL, STATE>
+): Promise<AgentStreamResult<PARTIAL>>;
+```
+
+Expose les propriétés additionnelles :
+
+- `textStream`, `fullStream`, `text`, `response`, `usage`, `steps`.
+- `experimental_partialOutputStream` en présence d’un `structuredOutput`.
+- `toAIStreamResponse()` / `toDataStreamResponse()` pour intégrer le flux dans une réponse HTTP.
+
+L’option `structuredOutput` déclenche automatiquement le pipeline structuré lorsque le modèle le supporte.
+
+#### `agent.withTelemetry(enabled?: boolean)`
+
+Active/désactive la télémétrie par mutation sur l’instance. Retourne `this` pour chaînage.
+
+```ts
+agent.withTelemetry();      // active
+agent.withTelemetry(false); // désactive
+```
+
+## Types utilitaires
+
+- `AgentTools` – union entre `ToolSet` (SDK `ai`) et dictionnaires providers.
+- `AgentGenerateResult<T>` – alias de `GenerateTextResult` + `loopTool`.
+- `AgentStreamResult<T>` – alias de `StreamTextResult` + `loopTool`.
+- `AgentTelemetryOverrides` – `functionId`, `metadata`, `recordInputs?`, `recordOutputs?`.
+
+## Gestion du runtime
+
+Lorsque `runtime` est fourni :
+
+- un snapshot `RuntimeStore` est créé pour la durée de l’appel ;
+- la logique `onCleanup` est exécutée à la fin (succès, erreur ou annulation) ;
+- la méthode `RuntimeStore.mergeExperimentalContext` fusionne `experimental_context` passé manuellement avec l’état du runtime.
+
+Si aucune option `runtime` n’est définie, l’agent fonctionne comme un wrapper direct autour du SDK `ai`.

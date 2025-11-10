@@ -1,0 +1,64 @@
+---
+title: "Tools & tool loop"
+description: "Declare agent tools and control the automatic loop."
+locale: en
+---
+
+Tools let your agents trigger application code (search, internal APIs, business logic…). AI Kit registers them on the agent and injects them into every `generate` or `stream` call.
+
+## Register default tools
+
+```ts
+import { Agent, google } from "@ai_kit/core";
+
+const assistant = new Agent({
+  name: "life-assistant",
+  instructions: "Lifestyle assistant",
+  model: google("gemini-2.5-flash"),
+  tools: {
+    google_search: google.tools.googleSearch({}),
+  },
+  loopTools: true,
+  maxStepTools: 15,
+});
+
+await assistant.generate({ prompt: "What’s the weather in Paris?" });
+```
+
+- The `tools` option exposes tools for every call.
+- `loopTools` and `maxStepTools` defined on the agent act as defaults.
+- You can override any of them per call (`agent.generate({ tools, loopTools, maxStepTools })`).
+
+## Automatic tool loop
+
+When `loopTools` is enabled and at least one tool is available, AI Kit orchestrates the loop: after each `toolCall`, the corresponding tool executes and the conversation resumes until a final answer is produced. The result includes a `loopTool` flag for quick DX inspection.
+
+```ts
+const result = await assistant.generate({
+  prompt: "Find the workflow documentation for the tool loop feature.",
+  loopTools: true,
+});
+
+if (result.loopTool) {
+  console.log("Tools were executed during the conversation.");
+}
+```
+
+## Control knobs
+
+- `loopTools?: boolean` – enable or disable the loop (disabled by default).
+- `maxStepTools?: number` – cap the total amount of tool executions (default: `20`).
+- Override both on individual calls when you need a specific behaviour.
+
+```ts
+await assistant.generate({
+  prompt: "Reply without executing any tool.",
+  loopTools: false,
+});
+```
+
+## Recommendations
+
+- Prefix tool IDs (`search.customer`, `support.lookup`) to simplify monitoring.
+- Lower `maxStepTools` when a tool can trigger expensive side effects.
+- Log `toolCalls` in your observability stack to audit model decisions.

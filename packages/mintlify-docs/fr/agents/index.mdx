@@ -1,0 +1,22 @@
+---
+title: "Agents"
+description: "Concevoir, configurer et exploiter vos agents AI Kit."
+locale: fr
+---
+
+Les agents encapsulent un modèle, des instructions système et des outils pour industrialiser vos assistants IA. Cette section couvre l’instanciation, la gestion des outils, les sorties structurées, le streaming et le runtime partagé.
+
+## Pages clés
+
+- [`Créer un agent`](/fr/getting-started/first-agent) – installation et première génération.
+- [`Outils & tool loop`](/fr/agents/tools) – déclarer des outils et piloter la boucle d’orchestration.
+- [`Sorties structurées`](/fr/agents/structured-output) – valider vos réponses via `structuredOutput` et les helpers `Output`.
+- [`Streaming temps réel`](/fr/agents/streaming) – consommer les tokens à la volée et superviser une génération en temps réel.
+- [`Runtime partagé`](/fr/agents/runtime) – stocker des ressources binaires et les partager avec vos outils.
+
+## Bonnes pratiques
+
+- Surchargez `system` par appel pour adapter les instructions sans recréer l’agent.
+- Ajustez `maxOutputTokens`, `temperature`, `topP`, etc. directement via `generate` ou `stream`.
+- Composez plusieurs agents spécialisés (rédaction, validation, résumé) pour couvrir un parcours complet.
+- Combinez agents et workflows pour orchestrer des boucles décisionnelles plus avancées.

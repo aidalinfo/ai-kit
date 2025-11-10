@@ -1,0 +1,31 @@
+---
+title: "Getting started"
+description: "Install AI Kit, prepare your environment, and understand the main building blocks."
+locale: en
+---
+
+AI Kit builds on top of the `ai` SDK to interact with your models and layers opinionated helpers for creating typed agents and workflows. This page lists the prerequisites and the next steps to ramp up quickly.
+
+## Prerequisites
+
+- Node.js 18+ (or any runtime that ships with `fetch`).
+- A package manager (`pnpm`, `npm`, or `yarn`).
+- Access to an AI SDK compatible provider (Scaleway, OpenAI, Google, …).
+
+## Quick install
+
+```bash
+pnpm add @ai_kit/core ai zod
+# or
+npm install @ai_kit/core ai zod
+```
+
+Add the provider client you need (`@ai-sdk/openai`, `@ai-sdk/google`, …).
+
+## What’s next?
+
+- Follow the guide [Build your first agent in 5 minutes](/en/getting-started/first-agent).
+- Assemble a typed pipeline with [Build a simple workflow](/en/workflows/introduction).
+- Enable tracing with [Langfuse telemetry](/en/telemetry/langfuse).
+
+Curious about the repository layout? Check [Project architecture](/en/getting-started/project-structure).

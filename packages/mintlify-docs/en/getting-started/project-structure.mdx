@@ -1,0 +1,39 @@
+---
+title: "Project architecture"
+description: "Understand how the AI Kit packages are organised and the tooling available."
+locale: en
+---
+
+The repository is a PNPM workspace made of multiple packages. Use this overview to navigate the codebase and contribute efficiently.
+
+## Core packages
+
+- `packages/core` – agents, workflows, shared runtime, providers, telemetry.
+- `packages/types` – exported public types and shared utilities.
+- `packages/mcp` – Model Context Protocol components and agent integrations.
+- `packages/mcp-docs-server` – MCP server that surfaces the AI Kit documentation.
+
+## Documentation
+
+- `packages/mintlify-docs` – Mintlify documentation (this site). Add guides and API reference here.
+- `packages/docs` – historical Astro documentation. Its content has been migrated to Mintlify.
+
+## Useful scripts
+
+Run these commands from the repository root:
+
+```bash
+pnpm lint        # Lint and type-check
+pnpm test        # Run the test suite (Jest/Vitest depending on the package)
+pnpm dev docs    # Start the local Mintlify preview
+```
+
+Use `pnpm --filter <package>` to scope any command, for example `pnpm --filter @ai_kit/core test`.
+
+## Contribution workflow
+
+1. Create a branch, implement your changes, and add tests when it makes sense.
+2. Update the Mintlify docs whenever the public API evolves.
+3. Double-check that telemetry remains optional and guarded by feature flags.
+
+Pull requests are reviewed with a strong focus on agent stability and workflow compatibility.

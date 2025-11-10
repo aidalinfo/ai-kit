@@ -4,33 +4,84 @@ import starlight from '@astrojs/starlight';
 
 // https://astro.build/config
 export default defineConfig({
-	site: 'https://ai.aidalinfo.fr',
-	integrations: [
-		starlight({
-			title: 'AI Kit Docs',
-			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/withastro/starlight' }],
-			sidebar: [
-				{
-					label: 'Introduction',
-					link: '/introduction/',
-				},
-				{
-					label: 'Core',
-					autogenerate: { directory: 'core' },
-				},
-				{
-					label: 'Utils',
-					autogenerate: { directory: 'utils' },
-				},
-				{
-					label: 'Providers',
-					autogenerate: { directory: 'providers' },
-				},
-				{
-					label: 'MCP',
-					autogenerate: { directory: 'mcp' },
-				},
-			],
-		}),
-	],
+        site: 'https://ai.aidalinfo.fr',
+        integrations: [
+                starlight({
+                        title: {
+                                default: 'Documentation AI Kit',
+                                'fr-FR': 'Documentation AI Kit',
+                                en: 'AI Kit Docs',
+                                'en-US': 'AI Kit Docs',
+                        },
+                        defaultLocale: 'fr',
+                        locales: {
+                                fr: { label: 'Français', lang: 'fr-FR' },
+                                en: { label: 'English', lang: 'en-US' },
+                        },
+                        social: [
+                                { icon: 'github', label: 'GitHub', href: 'https://github.com/aidalinfo/ai-kit' },
+                        ],
+                        sidebar: [
+                                {
+                                        label: 'Introduction',
+                                        translations: { en: 'Introduction' },
+                                        link: '/introduction/',
+                                },
+                                {
+                                        label: 'Core',
+                                        translations: { en: 'Core' },
+                                        items: [
+                                                {
+                                                        label: 'Agents',
+                                                        translations: { en: 'Agents' },
+                                                        autogenerate: { directory: 'core/agents' },
+                                                },
+                                                {
+                                                        label: 'Workflows',
+                                                        translations: { en: 'Workflows' },
+                                                        autogenerate: { directory: 'core/workflows' },
+                                                },
+                                                {
+                                                        label: 'Télémétrie Langfuse',
+                                                        translations: { en: 'Langfuse telemetry' },
+                                                        link: '/core/telemetry/',
+                                                },
+                                        ],
+                                },
+                                {
+                                        label: 'Utils',
+                                        translations: { en: 'Utilities' },
+                                        items: [
+                                                {
+                                                        label: 'Gestion des chunks',
+                                                        translations: { en: 'Chunk management' },
+                                                        link: '/utils/chunking/',
+                                                },
+                                        ],
+                                },
+                                {
+                                        label: 'Providers',
+                                        translations: { en: 'Providers' },
+                                        items: [
+                                                {
+                                                        label: 'Scaleway',
+                                                        translations: { en: 'Scaleway' },
+                                                        link: '/providers/scaleway/',
+                                                },
+                                        ],
+                                },
+                                {
+                                        label: 'MCP',
+                                        translations: { en: 'MCP' },
+                                        items: [
+                                                {
+                                                        label: 'Serveur MCP AI Kit',
+                                                        translations: { en: 'AI Kit MCP server' },
+                                                        link: '/mcp/usage/',
+                                                },
+                                        ],
+                                },
+                        ],
+                }),
+        ],
 });

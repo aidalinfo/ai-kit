@@ -1,0 +1,79 @@
+---
+title: "Chunking utilities"
+description: "Split text and JSON into consistent segments."
+locale: en
+---
+
+AI Kit exposes chunking helpers inspired by Mastra to power RAG pipelines or parallel processing.
+
+```ts
+import {
+  splitTextRecursively,
+  splitJsonRecursively,
+  TChunkDocument,
+} from "@ai_kit/core";
+```
+
+## Split text
+
+```ts
+const chunks = splitTextRecursively(longArticle, {
+  chunkSize: 500,
+  chunkOverlap: 50,
+});
+```
+
+Each chunk exposes `index`, `start`, `end`, `content`, `type: "text"`, and optional metadata. `chunkOverlap` defines how many characters overlap to preserve context.
+
+### Working with chunks
+
+```ts
+// Generate embeddings
+await vectorStore.embed(chunks.map(chunk => chunk.content));
+
+// Build a quick summary
+const summary = chunks.map(chunk => chunk.content.split("\n")[0]).join("\n");
+
+// Attach unique identifiers
+const passages = chunks.map(chunk => ({
+  id: `article-${chunk.index}`,
+  text: chunk.content,
+  start: chunk.start,
+  end: chunk.end,
+}));
+```
+
+## Split JSON
+
+```ts
+const data = { foo: "bar", nested: { value: 42 } };
+
+const chunks = splitJsonRecursively(data, {
+  chunkSize: 300,
+  format: "pretty",
+  metadata: { source: "example" },
+});
+```
+
+`format` accepts `auto`, `preserve`, or `pretty`. Returned chunks have `type: "json"` and inherit the provided metadata.
+
+## Use `TChunkDocument`
+
+```ts
+const doc = TChunkDocument.fromJSON(myJson, { dataset: "customers" });
+const chunks = doc.chunk({
+  chunkSize: 256,
+  chunkOverlap: 32,
+  metadata: { stage: "training" },
+});
+
+const normalized = doc.toString("pretty");
+```
+
+`TChunkDocument` manages the content type and merges document-level metadata with chunk-level metadata.
+
+## Tips
+
+- Adjust `chunkSize` to fit your model or vector store limits.
+- Keep `chunkOverlap` light (10–50) to retain context without blowing up size.
+- Store metadata (source, version, language) to trace chunks and filter later on.

@@ -1,0 +1,79 @@
+---
+title: "Gestion des chunks"
+description: "Utilitaires pour découper du texte et du JSON en morceaux cohérents."
+locale: fr
+---
+
+AI Kit expose une API de chunking inspirée de Mastra pour préparer vos pipelines RAG ou vos traitements parallèles.
+
+```ts
+import {
+  splitTextRecursively,
+  splitJsonRecursively,
+  TChunkDocument,
+} from "@ai_kit/core";
+```
+
+## Découper du texte
+
+```ts
+const chunks = splitTextRecursively(longArticle, {
+  chunkSize: 500,
+  chunkOverlap: 50,
+});
+```
+
+Chaque chunk expose `index`, `start`, `end`, `content`, `type: "text"` et la metadata éventuelle. `chunkOverlap` définit le nombre de caractères partagés pour préserver le contexte.
+
+### Exploiter les chunks
+
+```ts
+// Préparer des embeddings
+await vectorStore.embed(chunks.map(chunk => chunk.content));
+
+// Construire un résumé rapide
+const summary = chunks.map(chunk => chunk.content.split("\n")[0]).join("\n");
+
+// Associer un identifiant unique
+const passages = chunks.map(chunk => ({
+  id: `article-${chunk.index}`,
+  text: chunk.content,
+  start: chunk.start,
+  end: chunk.end,
+}));
+```
+
+## Découper du JSON
+
+```ts
+const data = { foo: "bar", nested: { value: 42 } };
+
+const chunks = splitJsonRecursively(data, {
+  chunkSize: 300,
+  format: "pretty",
+  metadata: { source: "exemple" },
+});
+```
+
+`format` accepte `auto`, `preserve` ou `pretty`. Les chunks retournés ont `type: "json"` et héritent de la metadata fournie.
+
+## Utiliser `TChunkDocument`
+
+```ts
+const doc = TChunkDocument.fromJSON(myJson, { dataset: "clients" });
+const chunks = doc.chunk({
+  chunkSize: 256,
+  chunkOverlap: 32,
+  metadata: { stage: "training" },
+});
+
+const normalized = doc.toString("pretty");
+```
+
+`TChunkDocument` gère le type de contenu et fusionne la metadata définie sur le document avec celle fournie lors du chunking.
+
+## Conseils
+
+- Ajustez `chunkSize` selon la limite de votre modèle ou moteur de recherche.
+- Gardez `chunkOverlap` léger (10–50) pour préserver le contexte sans excès.
+- Stockez les `metadata` (source, version, langue) pour tracer vos chunks et faciliter les filtres ultérieurs.

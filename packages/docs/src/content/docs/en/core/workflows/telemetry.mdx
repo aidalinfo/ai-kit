@@ -1,0 +1,182 @@
+---
+title: Telemetry
+description: Instrument your workflows with OpenTelemetry and export them to Langfuse
+sidebar:
+  order: 6
+locale: en-US
+---
+
+Workflows now emit OpenTelemetry spans: a root span for the entire run and a child span per step (including human interactions). You can enable telemetry globally, per instance, or run by run.
+
+## Enable telemetry at construction time
+
+Declare your options directly in `createWorkflow`.
+
+```ts
+import { createWorkflow } from "@ai_kit/core";
+import { normalizeInput, fetchForecast } from "./steps";
+
+export const weatherWorkflow = createWorkflow({
+  id: "weather-run",
+  telemetry: true,
+})
+  .then(normalizeInput)
+  .then(fetchForecast)
+  .commit();
+```
+
+With `telemetry: true`, the library:
+
+- creates a root span named after the workflow `id` (`"weather-run"` here);
+- automatically captures inputs (`recordInputs: true`) and outputs (`recordOutputs: true`);
+- exposes standard `input`, `output`, `metadata` attributes for the Langfuse UI.
+
+Pass an object to customize the `traceName`, add metadata, or disable part of the recording:
+
+```ts
+import { createStep, createWorkflow } from "@ai_kit/core";
+import { z } from "zod";
+
+const normalizeInput = createStep({
+  id: "normalize",
+  inputSchema: z.object({ city: z.string() }),
+  outputSchema: z.object({ city: z.string() }),
+  handler: ({ input }) => ({ city: input.city.trim() }),
+});
+
+export const weatherWorkflow = createWorkflow({
+  id: "weather-run",
+  description: "Fetch the weather and generate a summary",
+  inputSchema: z.object({ city: z.string() }),
+  outputSchema: z.object({ forecast: z.string() }),
+  telemetry: {
+    traceName: "workflow.weather-run",
+    recordInputs: true,
+    recordOutputs: true,
+    metadata: {
+      domain: "weather",
+    },
+    userId: "anonymous",
+  },
+})
+  .then(normalizeInput)
+  // ...
+  .commit();
+```
+
+Each execution inherits this configuration. Attributes are written with the `ai_kit.workflow.*` prefix in addition to generic keys (`input`, `output`, `metadata`, `name`), making it easier to search in your OTEL backends or Langfuse.
+
+> ℹ️ When `userId` is provided, the value is exported under `langfuse.user.id`, `user.id`, and `ai_kit.workflow.user_id`, which automatically fills the **User ID** column in the Langfuse UI.
+
+## Modify an existing instance
+
+Workflows expose a `withTelemetry()` method and a `withTelemetry(workflow, config)` helper. They update the instance without breaking chaining.
+
+```ts
+import { withTelemetry } from "@ai_kit/core";
+
+const workflow = createWorkflow({
+  id: "tickets",
+  inputSchema: z.object({ topic: z.string() }),
+  outputSchema: z.object({ summary: z.string() }),
+})
+  .then(classifyTicket)
+  .then(generateAnswer)
+  .commit();
+
+// Enable telemetry for future runs
+workflow.withTelemetry({
+  traceName: "workflow.tickets",
+  recordOutputs: true,
+});
+
+// Decorator variant if you prefer a purely functional API
+const instrumented = withTelemetry(workflow, {
+  metadata: { team: "support" },
+});
+```
+
+## Runtime overrides
+
+You can enrich or disable telemetry per run:
+
+```ts
+await weatherWorkflow.run({
+  inputData: { city: "Paris" },
+  telemetry: {
+    userId: session.user.id,
+    metadata: {
+      requestId: "req_42",
+    },
+  },
+});
+
+// Disable completely for a specific run
+await weatherWorkflow.run({
+  inputData: { city: "Lyon" },
+  telemetry: false,
+});
+```
+
+Overrides merge with the global configuration. By default (`telemetry: true`), inputs and outputs are captured; you can disable them (`recordInputs: false`, `recordOutputs: false`) at the workflow or run level, and metadata is shallow-merged.
+
+## Link a user
+
+Provide a user identifier through `telemetry.userId` to tie a run back to the end customer. The value is merged with any default defined at construction time and remains accessible via Langfuse or runtime hooks such as `getTelemetrySelection()`.
+
+```ts
+const productWorkflow = createWorkflow({
+  id: "product-search",
+  telemetry: { userId: "anonymous" },
+})
+  .then(generateProductDataStep)
+  .commit();
+
+await productWorkflow.run({
+  inputData: { prompt },
+  telemetry: {
+    userId: session.user.id,
+    metadata: { tenantId: session.tenantId },
+  },
+});
+```
+
+Langfuse surfaces the identifier in the trace attributes (`langfuse.user.id`) and in the **User ID** column. Add complementary metadata (`tenantId`, `plan`, etc.) to streamline filtering.
+
+## Couple with Langfuse
+
+Spans rely on the global OpenTelemetry provider. Initialize Langfuse via `ensureLangfuseTelemetry` before running your workflows:
+
+```ts
+// instrumentation.ts
+import { ensureLangfuseTelemetry } from "@ai_kit/core";
+
+export const telemetry = ensureLangfuseTelemetry({
+  autoFlush: "process",
+});
+```
+
+```ts
+// entrypoint.ts
+import "./instrumentation";
+import { weatherWorkflow } from "./workflows/weather";
+
+await telemetry; // ensure Langfuse is ready
+
+const result = await weatherWorkflow.run({
+  inputData: { city: "Marseille" },
+  telemetry: {
+    metadata: { environment: process.env.NODE_ENV },
+  },
+});
+```
+
+Each step adds the following attributes:
+
+- `ai_kit.workflow.step.kind` (`"automatic"` or `"human"`)
+- `ai_kit.workflow.step.occurrence` (a counter useful in loops)
+- `ai_kit.workflow.step.branch_id` and `ai_kit.workflow.step.next_step_id` when conditional resolution is active
+
+Human interactions keep the same span between the request and resume (`run.resumeWithHumanInput`). `human.requested` and `human.completed` events are added to ease monitoring.
+
+> ℹ️ Call `provider.forceFlush()` / `provider.shutdown()` when your application stops if you don’t rely on `autoFlush: "process"`.

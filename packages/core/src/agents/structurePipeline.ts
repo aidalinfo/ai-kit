@@ -3,25 +3,29 @@ import {
   generateText,
   streamObject,
   streamText,
+  jsonSchema,
+  type JSONSchema7,
   type LanguageModel,
   type ToolSet,
   type GenerateTextResult,
   type StreamTextResult,
 } from "ai";
-import { jsonSchema } from "@ai-sdk/provider-utils";
-import type { JSONSchema7 } from "@ai-sdk/provider";
 
 import { RuntimeStore, type RuntimeState } from "../runtime/store.js";
 import { applyDefaultStopWhen } from "./toolDefaults.js";
+import { mergeTelemetryConfig } from "./telemetry.js";
 
-import type {
-  AgentGenerateOptions,
-  AgentStreamOptions,
-  GenerateTextParams,
-  StreamTextParams,
-  StructuredOutput,
-  WithMessages,
-  WithPrompt,
+import {
+  toToolSet,
+  type AgentGenerateOptions,
+  type AgentStreamOptions,
+  type AgentTools,
+  type AgentTelemetryOverrides,
+  type GenerateTextParams,
+  type StreamTextParams,
+  type StructuredOutput,
+  type WithMessages,
+  type WithPrompt,
 } from "./types.js";
 
 const OPENAI_PROVIDER_ID = "openai";
@@ -35,9 +39,11 @@ interface StructuredGeneratePipelineParams<
 > {
   model: LanguageModel;
   system?: string;
-  tools?: ToolSet;
+  tools?: AgentTools;
   structuredOutput: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
   options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
+  telemetryEnabled: boolean;
+  loopToolsEnabled: boolean;
 }
 
 interface StructuredStreamPipelineParams<
@@ -47,14 +53,16 @@ interface StructuredStreamPipelineParams<
 > {
   model: LanguageModel;
   system?: string;
-  tools?: ToolSet;
+  tools?: AgentTools;
   structuredOutput: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
   options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
+  telemetryEnabled: boolean;
+  loopToolsEnabled: boolean;
 }
 
 export function shouldUseStructuredPipeline<OUTPUT, PARTIAL_OUTPUT>(
   model: LanguageModel,
-  tools: ToolSet | undefined,
+  tools: AgentTools,
   structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>,
 ): structuredOutput is StructuredOutput<OUTPUT, PARTIAL_OUTPUT> {
   if (!structuredOutput || structuredOutput.type !== "object") {
@@ -74,7 +82,15 @@ export async function generateWithStructuredPipeline<
 >(
   params: StructuredGeneratePipelineParams<OUTPUT, PARTIAL_OUTPUT, STATE>,
 ) {
-  const { model, system, tools, structuredOutput, options } = params;
+  const {
+    model,
+    system,
+    tools,
+    structuredOutput,
+    options,
+    telemetryEnabled,
+    loopToolsEnabled,
+  } = params;
 
   const originalPrompt = "prompt" in options ? options.prompt : undefined;
   const originalMessages = "messages" in options ? options.messages : undefined;
@@ -84,6 +100,8 @@ export async function generateWithStructuredPipeline<
       system,
       tools,
       options,
+      telemetryEnabled,
+      loopToolsEnabled,
     });
 
   const schema = createSchemaFromStructuredOutput(structuredOutput);
@@ -115,7 +133,15 @@ export async function streamWithStructuredPipeline<
 >(
   params: StructuredStreamPipelineParams<OUTPUT, PARTIAL_OUTPUT, STATE>,
 ) {
-  const { model, system, tools, structuredOutput, options } = params;
+  const {
+    model,
+    system,
+    tools,
+    structuredOutput,
+    options,
+    telemetryEnabled,
+    loopToolsEnabled,
+  } = params;
 
   const originalPrompt = "prompt" in options ? options.prompt : undefined;
   const originalMessages = "messages" in options ? options.messages : undefined;
@@ -125,6 +151,8 @@ export async function streamWithStructuredPipeline<
     system,
     tools,
     options,
+    telemetryEnabled,
+    loopToolsEnabled,
   });
 
   const schema = createSchemaFromStructuredOutput(structuredOutput);
@@ -183,7 +211,7 @@ export async function streamWithStructuredPipeline<
   return streamResult;
 }
 
-function hasTools(tools: ToolSet | undefined): boolean {
+function hasTools(tools: AgentTools): boolean {
   return !!tools && Object.keys(tools).length > 0;
 }
 
@@ -305,11 +333,15 @@ async function callGenerateText<
   system,
   tools,
   options,
+  telemetryEnabled,
+  loopToolsEnabled,
 }: {
   model: LanguageModel;
   system?: string;
-  tools?: ToolSet;
+  tools?: AgentTools;
   options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
+  telemetryEnabled: boolean;
+  loopToolsEnabled: boolean;
 }): Promise<GenerateTextResult<ToolSet, OUTPUT>> {
   if ("prompt" in options && options.prompt !== undefined) {
     const {
@@ -322,17 +354,29 @@ async function callGenerateText<
       options as WithPrompt<GenerateTextParams> & {
         structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
         runtime?: RuntimeStore<STATE>;
+        telemetry?: AgentTelemetryOverrides;
       };
-    const { experimental_context, ...restWithoutContext } = rest as {
+    const {
+      experimental_context,
+      telemetry: telemetryOverrides,
+      experimental_telemetry,
+      loopTools: _loopTools,
+      maxStepTools: _maxStepTools,
+      ...restWithoutContext
+    } = rest as {
       experimental_context?: unknown;
-    } & typeof rest;
+      telemetry?: AgentTelemetryOverrides;
+      experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
+    } & typeof rest & { loopTools?: unknown; maxStepTools?: unknown };
+    const toolSet = toToolSet(tools);
     const payload = {
       ...restWithoutContext,
       model,
       system,
-      ...(tools ? { tools } : {}),
+      ...(toolSet ? { tools: toolSet } : {}),
     } as Omit<WithPrompt<GenerateTextParams>, "experimental_output"> & {
       experimental_context?: unknown;
+      experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
     };
 
     const mergedContext = RuntimeStore.mergeExperimentalContext(
@@ -344,7 +388,19 @@ async function callGenerateText<
       payload.experimental_context = mergedContext;
     }
 
-    applyDefaultStopWhen(payload, tools);
+    if (loopToolsEnabled) {
+      applyDefaultStopWhen(payload, tools);
+    }
+
+    const mergedTelemetry = mergeTelemetryConfig({
+      agentTelemetryEnabled: telemetryEnabled,
+      overrides: telemetryOverrides,
+      existing: experimental_telemetry,
+    });
+
+    if (mergedTelemetry !== undefined) {
+      payload.experimental_telemetry = mergedTelemetry;
+    }
 
     return generateText<ToolSet, OUTPUT>(payload);
   }
@@ -360,17 +416,29 @@ async function callGenerateText<
       options as WithMessages<GenerateTextParams> & {
         structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
         runtime?: RuntimeStore<STATE>;
+        telemetry?: AgentTelemetryOverrides;
       };
-    const { experimental_context, ...restWithoutContext } = rest as {
+    const {
+      experimental_context,
+      telemetry: telemetryOverrides,
+      experimental_telemetry,
+      loopTools: _loopTools,
+      maxStepTools: _maxStepTools,
+      ...restWithoutContext
+    } = rest as {
       experimental_context?: unknown;
-    } & typeof rest;
+      telemetry?: AgentTelemetryOverrides;
+      experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
+    } & typeof rest & { loopTools?: unknown; maxStepTools?: unknown };
+    const toolSet = toToolSet(tools);
     const payload = {
       ...restWithoutContext,
       model,
       system,
-      ...(tools ? { tools } : {}),
+      ...(toolSet ? { tools: toolSet } : {}),
     } as Omit<WithMessages<GenerateTextParams>, "experimental_output"> & {
       experimental_context?: unknown;
+      experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
     };
 
     const mergedContext = RuntimeStore.mergeExperimentalContext(
@@ -382,7 +450,19 @@ async function callGenerateText<
       payload.experimental_context = mergedContext;
     }
 
-    applyDefaultStopWhen(payload, tools);
+    if (loopToolsEnabled) {
+      applyDefaultStopWhen(payload, tools);
+    }
+
+    const mergedTelemetry = mergeTelemetryConfig({
+      agentTelemetryEnabled: telemetryEnabled,
+      overrides: telemetryOverrides,
+      existing: experimental_telemetry,
+    });
+
+    if (mergedTelemetry !== undefined) {
+      payload.experimental_telemetry = mergedTelemetry;
+    }
 
     return generateText<ToolSet, OUTPUT>(payload);
   }
@@ -399,11 +479,15 @@ async function callStreamText<
   system,
   tools,
   options,
+  telemetryEnabled,
+  loopToolsEnabled,
 }: {
   model: LanguageModel;
   system?: string;
-  tools?: ToolSet;
+  tools?: AgentTools;
   options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
+  telemetryEnabled: boolean;
+  loopToolsEnabled: boolean;
 }): Promise<StreamTextResult<ToolSet, PARTIAL_OUTPUT>> {
   if ("prompt" in options && options.prompt !== undefined) {
     const {
@@ -416,17 +500,29 @@ async function callStreamText<
       options as WithPrompt<StreamTextParams> & {
         structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
         runtime?: RuntimeStore<STATE>;
+        telemetry?: AgentTelemetryOverrides;
       };
-    const { experimental_context, ...restWithoutContext } = rest as {
+    const {
+      experimental_context,
+      telemetry: telemetryOverrides,
+      experimental_telemetry,
+      loopTools: _loopTools,
+      maxStepTools: _maxStepTools,
+      ...restWithoutContext
+    } = rest as {
       experimental_context?: unknown;
-    } & typeof rest;
+      telemetry?: AgentTelemetryOverrides;
+      experimental_telemetry?: StreamTextParams["experimental_telemetry"];
+    } & typeof rest & { loopTools?: unknown; maxStepTools?: unknown };
+    const toolSet = toToolSet(tools);
     const payload = {
       ...restWithoutContext,
       model,
       system,
-      ...(tools ? { tools } : {}),
+      ...(toolSet ? { tools: toolSet } : {}),
     } as Omit<WithPrompt<StreamTextParams>, "experimental_output"> & {
       experimental_context?: unknown;
+      experimental_telemetry?: StreamTextParams["experimental_telemetry"];
     };
     const mergedContext = RuntimeStore.mergeExperimentalContext(
       experimental_context,
@@ -437,7 +533,19 @@ async function callStreamText<
       payload.experimental_context = mergedContext;
     }
 
-    applyDefaultStopWhen(payload, tools);
+    if (loopToolsEnabled) {
+      applyDefaultStopWhen(payload, tools);
+    }
+
+    const mergedTelemetry = mergeTelemetryConfig({
+      agentTelemetryEnabled: telemetryEnabled,
+      overrides: telemetryOverrides,
+      existing: experimental_telemetry,
+    });
+
+    if (mergedTelemetry !== undefined) {
+      payload.experimental_telemetry = mergedTelemetry;
+    }
 
     return streamText<ToolSet, OUTPUT, PARTIAL_OUTPUT>(payload);
   }
@@ -453,17 +561,29 @@ async function callStreamText<
       options as WithMessages<StreamTextParams> & {
         structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
         runtime?: RuntimeStore<STATE>;
+        telemetry?: AgentTelemetryOverrides;
       };
-    const { experimental_context, ...restWithoutContext } = rest as {
+    const {
+      experimental_context,
+      telemetry: telemetryOverrides,
+      experimental_telemetry,
+      loopTools: _loopTools,
+      maxStepTools: _maxStepTools,
+      ...restWithoutContext
+    } = rest as {
       experimental_context?: unknown;
-    } & typeof rest;
+      telemetry?: AgentTelemetryOverrides;
+      experimental_telemetry?: StreamTextParams["experimental_telemetry"];
+    } & typeof rest & { loopTools?: unknown; maxStepTools?: unknown };
+    const toolSet = toToolSet(tools);
     const payload = {
       ...restWithoutContext,
       model,
       system,
-      ...(tools ? { tools } : {}),
+      ...(toolSet ? { tools: toolSet } : {}),
     } as Omit<WithMessages<StreamTextParams>, "experimental_output"> & {
       experimental_context?: unknown;
+      experimental_telemetry?: StreamTextParams["experimental_telemetry"];
     };
 
     const mergedContext = RuntimeStore.mergeExperimentalContext(
@@ -475,7 +595,19 @@ async function callStreamText<
       payload.experimental_context = mergedContext;
     }
 
-    applyDefaultStopWhen(payload, tools);
+    if (loopToolsEnabled) {
+      applyDefaultStopWhen(payload, tools);
+    }
+
+    const mergedTelemetry = mergeTelemetryConfig({
+      agentTelemetryEnabled: telemetryEnabled,
+      overrides: telemetryOverrides,
+      existing: experimental_telemetry,
+    });
+
+    if (mergedTelemetry !== undefined) {
+      payload.experimental_telemetry = mergedTelemetry;
+    }
 
     return streamText<ToolSet, OUTPUT, PARTIAL_OUTPUT>(payload);
   }

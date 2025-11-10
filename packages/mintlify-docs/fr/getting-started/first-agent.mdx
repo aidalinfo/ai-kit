@@ -1,0 +1,70 @@
+---
+title: "Créer un agent en 5 minutes"
+description: "Instancier `Agent`, générer une première réponse et comprendre les options clés."
+locale: fr
+---
+
+Les agents encapsulent un modèle, des instructions et des outils. Ils offrent deux modes d’exécution (`generate` et `stream`) compatibles avec l’AI SDK.
+
+## 1. Instancier un agent
+
+```ts
+import { Agent, scaleway } from "@ai_kit/core";
+
+const assistant = new Agent({
+  name: "assistant-documentation",
+  instructions: "Tu aides les développeurs à comprendre la plateforme AI Kit.",
+  model: scaleway("gpt-oss-120b"),
+});
+```
+
+- `name` identifie votre agent pour la supervision et la télémétrie.
+- `instructions` définit le prompt système appliqué par défaut (surchargé via `system` si nécessaire).
+- `model` attend un `LanguageModel` issu de `ai`. Choisissez votre provider favori.
+
+## 2. Générer une réponse ponctuelle
+
+```ts
+const result = await assistant.generate({
+  prompt: "Explique la différence entre generate et stream dans AI Kit.",
+});
+
+console.log(result.text);
+```
+
+La méthode renvoie le même format que `ai.generateText` :
+
+- `text` contient la réponse finale.
+- `response` expose les métadonnées brutes (messages, usage, tool calls, etc.).
+- `loopTool` indique si une boucle d’outils a été exécutée.
+
+### Variante conversationnelle
+
+```ts
+await assistant.generate({
+  messages: [
+    { role: "user", content: "Peux-tu me donner trois idées de tutoriels ?" },
+  ],
+  maxOutputTokens: 256,
+});
+```
+
+Si `messages` est fourni, les instructions sont injectées automatiquement sous forme de message système.
+
+## 3. Activer la télémétrie
+
+```ts
+const supportAgent = new Agent({
+  name: "support-assistant",
+  model: scaleway("gpt-oss-120b"),
+  telemetry: true,
+});
+```
+
+La propriété `telemetry` active l’export vers Langfuse lorsque l’instrumentation est configurée. Utilisez `agent.withTelemetry(false)` pour la désactiver ponctuellement.
+
+## 4. Aller plus loin
+
+- Ajoutez des outils et activez la boucle automatique via [`loopTools`](/fr/agents/tools).
+- Streamer les tokens en temps réel avec [`agent.stream`](/fr/agents/streaming).
+- Valider des sorties structurées via [`structuredOutput`](/fr/agents/structured-output).

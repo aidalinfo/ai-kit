@@ -1,0 +1,86 @@
+---
+title: Documentation AI Kit
+description: Le micro-framework agentique interne d'Aidalinfo
+locale: fr-FR
+template: splash
+hero:
+  tagline: Une couche d'abstraction stable au-dessus de l'AI SDK et des providers LLM. Base de code compacte, lisible et orientée vers les cas d'usage en production.
+  image:
+    file: ../../../assets/houston.svg
+  actions:
+    - text: Introduction
+      link: /fr/introduction/
+      icon: right-arrow
+    - text: Workflows · Introduction
+      link: /fr/core/workflows/introduction/
+      icon: rocket
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<style>
+{`
+  .card-link {
+    text-decoration: none;
+    color: inherit;
+  }
+  
+  /* Badge backgrounds et couleurs pour Agents (bleu) */
+  .card-agents svg.icon {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(59, 130, 246, 0.05)) !important;
+    border: 1px solid rgba(59, 130, 246, 0.3) !important;
+    color: #3b82f6 !important;
+    fill: #3b82f6 !important;
+  }
+  
+  /* Badge backgrounds et couleurs pour Workflows (violet) */
+  .card-workflows svg.icon {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(139, 92, 246, 0.05)) !important;
+    border: 1px solid rgba(139, 92, 246, 0.3) !important;
+    color: #8b5cf6 !important;
+    fill: #8b5cf6 !important;
+  }
+  
+  /* Badge backgrounds et couleurs pour Chunking (vert) */
+  .card-chunking svg.icon {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.05)) !important;
+    border: 1px solid rgba(16, 185, 129, 0.3) !important;
+    color: #10b981 !important;
+    fill: #10b981 !important;
+  }
+  
+  /* Badge backgrounds et couleurs pour MCP (orange) */
+  .card-mcp svg.icon {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.05)) !important;
+    border: 1px solid rgba(245, 158, 11, 0.3) !important;
+    color: #f59e0b !important;
+    fill: #f59e0b !important;
+  }
+`}
+</style>
+
+## Capacités principales
+
+<CardGrid stagger>
+        <a href="/fr/core/agents/" class="card-link card-agents">
+                <Card title="Agents" icon="star">
+                        Créez des agents intelligents avec des instructions personnalisées et des modèles LLM de votre choix.
+                </Card>
+        </a>
+        <a href="/fr/core/workflows/" class="card-link card-workflows">
+                <Card title="Workflows" icon="random">
+                        Orchestrez des pipelines complexes avec des étapes conditionnelles et une gestion d'état avancée.
+                </Card>
+        </a>
+        <a href="/fr/utils/chunking/" class="card-link card-chunking">
+                <Card title="Chunking" icon="document">
+                        Découpez intelligemment vos documents avec des stratégies de chunking récursif et configurable.
+                </Card>
+        </a>
+        <a href="/fr/mcp/usage/" class="card-link card-mcp">
+                <Card title="Documentation MCP" icon="information">
+                        Accédez à toute la documentation AI Kit via le Model Context Protocol pour vos agents et clients compatibles.
+                </Card>
+        </a>
+</CardGrid>

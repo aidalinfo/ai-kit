@@ -1,0 +1,70 @@
+---
+title: "Build an agent in 5 minutes"
+description: "Instantiate `Agent`, generate your first answer, and understand the key options."
+locale: en
+---
+
+Agents bundle a model, instructions, and optional tools. They expose the two AI SDK execution modes: `generate` for single responses and `stream` for token streams.
+
+## 1. Instantiate an agent
+
+```ts
+import { Agent, scaleway } from "@ai_kit/core";
+
+const assistant = new Agent({
+  name: "docs-assistant",
+  instructions: "You help developers understand the AI Kit platform.",
+  model: scaleway("gpt-oss-120b"),
+});
+```
+
+- `name` identifies the agent for logging and telemetry.
+- `instructions` provide the default system prompt (override per call with `system`).
+- `model` expects a `LanguageModel` from the AI SDK. Pick the provider you need.
+
+## 2. Generate a single response
+
+```ts
+const result = await assistant.generate({
+  prompt: "Explain the difference between generate and stream in AI Kit.",
+});
+
+console.log(result.text);
+```
+
+The return value mirrors `ai.generateText`:
+
+- `text` holds the final answer.
+- `response` exposes raw metadata (messages, usage, tool calls, …).
+- `loopTool` tells you whether the tool loop was triggered.
+
+### Conversation mode
+
+```ts
+await assistant.generate({
+  messages: [
+    { role: "user", content: "Give me three tutorial ideas." },
+  ],
+  maxOutputTokens: 256,
+});
+```
+
+When you pass `messages`, AI Kit automatically injects the agent instructions as a system message.
+
+## 3. Enable telemetry
+
+```ts
+const supportAgent = new Agent({
+  name: "support-assistant",
+  model: scaleway("gpt-oss-120b"),
+  telemetry: true,
+});
+```
+
+The `telemetry` flag enables Langfuse export when instrumentation is configured. Call `agent.withTelemetry(false)` to disable it temporarily.
+
+## 4. Keep exploring
+
+- Add tools and control the loop with [`loopTools`](/en/agents/tools).
+- Stream tokens in real time with [`agent.stream`](/en/agents/streaming).
+- Validate answers via [`structuredOutput`](/en/agents/structured-output).

@@ -1,6 +1,6 @@
 {
   "name": "@ai_kit/core",
-  "version": "1.0.8",
+  "version": "1.0.20",
   "description": "",
   "type": "module",
   "main": "./dist/index.js",
@@ -26,18 +26,34 @@
   "keywords": [
     "ai",
     "workflow",
-    "orchestration"
+    "agent",
+    "orchestration",
+    "telemetry"
   ],
   "author": "aidalinfo",
   "license": "ISC",
   "packageManager": "pnpm@10.15.0",
   "dependencies": {
     "@ai-sdk/openai": "latest",
+    "@ai-sdk/openai-compatible": "^1.0.23",
     "@ai-sdk/provider": "^2.0.0",
     "@ai-sdk/provider-utils": "^3.0.10",
+    "@opentelemetry/api": "^1.9.0",
     "@types/node": "^24.5.2",
     "ai": "latest",
     "zod": "^4.1.12"
+  },
+  "peerDependencies": {
+    "@langfuse/otel": "^4.2.0",
+    "@opentelemetry/sdk-trace-node": "^2.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@langfuse/otel": {
+      "optional": true
+    },
+    "@opentelemetry/sdk-trace-node": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "typescript": "^5.9.2",

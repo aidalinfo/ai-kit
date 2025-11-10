@@ -44,14 +44,21 @@ export class HumanWorkflowStep<
   Output,
   Meta extends Record<string, unknown> = Record<string, unknown>,
   RootInput = unknown,
-> extends WorkflowStep<Input, Output, Meta, RootInput> {
+  Ctx extends Record<string, unknown> | undefined = undefined,
+> extends WorkflowStep<Input, Output, Meta, RootInput, Ctx> {
   readonly kind = "human" as const;
-  private readonly outputResolver: HumanOutputResolver<Input, Meta, RootInput>;
-  private readonly inputBuilder: HumanStepConfig<Input, Output, Meta, RootInput>["input"];
+  private readonly outputResolver: HumanOutputResolver<Input, Meta, RootInput, Ctx>;
+  private readonly inputBuilder: HumanStepConfig<Input, Output, Meta, RootInput, Ctx>["input"];
   private readonly responseSchema?: SchemaLike<unknown>;
 
-  constructor(config: HumanStepConfig<Input, Output, Meta, RootInput>) {
-    const handler: WorkflowStepConfig<Input, Output, Meta, RootInput>["handler"] = async ({ input }) =>
+  constructor(config: HumanStepConfig<Input, Output, Meta, RootInput, Ctx>) {
+    const handler: WorkflowStepConfig<
+      Input,
+      Output,
+      Meta,
+      RootInput,
+      Ctx
+    >["handler"] = async ({ input }) =>
       input as unknown as Output;
 
     super({
@@ -65,24 +72,27 @@ export class HumanWorkflowStep<
   }
 
   async buildHumanRequest(
-    args: StepHandlerArgs<unknown, Meta, RootInput>,
+    args: StepHandlerArgs<unknown, Meta, RootInput, Ctx>,
   ): Promise<{
     input: Input;
     form: HumanFormDefinition;
     payload: unknown;
   }> {
     const validatedInput = parseWithSchema<Input>(this.inputSchema, args.input, `step ${this.id} input`);
-    const stepsHistory = buildHistorySnapshot(args.context.store);
+    const runtime = args.stepRuntime;
+    const stepsHistory = buildHistorySnapshot(runtime.store);
 
     const form = this.inputBuilder({
       ask: createAskBuilders(),
-      context: args.context,
+      context: runtime,
+      ctx: args.ctx,
     });
 
     const payload = await this.outputResolver({
       current: validatedInput,
       steps: stepsHistory,
-      context: args.context,
+      context: runtime,
+      ctx: args.ctx,
     });
 
     return {
@@ -108,7 +118,8 @@ export const createHumanStep = <
   Output,
   Meta extends Record<string, unknown> = Record<string, unknown>,
   RootInput = unknown,
->(config: HumanStepConfig<Input, Output, Meta, RootInput>) => new HumanWorkflowStep(config);
+  Ctx extends Record<string, unknown> | undefined = undefined,
+>(config: HumanStepConfig<Input, Output, Meta, RootInput, Ctx>) => new HumanWorkflowStep(config);
 
 export const createHuman = createHumanStep;
 

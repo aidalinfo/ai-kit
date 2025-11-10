@@ -1,0 +1,80 @@
+---
+title: "Conditional branches"
+description: "Dynamically fork workflow execution."
+locale: en
+---
+
+Use `createConditionStep` to take dynamic decisions. The `.conditions()` method attaches a step whose `resolveBranch` returns either a branch index (tuple mode) or an explicit key (object mode). Returning `undefined` resumes the linear sequence.
+
+```ts
+import {
+  createConditionStep,
+  createStep,
+  createWorkflow,
+} from "@ai_kit/core";
+
+const calculateScore = createStep<{ score: number }, { score: number }>({
+  id: "calculate-score",
+  handler: ({ input }) => ({ score: Math.max(0, Math.min(1, input.score)) }),
+});
+
+const evaluateRisk = createConditionStep<{ score: number }, { score: number }>({
+  id: "evaluate-risk",
+  resolveBranch: ({ output }) => {
+    if (output.score >= 0.8) return "high";
+    if (output.score >= 0.5) return "medium";
+    if (output.score >= 0.2) return "low";
+    return undefined;
+  },
+});
+
+const handleLow = createStep<{ score: number }, string>({
+  id: "handle-low",
+  handler: ({ input }) => `LOW:${input.score}`,
+});
+
+const handleMedium = createStep<{ score: number }, string>({
+  id: "handle-medium",
+  handler: ({ input }) => `MEDIUM:${input.score}`,
+});
+
+const handleHigh = createStep<{ score: number }, string>({
+  id: "handle-high",
+  handler: ({ input }) => `HIGH:${input.score}`,
+});
+
+export const riskWorkflow = createWorkflow({ id: "risk" })
+  .then(calculateScore)
+  .conditions(evaluateRisk)
+  .then({
+    low: handleLow,
+    medium: handleMedium,
+    high: handleHigh,
+  })
+  .commit();
+```
+
+Each branch appears in the run snapshots (`branchId`, `nextStepId`), and a `step:branch` event is emitted before the target step for better observability.
+
+## Tuple variant
+
+```ts
+createWorkflow({ id: "risk" })
+  .then(calculateScore)
+  .conditions(
+    createConditionStep<{ score: number }, { score: number }>({
+      id: "evaluate-risk-index",
+      resolveBranch: ({ output }) => (output.score >= 0.5 ? 0 : 1),
+    }),
+  )
+  .then(handleHigh, handleLow)
+  .commit();
+```
+
+Choose this form when order matters more than branch naming (for example reusing an array of steps).
+
+## Best practices
+
+- Make business rules explicit inside `resolveBranch` to simplify maintenance.
+- Emit events with `context.emit` to document decisions made in each branch.
+- Combine `.conditions()` with `createParallelStep` or `createForEachStep` to build hybrid pipelines.

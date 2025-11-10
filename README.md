@@ -42,7 +42,33 @@ const result = await assistant.generate({
 console.log(result.text);
 ```
 
-👉 Guides détaillés : [Agents](./docs/core/agents.md)
+👉 Guides détaillés : [Agents](https://ai.aidalinfo.fr/fr/agents)
+
+### Activer la télémétrie Langfuse
+
+```ts
+import { ensureLangfuseTelemetry, Agent, createWorkflow, createStep } from "@ai_kit/core";
+import { openai } from "@ai-sdk/openai";
+
+await ensureLangfuseTelemetry(); // enregistre le LangfuseSpanProcessor
+
+const agent = new Agent({
+  name: "support",
+  model: openai("gpt-4.1-mini"),
+  telemetry: true,
+});
+
+const workflow = createWorkflow({ id: "demo", telemetry: true })
+  .then(createStep({ id: "noop", handler: ({ input }) => input }))
+  .commit();
+
+await workflow.run({
+  inputData: { foo: "bar" },
+  telemetry: { metadata: { requestId: "run_123" } },
+});
+```
+
+👉 Configuration complète : [Télémétrie Langfuse](https://ai.aidalinfo.fr/fr/telemetrie/langfuse)
 
 ### Découper du contenu
 
@@ -63,7 +89,7 @@ const passages = chunks.map((chunk) => ({
 }));
 ```
 
-👉 Plus d’exemples : [Chunks](./docs/core/chunks.md)
+👉 Plus d’exemples : [Chunks](https://ai.aidalinfo.fr/fr/utils/chunking)
 
 ### Orchestrer un workflow
 
@@ -83,7 +109,7 @@ const outcome = await pipeline.run({ inputData: { id: "123" } });
 console.log(outcome.result);
 ```
 
-👉 Documentation complète : [Workflows](./docs/core/workflows.md)
+👉 Documentation complète : [Workflows](https://ai.aidalinfo.fr/fr/workflows)
 
 ## Structure du dépôt
 
@@ -129,6 +155,37 @@ Le script de build copie automatiquement :
 
 Pour exposer le README du package `@ai_kit/core`, il suffit donc de créer `packages/core/README.md`. Le prochain `pnpm --filter @ai_kit/mcp-docs build` répliquera ce fichier et il deviendra accessible via l’outil MCP.
 
+## SDK MCP
+
+Le package `@ai_kit/mcp` fournit un mini DSL inspiré de Mastra pour déclarer des serveurs MCP sans recourir directement au SDK brut. Il gère l’enregistrement des outils, ressources et prompts, et convertit automatiquement les retours simples (`string`, tableaux de textes, buffers) au format attendu par le protocole.
+
+### Exemple rapide
+
+```ts
+import { defineMcpServer, defineTool } from "@ai_kit/mcp";
+import { z } from "zod";
+
+const server = defineMcpServer({
+  name: "ai-kit-lab",
+  version: "0.1.0",
+  tools: {
+    ping: defineTool({
+      description: "Renvoie un ping lisible par un humain.",
+      inputSchema: z.object({ message: z.string() }),
+      handler: async ({ message }) => `pong: ${message}`
+    })
+  }
+});
+
+await server.startStdioServer({
+  onReady: () => {
+    console.error("Serveur MCP ai-kit-lab prêt sur stdio");
+  }
+});
+```
+
+Le DSL accepte également des ressources (fichiers statiques ou dynamiques via templates) et des prompts. Les fonctions `defineTool`, `defineResource` et `definePrompt` sont optionnelles : un simple objet JavaScript suffit, elles servent surtout à la complétion TypeScript.
+
 ## Contribuer
 
 - Respectez la structure existante et les patterns introduits (ex. `TChunkDocument`, `createWorkflow`).
@@ -137,9 +194,9 @@ Pour exposer le README du package `@ai_kit/core`, il suffit donc de créer `pack
 
 ## Ressources
 
-- [Documentation Agents](./docs/core/agents.md)
-- [Documentation Chunks](./docs/core/chunks.md)
-- [Documentation Workflows](./docs/core/workflows.md)
-- [Documentation MCP](./docs/mcp/usage.md)
+- [Documentation Agents](https://ai.aidalinfo.fr/fr/agents)
+- [Documentation Chunks](https://ai.aidalinfo.fr/fr/utils/chunking)
+- [Documentation Workflows](https://ai.aidalinfo.fr/fr/workflows)
+- [Documentation MCP](https://ai.aidalinfo.fr/fr/mcp/usage)
 
 L’objectif est de renforcer notre autonomie technique autour des assistants et pipelines AI : n’hésitez pas à compléter ces ressources et à proposer des améliorations.

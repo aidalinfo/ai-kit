@@ -1,0 +1,75 @@
+---
+title: Structured outputs
+description: Validate agent responses with Zod and `structuredOutput`
+sidebar:
+  order: 4
+locale: en-US
+---
+
+Use the `structuredOutput` option to ask the model to follow a `zod` schema. The agent forwards this schema to the SDK's `experimental_output` helper and returns a typed result. The examples reuse the `assistant` agent instantiated in the [introduction](./introduction).
+
+```ts
+import { Output } from "@ai_kit/core/agents";
+import { z } from "zod";
+
+const personSpec = Output.object({
+  schema: z.object({
+    name: z.string(),
+    age: z.number().nullable().describe("Person's age."),
+    contact: z.object({
+      type: z.literal("email"),
+      value: z.string(),
+    }),
+    occupation: z.object({
+      type: z.literal("employed"),
+      company: z.string(),
+      position: z.string(),
+    }),
+  }),
+});
+
+const structured = await assistant.generate({
+  prompt: "Create a test profile for a potential customer.",
+  structuredOutput: personSpec,
+});
+
+console.log(structured.experimental_output);
+// { name: "...", age: 32, contact: { ... }, occupation: { ... } }
+```
+
+For a targeted schema (extracting a SIRET identifier):
+
+```ts
+import { Agent, Output } from "@ai_kit/core";
+import { z } from "zod";
+import { google } from "@ai-sdk/google";
+
+const siretOutput = Output.object({
+  schema: z.object({
+    siret: z.string().length(14, {
+      message: "The SIRET must contain exactly 14 digits.",
+    }),
+  }),
+});
+
+const assistant = new Agent({
+  name: "assistant-life",
+  instructions: "Life assistant",
+  model: google("gemini-2.5-flash"),
+  tools: {
+    google_search: google.tools.googleSearch({}),
+  },
+});
+
+const result = await assistant.generate({
+  prompt: "Look up the SIRET number for the company Aidalinfo",
+  structuredOutput: siretOutput,
+});
+
+console.log(result.experimental_output);
+// { siret: "12345678901234" }
+```
+
+The schema enforces exactly 14 characters, simplifying validation in your application. If parsing fails, the SDK throws an exception that you can catch to retry or log the error.
+
+> Prefer `agent.generate` for structured generation. Streams can break schema parsing and remain experimental.

@@ -1,0 +1,139 @@
+---
+title: Parallèle & foreach
+description: Mappez vos données avec contrôle de concurrence et steps parallèles.
+sidebar:
+  order: 3
+locale: fr-FR
+---
+
+`createParallelStep` et `createForEachStep` permettent de lancer plusieurs sous-étapes en concurrence. C'est l'approche idéale pour traiter des collections volumineuses ou agréger des tâches analytiques.
+
+## Pipeline de chunking
+
+L'exemple suivant découpe un texte, puis applique un traitement parallèle à chaque chunk.
+
+```ts
+import {
+  Chunk,
+  TChunkDocument,
+  createForEachStep,
+  createParallelStep,
+  createStep,
+  createWorkflow,
+} from "@ai_kit/core";
+import { z } from "zod";
+
+const chunkText = createStep<{ text: string }, Chunk[]>({
+  id: "chunk-text",
+  description: "Découpe le texte source en segments homogènes",
+  handler: async ({ input }) => {
+    const document = TChunkDocument.fromText(input.text);
+    return document.chunk({
+      chunkSize: 200,
+      chunkOverlap: 20,
+      metadata: { source: "raw-text" },
+    });
+  },
+});
+
+const embedChunk = createStep<Chunk, number[]>({
+  id: "embed-chunk",
+  description: "Calcule un embedding pour un chunk",
+  handler: async ({ input }) => {
+    // Remplacez par votre modèle d'embedding ; ici un stub déterministe
+    return Array.from({ length: 3 }, (_, i) => input.content.length * (i + 1));
+  },
+});
+
+const tagChunk = createStep<Chunk, string[]>({
+  id: "tag-chunk",
+  description: "Extrait des tags clés du chunk",
+  handler: async ({ input }) => {
+    return input.content
+      .split(/[^a-zA-ZÀ-ÿ]+/)
+      .filter(word => word.length > 4)
+      .slice(0, 5);
+  },
+});
+
+const processChunk = createParallelStep({
+  id: "process-chunk",
+  description: "Lance les tâches analytiques en parallèle pour un chunk",
+  steps: {
+    embedding: embedChunk,
+    tags: tagChunk,
+  },
+});
+
+const foreachChunk = createForEachStep({
+  id: "foreach-chunk",
+  description: "Traite chaque chunk en réutilisant le step parallèle",
+  items: ({ input }) => input,
+  itemStep: processChunk,
+  concurrency: 4,
+});
+
+export const chunkingWorkflow = createWorkflow({
+  id: "chunking-parallel-pipeline",
+  description: "Chunking + traitement parallèle de chaque segment",
+  inputSchema: z.object({ text: z.string().min(1) }),
+  outputSchema: z.array(
+    z.object({
+      embedding: z.array(z.number()),
+      tags: z.array(z.string()),
+    }),
+  ),
+})
+  .then(chunkText)
+  .then(foreachChunk)
+  .commit();
+```
+
+`createForEachStep` retourne par défaut un tableau : utilisez l'option `collect` pour fusionner les résultats (ex. concaténation des embeddings). `TChunkDocument` assure un chunking homogène et la propagation de metadata (`source: "raw-text"`).
+
+## Concurrence maîtrisée
+
+- Le paramètre `concurrency` de `createForEachStep` limite le nombre d'items traités en parallèle (1 par défaut). Augmentez-le lorsque vos handlers sont I/O-bound.
+- Les steps déclarés dans `createParallelStep` s'exécutent simultanément et leurs sorties sont regroupées dans un objet.
+- Combinez parallel et foreach pour optimiser vos pipelines sans sacrifier la lisibilité.
+
+## Branches parallèles dans un builder
+
+Avec `createWorkflow`, préférez le helper fluide `.branchParallel()` au câblage manuel d'un `createParallelStep`. Vous décrivez ainsi une séquence complète pour chaque branche, réutilisez vos steps existants et contrôlez agrégation ou stratégie d'erreur au même endroit.
+
+```ts
+import { createStep, createWorkflow } from "@ai_kit/core";
+
+const provisionInfra = createStep({
+  id: "provision-infra",
+  handler: async ({ input }) => ({ clusterId: `cluster-${input}` }),
+});
+
+const bootstrapObservabilite = createStep({
+  id: "bootstrap-observabilite",
+  handler: async ({ input }) => ({ dashboardUrl: `https://dash/${input}` }),
+});
+
+export const setupWorkflow = createWorkflow({ id: "setup" })
+  .branchParallel("prepare-environnement", parallel =>
+    parallel
+      .branch("infra", branch => branch.then(provisionInfra))
+      .branch("observabilite", branch => branch.then(bootstrapObservabilite))
+      .onError("wait-all")
+      .aggregate(({ results }) => ({
+        cluster: results.infra.clusterId,
+        tableauDeBord: results.observabilite.dashboardUrl,
+      })),
+  )
+  .commit();
+```
+
+- Chaque branche reçoit l'entrée courante et peut enchaîner n'importe quel step (`then`, `while`, `conditions`, …). L'imbrication d'un autre `branchParallel` est pour l'instant interdite et lève une `WorkflowSchemaError`.
+- Le contexte (`ctx`) reste en lecture seule dans les branches ; un appel à `stepRuntime.updateCtx()` provoque une `WorkflowExecutionError`.
+- La stratégie d'erreur est **fail-fast** par défaut. Passez à `"wait-all"` pour attendre toutes les branches avant de rejeter. Sans agrégateur personnalisé, la sortie est un dictionnaire `{ nomDeBranche: résultat }` — utilisez `.aggregate()` pour le transformer selon vos besoins.
+
+## Observabilité
+
+Chaque branche émet les événements `step:*` habituels enrichis des attributs `parallelGroupId` et `parallelBranchId`. Surveillez-les avec `run.watch()` pour suivre l'activité des branches et mesurer leurs durées.
+
+Envie de conditionner l'exécution à la volée ? Consultez les [`branches conditionnelles`](./branches-conditionnelles). Pour répéter une étape jusqu'à satisfaction d'un prédicat, rendez-vous sur les [`boucles while`](./boucles-while).
