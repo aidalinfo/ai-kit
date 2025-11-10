@@ -232,4 +232,43 @@ describe("ServerKit", () => {
       result: { output: "resumed" },
     });
   });
+
+  it("serves swagger spec and ui when enabled", async () => {
+    const server = new ServerKit();
+
+    const specResponse = await server.app.request("/swagger.json");
+    expect(specResponse.status).toBe(200);
+    await expect(specResponse.json()).resolves.toMatchObject({
+      openapi: "3.0.3",
+      info: expect.objectContaining({ title: "AI Kit API" }),
+      paths: expect.objectContaining({
+        "/api/agents/{id}/generate": expect.any(Object),
+      }),
+    });
+
+    const uiResponse = await server.app.request("/swagger");
+    expect(uiResponse.status).toBe(200);
+    await expect(uiResponse.text()).resolves.toContain("SwaggerUI");
+  });
+
+  it("disables swagger in production by default but allows overrides", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+
+    try {
+      const disabledServer = new ServerKit();
+      const disabledResponse = await disabledServer.app.request("/swagger.json");
+      expect(disabledResponse.status).toBe(404);
+
+      const forcedServer = new ServerKit({ swagger: true });
+      const forcedResponse = await forcedServer.app.request("/swagger.json");
+      expect(forcedResponse.status).toBe(200);
+    } finally {
+      if (typeof originalEnv === "string") {
+        process.env.NODE_ENV = originalEnv;
+      } else {
+        delete process.env.NODE_ENV;
+      }
+    }
+  });
 });

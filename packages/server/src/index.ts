@@ -1,1 +1,7 @@
-export { ServerKit, type ServerKitConfig, type ListenOptions, createServerKit } from "./ServerKit.js";
+export {
+  ServerKit,
+  type ServerKitConfig,
+  type ListenOptions,
+  type SwaggerOptions,
+  createServerKit,
+} from "./ServerKit.js";
