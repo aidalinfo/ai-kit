@@ -94,9 +94,15 @@ function coerceDecodedPayload(value: unknown, schema: JSONSchema7): unknown {
   }
 
   if (Array.isArray(schema.allOf) && schema.allOf.length > 0) {
-    return schema.allOf.reduce(
-      (current, definition) =>
-        coerceDecodedPayload(current, normalizeDefinition(definition)),
+    return schema.allOf.reduce<unknown>(
+      (
+        current: unknown,
+        definition: SchemaDefinition | JSONSchema7 | boolean | undefined,
+      ) =>
+        coerceDecodedPayload(
+          current,
+          normalizeDefinition(definition as SchemaDefinition),
+        ),
       value,
     );
   }
@@ -104,14 +110,14 @@ function coerceDecodedPayload(value: unknown, schema: JSONSchema7): unknown {
   if (Array.isArray(schema.anyOf) && schema.anyOf.length > 0) {
     return coerceDecodedPayload(
       value,
-      normalizeDefinition(schema.anyOf[0]),
+      normalizeDefinition(schema.anyOf[0] as SchemaDefinition),
     );
   }
 
   if (Array.isArray(schema.oneOf) && schema.oneOf.length > 0) {
     return coerceDecodedPayload(
       value,
-      normalizeDefinition(schema.oneOf[0]),
+      normalizeDefinition(schema.oneOf[0] as SchemaDefinition),
     );
   }
 
