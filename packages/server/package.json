@@ -1,6 +1,6 @@
 {
   "name": "@ai_kit/server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "HTTP server harness for AI Kit agents and workflows",
   "type": "module",
   "main": "./dist/index.js",
@@ -9,6 +9,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./instrument": {
+      "import": "./dist/instrument.js",
+      "types": "./dist/instrument.d.ts"
     }
   },
   "bin": {
@@ -35,7 +39,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@ai_kit/core": "workspace:*",
+    "@ai_kit/core": "workspace:^",
     "@hono/node-server": "^1.13.4",
     "@hono/swagger-ui": "^0.5.2",
     "hono": "^4.10.4",

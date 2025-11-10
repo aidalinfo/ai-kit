@@ -100,7 +100,26 @@ Le binaire fourni sert surtout de point de départ : il ne déclare aucun agent
 | `agents` | `Record<string, Agent>` | Enregistre les agents disponibles sous `/api/agents/:id/*`. |
 | `workflows` | `Record<string, Workflow>` | Déclare les workflows exposés sous `/api/workflows/:id/*`. |
 | `swagger` | `boolean \| SwaggerOptions` | Active/désactive Swagger ou précise `route`, `title`, `version`, `description`. |
+| `telemetry` | `boolean \| ServerTelemetryOptions` | Active l’export Langfuse et transmet les options à `ensureLangfuseTelemetry`. |
 
 La méthode `listen({ port, hostname, signal })` accepte également un `AbortSignal` pour arrêter proprement le serveur.
 
 Pour une implémentation complète, consultez [`packages/server/src/ServerKit.ts`](https://github.com/aidalinfo/ai-kit/blob/main/packages/server/src/ServerKit.ts).
+
+## Télémétrie Langfuse
+
+Activez Langfuse directement via la configuration `ServerKit` — aucun fichier d’instrumentation séparé n’est requis :
+
+```ts
+const server = new ServerKit({
+  agents: { support: supportAgent },
+  workflows: { "enrich-ticket": enrichWorkflow },
+  telemetry: {
+    enabled: true,
+  },
+});
+```
+
+- `telemetry` accepte un booléen ou la configuration complète d’`ensureLangfuseTelemetry`.
+- Définissez les variables `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` (et optionnellement `LANGFUSE_BASE_URL`).
+- Le CLI expose les flags `--telemetry` / `--no-telemetry` pour activer ou désactiver rapidement la télémétrie.

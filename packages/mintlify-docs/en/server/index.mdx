@@ -102,7 +102,26 @@ The bundled CLI is intentionally lightweight: it does not register agents or wor
 | `agents` | `Record<string, Agent>` | Registers agents exposed under `/api/agents/:id/*`. |
 | `workflows` | `Record<string, Workflow>` | Declares workflows exposed under `/api/workflows/:id/*`. |
 | `swagger` | `boolean \| SwaggerOptions` | Enables Swagger or customizes `route`, `title`, `version`, `description`. |
+| `telemetry` | `boolean \| ServerTelemetryOptions` | Enables Langfuse export and forwards options to `ensureLangfuseTelemetry`. |
 
 `listen({ port, hostname, signal })` also accepts an `AbortSignal` so you can shut the server down gracefully.
 
 See [`packages/server/src/ServerKit.ts`](https://github.com/aidalinfo/ai-kit/blob/main/packages/server/src/ServerKit.ts) for the full implementation.
+
+## Langfuse telemetry
+
+Toggle Langfuse directly from the `ServerKit` config — no extra bootstrap file is required:
+
+```ts
+const server = new ServerKit({
+  agents: { support: supportAgent },
+  workflows: { "enrich-ticket": enrichWorkflow },
+  telemetry: {
+    enabled: true,
+  },
+});
+```
+
+- `telemetry` accepts either `true`/`false` or the full `ensureLangfuseTelemetry` options.
+- Provide `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and optionally `LANGFUSE_BASE_URL` in the environment.
+- The CLI exposes matching `--telemetry` / `--no-telemetry` flags for quick toggles.

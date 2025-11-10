@@ -57,3 +57,20 @@ const server = new ServerKit({
 When enabled, the UI is served from `route` (default `/swagger`) and the raw spec is available from `<route>.json`.
 
 The bundled CLI also accepts `--swagger` / `--no-swagger` flags to force-enable or disable the documentation regardless of `NODE_ENV`.
+
+## Langfuse telemetry
+
+Enable Langfuse directly from the `ServerKit` configuration:
+
+```ts
+const server = new ServerKit({
+  agents: { echo: echoAgent },
+  telemetry: {
+    enabled: true,
+  },
+});
+```
+
+- `telemetry` accepts either `true`/`false` or the full set of `ensureLangfuseTelemetry` options if you want to customize the exporter.
+- Set the environment variables `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` (and optionally `LANGFUSE_BASE_URL`) for the exporter to authenticate.
+- The CLI exposes `--telemetry` / `--no-telemetry` flags to toggle the option quickly.
