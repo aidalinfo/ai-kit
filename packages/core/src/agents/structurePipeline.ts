@@ -4,7 +4,6 @@ import {
   streamObject,
   streamText,
   jsonSchema,
-  type JSONSchema7,
   type LanguageModel,
   type ToolSet,
   type GenerateTextResult,
@@ -27,6 +26,8 @@ import {
   type WithMessages,
   type WithPrompt,
 } from "./types.js";
+import { setExperimentalOutput } from "./experimentalOutput.js";
+import { getJsonSchemaFromStructuredOutput } from "./structuredOutputSchema.js";
 
 const OPENAI_PROVIDER_ID = "openai";
 
@@ -64,7 +65,12 @@ export function shouldUseStructuredPipeline<OUTPUT, PARTIAL_OUTPUT>(
   model: LanguageModel,
   tools: AgentTools,
   structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>,
+  options?: { toon?: boolean },
 ): structuredOutput is StructuredOutput<OUTPUT, PARTIAL_OUTPUT> {
+  if (options?.toon) {
+    return false;
+  }
+
   if (!structuredOutput || structuredOutput.type !== "object") {
     return false;
   }
@@ -104,7 +110,9 @@ export async function generateWithStructuredPipeline<
       loopToolsEnabled,
     });
 
-  const schema = createSchemaFromStructuredOutput(structuredOutput);
+  const schema = jsonSchema(
+    getJsonSchemaFromStructuredOutput(structuredOutput),
+  );
   const structuringMessages = buildStructuringMessages({
     text: textResult.text,
     originalPrompt,
@@ -155,7 +163,9 @@ export async function streamWithStructuredPipeline<
     loopToolsEnabled,
   });
 
-  const schema = createSchemaFromStructuredOutput(structuredOutput);
+  const schema = jsonSchema(
+    getJsonSchemaFromStructuredOutput(structuredOutput),
+  );
   let pipelineError: unknown;
 
   const objectStreamPromise = (async () => {
@@ -217,28 +227,6 @@ function hasTools(tools: AgentTools): boolean {
 
 function getProvider(model: LanguageModel): string | undefined {
   return typeof model === "string" ? undefined : model.provider;
-}
-
-function createSchemaFromStructuredOutput(
-  structuredOutput: StructuredOutput<unknown, unknown>,
-) {
-  if (structuredOutput.type !== "object") {
-    throw new Error(
-      "Structured output pipeline requires an object structured output.",
-    );
-  }
-
-  const schema = (structuredOutput.responseFormat as {
-    schema?: JSONSchema7;
-  }).schema;
-
-  if (!schema) {
-    throw new Error(
-      "Structured output pipeline requires a JSON schema on the response format.",
-    );
-  }
-
-  return jsonSchema(schema);
 }
 
 function buildStructuringMessages({
@@ -698,14 +686,5 @@ function overrideExperimentalOutputGetter(
       }
       return getter.call(this);
     },
-  });
-}
-
-function setExperimentalOutput<OUTPUT>(result: unknown, output: OUTPUT) {
-  Object.defineProperty(result as object, "experimental_output", {
-    configurable: true,
-    enumerable: false,
-    value: output,
-    writable: false,
   });
 }
