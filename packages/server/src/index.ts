@@ -6,6 +6,7 @@ export {
   type ServerMiddleware,
   type ServerMiddlewareConfig,
   type ServerRuntimeOptions,
+  type ServerAuthConfig,
   createServerKit,
   registerApiRoute,
   type ApiRouteMethod,
