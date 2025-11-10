@@ -7,7 +7,7 @@ import type {
   WorkflowRunOptions,
   WorkflowRunResult,
 } from "@ai_kit/core";
-import { ServerKit } from "../ServerKit.js";
+import { ServerKit, registerApiRoute } from "../ServerKit.js";
 
 class StubWorkflowRun {
   readonly runId: string;
@@ -382,5 +382,32 @@ describe("ServerKit", () => {
         delete process.env.NODE_ENV;
       }
     }
+  });
+
+  it("registers custom API routes with middleware", async () => {
+    const middleware = vi.fn(async (_c, next) => {
+      await next();
+    });
+
+    const handler = vi.fn(async c => c.json({ message: "Custom route" }));
+
+    const server = new ServerKit({
+      server: {
+        apiRoutes: [
+          registerApiRoute("custom", {
+            method: "get",
+            middleware: [middleware],
+            handler,
+          }),
+        ],
+      },
+    });
+
+    const response = await server.app.request("/custom");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ message: "Custom route" });
+    expect(middleware).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 });

@@ -53,6 +53,31 @@ export interface ServerMiddlewareConfig {
 
 export interface ServerRuntimeOptions {
   middleware?: ServerMiddleware[];
+  apiRoutes?: ApiRouteDefinition[];
+}
+
+const SUPPORTED_HTTP_METHODS = [
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "OPTIONS",
+] as const;
+
+export type ApiRouteMethod = (typeof SUPPORTED_HTTP_METHODS)[number];
+
+export interface ApiRouteConfig {
+  method?: ApiRouteMethod | Lowercase<ApiRouteMethod>;
+  handler: MiddlewareHandler;
+  middleware?: MiddlewareHandler[];
+}
+
+export interface ApiRouteDefinition {
+  path: string;
+  method: ApiRouteMethod;
+  handler: MiddlewareHandler;
+  middleware?: MiddlewareHandler[];
 }
 
 export interface ListenOptions {
@@ -140,6 +165,7 @@ export class ServerKit {
 
     this.registerMiddleware(resolveMiddlewareEntries(config));
     this.registerRoutes();
+    this.registerApiRoutes(resolveApiRouteEntries(config));
 
     const swaggerConfig = resolveSwaggerOptions(config.swagger);
     if (swaggerConfig.enabled) {
@@ -373,6 +399,21 @@ export class ServerKit {
     }
   }
 
+  private registerApiRoutes(routes?: ApiRouteDefinition[]) {
+    if (!routes?.length) {
+      return;
+    }
+
+    for (const route of routes) {
+      const handlers: MiddlewareHandler[] = [
+        ...(route.middleware ?? []),
+        route.handler,
+      ];
+
+      this.app.on(route.method, route.path, ...handlers);
+    }
+  }
+
   private registerSwaggerRoutes(options: NormalizedSwaggerOptions) {
     const document = buildOpenAPIDocument({
       title: options.title,
@@ -517,6 +558,20 @@ export function createServerKit(config: ServerKitConfig = {}) {
   return new ServerKit(config);
 }
 
+export function registerApiRoute(
+  path: string,
+  config: ApiRouteConfig,
+): ApiRouteDefinition {
+  const route: ApiRouteDefinition = {
+    path,
+    method: normalizeApiRouteMethod(config.method),
+    handler: config.handler,
+    middleware: config.middleware,
+  };
+
+  return normalizeApiRoute(route);
+}
+
 interface AgentStreamLike {
   toDataStreamResponse?: () => Response;
   toReadableStream?: () => ReadableStream<Uint8Array>;
@@ -615,4 +670,59 @@ function resolveMiddlewareEntries(config: ServerKitConfig) {
   }
 
   return [...legacy, ...nested];
+}
+
+function resolveApiRouteEntries(config: ServerKitConfig) {
+  const routes = config.server?.apiRoutes ?? [];
+  return routes.map(normalizeApiRoute);
+}
+
+function normalizeApiRoute(route: ApiRouteDefinition): ApiRouteDefinition {
+  if (typeof route.path !== "string") {
+    throw new Error("API route path must be a string.");
+  }
+
+  if (typeof route.handler !== "function") {
+    throw new Error("API route handler must be a function.");
+  }
+
+  const path = ensureLeadingSlash(route.path.trim());
+  const method = normalizeApiRouteMethod(route.method);
+
+  const middleware = route.middleware?.map((entry, index) => {
+    if (typeof entry !== "function") {
+      throw new Error(
+        `API route middleware at index ${index} for ${path} must be a function.`,
+      );
+    }
+
+    return entry;
+  });
+
+  return {
+    path,
+    method,
+    handler: route.handler,
+    middleware,
+  };
+}
+
+function normalizeApiRouteMethod(
+  method?: ApiRouteMethod | Lowercase<ApiRouteMethod>,
+): ApiRouteMethod {
+  if (!method) {
+    return "GET";
+  }
+
+  const candidate = method.toUpperCase();
+
+  if (!isSupportedHttpMethod(candidate)) {
+    throw new Error(`Unsupported HTTP method for API route: ${method}`);
+  }
+
+  return candidate as ApiRouteMethod;
+}
+
+function isSupportedHttpMethod(value: string): value is ApiRouteMethod {
+  return (SUPPORTED_HTTP_METHODS as readonly string[]).includes(value);
 }
