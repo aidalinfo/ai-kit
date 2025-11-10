@@ -29,7 +29,10 @@ const answer = await client.generateAgent("support", {
 
 const run = await client.runWorkflow("enrich-contact", {
   inputData: { contactId: "123" },
-  metadata: { requestId: "run_abc" },
+  runtime: {
+    metadata: { requestId: "run_abc" },
+    ctx: { locale: "fr-CA" },
+  },
 });
 
 if (run.status === "waiting_human" && run.pendingHuman) {
@@ -49,3 +52,4 @@ if (run.status === "waiting_human" && run.pendingHuman) {
 - `resumeWorkflow(id, runId, payload)`
 
 Les métadonnées et le contexte (`ctx`) définis dans `runtime` sont fusionnés automatiquement avec ceux fournis à l’appel.
+Vous pouvez transmettre ces surcharges directement dans la charge utile via la clé `runtime` (ou son alias `runtimeContext`).

@@ -46,7 +46,17 @@ export interface WorkflowRunPayload<
   inputData: Input;
   metadata?: Meta;
   ctx?: Ctx;
+  runtime?: WorkflowRunRuntimeOverrides<Meta, Ctx>;
+  runtimeContext?: WorkflowRunRuntimeOverrides<Meta, Ctx>;
   telemetry?: WorkflowRunOptions<Input, Meta, Ctx>["telemetry"];
+}
+
+export interface WorkflowRunRuntimeOverrides<
+  Meta extends Record<string, unknown>,
+  Ctx extends Record<string, unknown>,
+> {
+  metadata?: Meta;
+  ctx?: Ctx;
 }
 
 export interface ResumeWorkflowPayload {
@@ -266,12 +276,24 @@ export class ClientKit {
     Meta extends Record<string, unknown>,
     Ctx extends Record<string, unknown>,
   >(payload: WorkflowRunPayload<Input, Meta, Ctx>) {
+    const runtimeOverrides =
+      payload.runtime ?? payload.runtimeContext ?? undefined;
+
     const metadata = mergeRecords(
-      this.runtimeDefaults.metadata,
+      mergeRecords(
+        this.runtimeDefaults.metadata as Meta | undefined,
+        runtimeOverrides?.metadata,
+      ),
       payload.metadata,
     );
 
-    const ctx = mergeRecords(this.runtimeDefaults.ctx, payload.ctx);
+    const ctx = mergeRecords(
+      mergeRecords(
+        this.runtimeDefaults.ctx as Ctx | undefined,
+        runtimeOverrides?.ctx,
+      ),
+      payload.ctx,
+    );
 
     const body: Record<string, unknown> = {
       inputData: payload.inputData,
