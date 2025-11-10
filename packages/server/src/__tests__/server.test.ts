@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { SignJWT } from "jose";
 import type {
   Agent,
   Workflow,
@@ -409,5 +410,66 @@ describe("ServerKit", () => {
     await expect(response.json()).resolves.toEqual({ message: "Custom route" });
     expect(middleware).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires a bearer token when auth is enabled", async () => {
+    const server = new ServerKit({
+      agents: { demo: { generate: vi.fn(), stream: vi.fn() } as unknown as Agent },
+      server: { auth: { enabled: true, secret: "test-secret" } },
+    });
+
+    const response = await server.app.request("/api/agents");
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "Missing Authorization header",
+    });
+  });
+
+  it("accepts valid bearer tokens when auth is enabled", async () => {
+    const secret = "test-secret";
+    const token = await new SignJWT({ sub: "user-1" })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("1h")
+      .sign(new TextEncoder().encode(secret));
+
+    const server = new ServerKit({
+      agents: {
+        demo: {
+          name: "Demo Agent",
+          instructions: "",
+          generate: vi.fn(),
+          stream: vi.fn(),
+        } as unknown as Agent,
+      },
+      server: { auth: { enabled: true, secret } },
+    });
+
+    const response = await server.app.request("/api/agents", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      agents: [
+        {
+          id: "demo",
+          name: "Demo Agent",
+          instructions: "",
+        },
+      ],
+    });
+  });
+
+  it("throws when auth is enabled without a secret", () => {
+    expect(
+      () =>
+        new ServerKit({
+          server: { auth: { enabled: true, secret: undefined } },
+        }),
+    ).toThrow(
+      "Server auth is enabled but no secret provided. Set server.auth.secret to a non-empty string.",
+    );
   });
 });

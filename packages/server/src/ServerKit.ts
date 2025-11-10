@@ -3,6 +3,7 @@ import { swaggerUI } from "@hono/swagger-ui";
 import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { jwtVerify } from "jose";
 import { z } from "zod";
 import type {
   Agent,
@@ -54,6 +55,12 @@ export interface ServerMiddlewareConfig {
 export interface ServerRuntimeOptions {
   middleware?: ServerMiddleware[];
   apiRoutes?: ApiRouteDefinition[];
+  auth?: ServerAuthConfig;
+}
+
+export interface ServerAuthConfig {
+  enabled?: boolean;
+  secret?: string;
 }
 
 const SUPPORTED_HTTP_METHODS = [
@@ -145,11 +152,16 @@ export class ServerKit {
     this.runs = new Map();
     this.app = new Hono();
     const telemetryOptions = resolveTelemetryOptions(config.telemetry);
+    const authOptions = resolveAuthOptions(config.server?.auth);
 
     if (telemetryOptions.enabled) {
       void instrumentServerTelemetry(telemetryOptions).catch(error => {
         console.error("Failed to initialize Langfuse telemetry", error);
       });
+    }
+
+    if (authOptions.enabled) {
+      this.app.use(createAuthMiddleware(authOptions));
     }
 
     this.app.onError((err, c) => {
@@ -647,6 +659,70 @@ function resolveTelemetryOptions(
   }
 
   return value ?? { enabled: false };
+}
+
+type NormalizedAuthOptions = { enabled: false } | { enabled: true; secret: string };
+
+function resolveAuthOptions(auth?: ServerAuthConfig): NormalizedAuthOptions {
+  if (!auth) {
+    return { enabled: false };
+  }
+
+  const enabled = auth.enabled ?? true;
+
+  if (!enabled) {
+    return { enabled: false };
+  }
+
+  if (typeof auth.secret !== "string" || auth.secret.trim().length === 0) {
+    throw new Error(
+      "Server auth is enabled but no secret provided. Set server.auth.secret to a non-empty string.",
+    );
+  }
+
+  const secret = auth.secret.trim();
+
+  return { enabled: true, secret };
+}
+
+function createAuthMiddleware(options: Extract<NormalizedAuthOptions, { enabled: true }>) {
+  const secretKey = new TextEncoder().encode(options.secret);
+
+  return (async (c, next) => {
+    const header = c.req.header("authorization");
+
+    if (!header) {
+      throw new HTTPException(401, { message: "Missing Authorization header" });
+    }
+
+    const token = extractBearerToken(header);
+
+    if (!token) {
+      throw new HTTPException(401, {
+        message: "Authorization header must use the Bearer scheme",
+      });
+    }
+
+    try {
+      const { payload } = await jwtVerify(token, secretKey);
+      c.set("auth", { token, payload });
+    } catch (error) {
+      console.error("Failed to verify authorization token", error);
+      throw new HTTPException(401, { message: "Invalid authorization token" });
+    }
+
+    await next();
+  }) satisfies MiddlewareHandler;
+}
+
+function extractBearerToken(header: string) {
+  const [scheme, ...rest] = header.split(/\s+/);
+  if (!scheme || scheme.toLowerCase() !== "bearer") {
+    return undefined;
+  }
+
+  const token = rest.join(" ").trim();
+  return token.length > 0 ? token : undefined;
 }
 
 function normalizeMiddleware(entry: ServerMiddleware): ServerMiddlewareConfig {
