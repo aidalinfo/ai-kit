@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "dotenv/config";
 import { createServerKit } from "./ServerKit.js";
 
 function resolveBooleanFlag(args: string[], name: string) {
