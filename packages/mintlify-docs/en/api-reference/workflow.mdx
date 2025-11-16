@@ -30,7 +30,7 @@ import {
 ## Creation
 
 ```ts
-const workflow = createWorkflow<Input, Output>({
+const workflow = createWorkflow({
   id: "my-workflow",
   inputSchema,
   outputSchema,
@@ -44,6 +44,8 @@ const workflow = createWorkflow<Input, Output>({
   .then({ low: lowStep, high: highStep })
   .commit();
 ```
+
+Add `<Input, Output, Meta, Ctx>` when you need IDE hints for `inputData`, `metadata`, or `ctx`. Steps declared with schemas remain compatible either way.
 
 ### Builder (`WorkflowBuilder`)
 

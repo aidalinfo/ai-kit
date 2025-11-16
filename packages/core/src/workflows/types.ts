@@ -5,6 +5,9 @@ export type SchemaLike<T> = {
   safeParse?: (data: unknown) => { success: true; data: T } | { success: false; error: unknown };
 };
 
+export type InferSchemaType<Schema, Fallback = unknown> =
+  Schema extends SchemaLike<infer Result> ? Result : Fallback;
+
 export type WorkflowStepLike<
   Meta extends Record<string, unknown>,
   RootInput,

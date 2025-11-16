@@ -7,6 +7,8 @@ import type {
   MaybePromise,
   BranchResolver,
   NextResolver,
+  SchemaLike,
+  InferSchemaType,
 } from "../types.js";
 
 export class WorkflowStep<
@@ -100,13 +102,78 @@ export class WorkflowStep<
 export type WorkflowStepOutput<T extends WorkflowStep<any, any, any, any, any>> =
   T extends WorkflowStep<any, infer Output, any, any, any> ? Output : never;
 
-export const createStep = <
+export function createStep<
+  InputSchema extends SchemaLike<any>,
+  OutputSchema extends SchemaLike<any>,
+  Meta extends Record<string, unknown> = Record<string, unknown>,
+  RootInput = unknown,
+  Ctx extends Record<string, unknown> | undefined = undefined,
+>(
+  config: WorkflowStepConfig<
+    InferSchemaType<InputSchema>,
+    InferSchemaType<OutputSchema>,
+    Meta,
+    RootInput,
+    Ctx
+  > & {
+    inputSchema: InputSchema;
+    outputSchema: OutputSchema;
+  },
+): WorkflowStep<InferSchemaType<InputSchema>, InferSchemaType<OutputSchema>, Meta, RootInput, Ctx>;
+
+export function createStep<
+  InputSchema extends SchemaLike<any>,
+  Output,
+  Meta extends Record<string, unknown> = Record<string, unknown>,
+  RootInput = unknown,
+  Ctx extends Record<string, unknown> | undefined = undefined,
+>(
+  config: WorkflowStepConfig<
+    InferSchemaType<InputSchema>,
+    Output,
+    Meta,
+    RootInput,
+    Ctx
+  > & {
+    inputSchema: InputSchema;
+    outputSchema?: undefined;
+  },
+): WorkflowStep<InferSchemaType<InputSchema>, Output, Meta, RootInput, Ctx>;
+
+export function createStep<
+  Input,
+  OutputSchema extends SchemaLike<any>,
+  Meta extends Record<string, unknown> = Record<string, unknown>,
+  RootInput = unknown,
+  Ctx extends Record<string, unknown> | undefined = undefined,
+>(
+  config: WorkflowStepConfig<
+    Input,
+    InferSchemaType<OutputSchema>,
+    Meta,
+    RootInput,
+    Ctx
+  > & {
+    inputSchema?: undefined;
+    outputSchema: OutputSchema;
+  },
+): WorkflowStep<Input, InferSchemaType<OutputSchema>, Meta, RootInput, Ctx>;
+
+export function createStep<
   Input,
   Output,
   Meta extends Record<string, unknown> = Record<string, unknown>,
   RootInput = unknown,
   Ctx extends Record<string, unknown> | undefined = undefined,
->(config: WorkflowStepConfig<Input, Output, Meta, RootInput, Ctx>) => new WorkflowStep(config);
+>(
+  config: WorkflowStepConfig<Input, Output, Meta, RootInput, Ctx>,
+): WorkflowStep<Input, Output, Meta, RootInput, Ctx>;
+
+export function createStep(
+  config: WorkflowStepConfig<any, any, Record<string, unknown>, unknown, Record<string, unknown> | undefined>,
+) {
+  return new WorkflowStep(config);
+}
 
 export const cloneStep = <
   Input,

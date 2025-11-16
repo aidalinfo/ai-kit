@@ -30,7 +30,7 @@ import {
 ## Création
 
 ```ts
-const workflow = createWorkflow<Input, Output>({
+const workflow = createWorkflow({
   id: "my-workflow",
   inputSchema,
   outputSchema,
@@ -44,6 +44,8 @@ const workflow = createWorkflow<Input, Output>({
   .then({ low: lowStep, high: highStep })
   .commit();
 ```
+
+Ajoutez `<Input, Output, Meta, Ctx>` si vous souhaitez profiter de l’autocomplétion sur `inputData`, `metadata` ou `ctx`. Les steps basées sur des schémas restent compatibles dans les deux cas.
 
 ### Builder (`WorkflowBuilder`)
 
