@@ -49,7 +49,12 @@ import type {
   ServerMiddleware,
 } from "./serverKit/types.js";
 
-type AnyWorkflowRun = WorkflowRun<any, any, Record<string, unknown>>;
+type AnyWorkflowRun = WorkflowRun<
+  any,
+  any,
+  Record<string, unknown>,
+  Record<string, unknown> | undefined
+>;
 
 interface ResumePayload {
   stepId: string;
@@ -242,7 +247,13 @@ export class ServerKit {
             })();
 
             final
-              .then(async (result: WorkflowRunResult<unknown, Record<string, unknown>>) => {
+              .then(async (
+                result: WorkflowRunResult<
+                  unknown,
+                  Record<string, unknown>,
+                  Record<string, unknown> | undefined
+                >,
+              ) => {
                 sendSseEvent(controller, "result", { runId: run.runId, result });
                 if (result.status !== "waiting_human") {
                   this.removeRun(workflow.id, run.runId);
@@ -406,7 +417,7 @@ export class ServerKit {
     options: WorkflowRunOptions<
       unknown,
       Record<string, unknown>,
-      Record<string, unknown>
+      Record<string, unknown> | undefined
     >;
   }> {
     const body = await this.parseJsonBody(c);
@@ -429,13 +440,13 @@ export class ServerKit {
         | WorkflowRunOptions<
             unknown,
             Record<string, unknown>,
-            Record<string, unknown>
+            Record<string, unknown> | undefined
           >["telemetry"]
         | undefined,
     } satisfies WorkflowRunOptions<
       unknown,
       Record<string, unknown>,
-      Record<string, unknown>
+      Record<string, unknown> | undefined
     >;
 
     return { options };

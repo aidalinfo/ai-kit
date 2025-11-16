@@ -3,7 +3,12 @@ import type { MiddlewareHandler } from "hono";
 import type { ServerTelemetryOptions } from "../instrument.js";
 import { SUPPORTED_HTTP_METHODS } from "./constants.js";
 
-export type AnyWorkflow = Workflow<any, any, Record<string, unknown>>;
+export type AnyWorkflow = Workflow<
+  any,
+  any,
+  Record<string, unknown>,
+  Record<string, unknown> | undefined
+>;
 
 export interface SwaggerOptions {
   enabled?: boolean;
