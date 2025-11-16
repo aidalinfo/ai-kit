@@ -1,6 +1,6 @@
 {
   "name": "@ai_kit/server",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "HTTP server harness for AI Kit agents and workflows",
   "type": "module",
   "main": "./dist/index.js",
@@ -42,6 +42,7 @@
     "@ai_kit/core": "workspace:^",
     "@hono/node-server": "^1.13.4",
     "@hono/swagger-ui": "^0.5.2",
+    "dotenv": "^17.2.3",
     "hono": "^4.10.4",
     "jose": "^6.1.1",
     "openapi-types": "^12.1.3",

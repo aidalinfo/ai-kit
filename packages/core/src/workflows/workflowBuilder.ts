@@ -74,6 +74,25 @@ const createEmptyStore = <Meta extends Record<string, unknown>, Input, Ctx exten
   parallelLookup: new Map(),
 });
 
+type UntypedWorkflowStep<Input, Output> = WorkflowStep<
+  Input,
+  Output,
+  Record<string, unknown>,
+  unknown,
+  undefined
+>;
+
+type CompatibleWorkflowStep<
+  StepInput,
+  StepOutput,
+  Meta extends Record<string, unknown>,
+  RootInput,
+  Ctx extends Record<string, unknown> | undefined,
+> =
+  | WorkflowStep<StepInput, StepOutput, Meta, RootInput, Ctx>
+  | WorkflowStep<StepInput, StepOutput, Meta, any, Ctx>
+  | UntypedWorkflowStep<StepInput, StepOutput>;
+
 const ensureBranchLookup = <Meta extends Record<string, unknown>, Input, Ctx extends Record<string, unknown> | undefined>(
   store: WorkflowBuilderStore<Meta, Input, Ctx>,
   conditionId: string,
@@ -216,15 +235,15 @@ class ConditionalWorkflowBuilder<
     private readonly conditionId: string,
   ) {}
 
-  private normalizeStep(step: WorkflowStep<any, any, Meta, any, Ctx>) {
+  private normalizeStep(step: CompatibleWorkflowStep<any, any, Meta, Input, Ctx>) {
     return step as WorkflowStep<any, any, Meta, Input, Ctx>;
   }
 
   then(
     ...branches: [
-      | WorkflowStep<any, any, Meta, any, Ctx>
-        | Record<string, WorkflowStep<any, any, Meta, any, Ctx>>,
-      ...Array<WorkflowStep<any, any, Meta, any, Ctx>>
+      | CompatibleWorkflowStep<any, any, Meta, Input, Ctx>
+        | Record<string, CompatibleWorkflowStep<any, any, Meta, Input, Ctx>>,
+      ...Array<CompatibleWorkflowStep<any, any, Meta, Input, Ctx>>
     ]
   ): WorkflowBuilder<Input, unknown, Output, Meta, Ctx> {
     if (branches.length === 0) {
@@ -469,12 +488,15 @@ export class WorkflowBuilder<
     );
   }
 
-  private appendStep(step: WorkflowStep<any, any, Meta, any, Ctx>, options?: { condition?: boolean }) {
+  private appendStep(
+    step: CompatibleWorkflowStep<any, any, Meta, Input, Ctx>,
+    options?: { condition?: boolean },
+  ) {
     if (this.store.steps.has(step.id)) {
       throw new WorkflowSchemaError(`Duplicate workflow step id ${step.id}`);
     }
 
-    this.store.steps.set(step.id, step);
+    this.store.steps.set(step.id, step as WorkflowStep<any, any, Meta, any, Ctx>);
     this.store.sequence.push(step.id);
 
     if (!this.store.entryId) {
@@ -488,7 +510,7 @@ export class WorkflowBuilder<
 
   registerBranches(
     conditionId: string,
-    declarations: Array<{ id: BranchId; step: WorkflowStep<any, any, Meta, any, Ctx> }>,
+    declarations: Array<{ id: BranchId; step: CompatibleWorkflowStep<any, any, Meta, Input, Ctx> }>,
   ): WorkflowBuilder<Input, unknown, Output, Meta, Ctx> {
     ensureBranchLookup(this.store, conditionId);
 
@@ -507,7 +529,7 @@ export class WorkflowBuilder<
   }
 
   then<StepInput extends Current, Next>(
-    step: WorkflowStep<StepInput, Next, Meta, Input, Ctx> | WorkflowStep<StepInput, Next, Meta, any, Ctx>,
+    step: CompatibleWorkflowStep<StepInput, Next, Meta, Input, Ctx>,
   ) {
     this.appendStep(step);
     return this.transition<Next>();
@@ -541,7 +563,7 @@ export class WorkflowBuilder<
     StepOutput = WhileStepOutput<WorkflowStepOutput<LoopStep>, Collect>,
   >(
     stepOrConfig:
-      | WorkflowStep<StepInput, StepOutput, Meta, Input, Ctx>
+      | CompatibleWorkflowStep<StepInput, StepOutput, Meta, Input, Ctx>
       | WhileStepConfig<StepInput, LoopStep, Collect, Ctx>,
   ) {
     const step =
@@ -555,8 +577,7 @@ export class WorkflowBuilder<
 
   conditions<StepInput extends Current, StepOutput>(
     step:
-      | WorkflowStep<StepInput, StepOutput, Meta, Input, Ctx>
-      | WorkflowStep<StepInput, StepOutput, Meta, any, Ctx>,
+      | CompatibleWorkflowStep<StepInput, StepOutput, Meta, Input, Ctx>
   ) {
     this.appendStep(step, { condition: true });
     return new ConditionalWorkflowBuilder<Input, Output, Meta, Ctx>(

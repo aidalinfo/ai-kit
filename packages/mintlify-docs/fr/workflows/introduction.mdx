@@ -22,13 +22,11 @@ npm install @ai_kit/core zod
 import { createStep } from "@ai_kit/core";
 import { z } from "zod";
 
-type WeatherInput = { city: string };
-type WeatherOutput = { forecast: string };
-
-export const fetchWeather = createStep<WeatherInput, WeatherOutput>({
+export const fetchWeather = createStep({
   id: "fetch-weather",
   description: "Récupère la météo courante",
   inputSchema: z.object({ city: z.string().min(1) }),
+  outputSchema: z.object({ forecast: z.string() }),
   handler: async ({ input, signal }) => {
     if (signal.aborted) {
       throw new Error("Requête annulée");
@@ -40,8 +38,9 @@ export const fetchWeather = createStep<WeatherInput, WeatherOutput>({
 });
 ```
 
-- Le schéma est optionnel : toute valeur exposant `parse` ou `safeParse` convient.
-- Dupliquez une étape via `cloneStep(step, overrides)` si vous souhaitez garder le même handler.
+- **Pas de generics nécessaires** : les types `Input` / `Output` sont inférés automatiquement dès que vous fournissez `inputSchema` / `outputSchema`.
+- Ces steps restent compatibles avec n’importe quel workflow, même lorsqu’il déclare un `ctx` ou des métadonnées typées. Vous n’ajoutez des generics que si vous voulez du typage avancé (`Meta`, `RootInput`, `Ctx`) dans la step elle-même.
+- Pas de schéma ? Vous pouvez toujours typer manuellement (`createStep<MonInput, MonOutput>(...)`) comme dans les versions précédentes.
 
 ## 3. Assembler un workflow
 
@@ -125,14 +124,9 @@ type OrderCtx = {
   userId?: string;
 };
 
-const orderWorkflow = createWorkflow<
-  { amount: number; userId: string },
-  string,
-  Record<string, never>,
-  OrderCtx
->({
+const orderWorkflow = createWorkflow({
   id: "order-processing",
-  ctx: { orgId: "default-org", total: 0 },
+  ctx: { orgId: "default-org", total: 0 } as OrderCtx,
 })
   .then(
     createStep({
@@ -164,24 +158,35 @@ console.log(run.ctx);
 // { orgId: "acme-co", total: 120, userId: "user_42" }
 ```
 
+### Choisir son niveau de typage
+
+- **Workflow minimal** – Aucun generic, donc pas d’autocomplétion sur `ctx`/`metadata`, mais vous enchaînez vos steps très rapidement :
+
+```ts
+const workflow = createWorkflow({ id: "simple" })
+  .then(fetchWeather)
+  .commit();
+```
+
+- **Workflow typé** – Ajoutez `<Input, Output, Meta, Ctx>` pour bénéficier d’un typage complet (`ctx.orgId`, `metadata.processed`, etc.). Les steps basées sur des schémas restent plug-and-play : aucun `<…>` supplémentaire lorsque vous les enchaînez.
+
 ## 5. Exemple complet (agent + workflow)
 
 ```ts
 import { Agent, createStep, createWorkflow, scaleway } from "@ai_kit/core";
 import { z } from "zod";
 
-type WeatherInput = { city: string };
-type WeatherSnapshot = {
-  location: string;
-  temperature: number;
-  feelsLike: number;
-  humidity: number;
-  windSpeed: number;
-  windGust: number;
-  conditions: string;
-};
-type AdviceOutput = { text: string };
-type WorkflowMeta = Record<string, unknown>;
+const weatherSnapshotSchema = z.object({
+  location: z.string(),
+  temperature: z.number(),
+  feelsLike: z.number(),
+  humidity: z.number(),
+  windSpeed: z.number(),
+  windGust: z.number(),
+  conditions: z.string(),
+});
+
+type WeatherSnapshot = z.infer<typeof weatherSnapshotSchema>;
 
 const weatherCodeLabels: Record<number, string> = {
   0: "Ciel dégagé",
@@ -214,19 +219,11 @@ const weatherCodeLabels: Record<number, string> = {
   99: "Orage avec grêle forte",
 };
 
-const fetchWeather = createStep<WeatherInput, { forecast: WeatherSnapshot }>({
+const fetchWeather = createStep({
   id: "fetch-weather",
   description: "Récupère la météo courante via un service externe",
   inputSchema: z.object({ city: z.string().min(1) }),
-  outputSchema: z.object({
-    location: z.string(),
-    temperature: z.number(),
-    feelsLike: z.number(),
-    humidity: z.number(),
-    windSpeed: z.number(),
-    windGust: z.number(),
-    conditions: z.string(),
-  }),
+  outputSchema: z.object({ forecast: weatherSnapshotSchema }),
   handler: async ({ input, signal }) => {
     const response = await fetch(
       `https://api.open-meteo.com/v1/forecast?current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_gusts_10m,weather_code&timezone=Europe/Paris&hourly=temperature_2m&daily=weather_code&latitude=48.8566&longitude=2.3522`,
@@ -256,13 +253,11 @@ const fetchWeather = createStep<WeatherInput, { forecast: WeatherSnapshot }>({
   },
 });
 
-const generateAdvice = createStep<
-  { forecast: WeatherSnapshot },
-  AdviceOutput,
-  WorkflowMeta
->({
+const generateAdvice = createStep({
   id: "generate-advice",
   description: "Produit un message conseils grâce à un agent",
+  inputSchema: z.object({ forecast: weatherSnapshotSchema }),
+  outputSchema: z.object({ text: z.string() }),
   handler: async ({ input, context }) => {
     context.emit({
       type: "forecast",
@@ -290,11 +285,7 @@ Propose un court message en français qui résume la météo et donne un conseil
   },
 });
 
-export const weatherAdvisorWorkflow = createWorkflow<
-  WeatherInput,
-  AdviceOutput,
-  WorkflowMeta
->({
+export const weatherAdvisorWorkflow = createWorkflow({
   id: "weather-advisor",
   description: "Workflow de conseils météo piloté par un agent",
 })

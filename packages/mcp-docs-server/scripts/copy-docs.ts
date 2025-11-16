@@ -32,17 +32,37 @@ async function main(): Promise<void> {
   const scriptDir = path.dirname(fileURLToPath(scriptUrl));
   const packageRoot = path.resolve(scriptDir);
 
-  const docsSource = path.resolve(packageRoot, "../docs/src/content/docs");
-  const docsDestination = path.resolve(packageRoot, "dist", "docs");
+  const docSourceCandidates = [
+    {
+      path: path.resolve(packageRoot, "../mintlify-docs/en"),
+      label: "Mintlify (en)"
+    },
+    {
+      path: path.resolve(packageRoot, "../docs/src/content/docs"),
+      label: "legacy docs"
+    }
+  ];
 
-  if (!(await pathExists(docsSource))) {
-    console.warn(`No docs found at ${docsSource}; skipping copy.`);
+  const resolvedSource = await (async () => {
+    for (const candidate of docSourceCandidates) {
+      if (await pathExists(candidate.path)) {
+        return candidate;
+      }
+    }
+    return null;
+  })();
+
+  if (!resolvedSource) {
+    console.warn("No docs source found; skipping copy.");
     return;
   }
 
+  const docsSource = resolvedSource.path;
+  const docsDestination = path.resolve(packageRoot, "dist", "docs");
+
   await fs.rm(docsDestination, { recursive: true, force: true });
   await copyDirectory(docsSource, docsDestination);
-  console.log(`Copied docs to ${docsDestination}`);
+  console.log(`Copied docs from ${resolvedSource.label} to ${docsDestination}`);
 }
 
 main().catch(error => {

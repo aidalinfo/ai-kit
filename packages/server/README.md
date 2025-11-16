@@ -46,6 +46,38 @@ The server registers the following endpoints:
 
 See `src/ServerKit.ts` for the complete implementation and error-handling behaviour.
 
+## Calling the server from ClientKit
+
+Reach these endpoints from any JavaScript runtime with [`@ai_kit/client-kit`](https://www.npmjs.com/package/@ai_kit/client-kit):
+
+```ts
+import { ClientKit } from "@ai_kit/client-kit";
+
+const client = new ClientKit({
+  baseUrl: "https://agents.internal.aidalinfo.fr",
+  headers: { Authorization: `Bearer ${process.env.SERVER_TOKEN}` },
+});
+
+const generation = await client.generateAgent("support", {
+  prompt: "What changed this week?",
+  runtime: {
+    metadata: { tenant: "aidalinfo" },
+    ctx: { locale: "fr-FR" },
+  },
+});
+
+const run = await client.runWorkflow("enrich-ticket", {
+  inputData: { contactId: "123" },
+  metadata: { requestId: "run_abc" },
+  runtime: {
+    metadata: { tenant: "aidalinfo" },
+    ctx: { locale: "fr-FR" },
+  },
+});
+```
+
+`runtime` / `runtimeContext` payloads merge their `metadata`/`ctx` with the top-level fields so you can reuse shared values while overriding per request.
+
 ## Middleware
 
 `ServerKit` lets you register Hono middleware the same way Mastra does: pass either plain middleware functions or `{ handler, path }` tuples via the `server.middleware` option. Path-scoped entries accept any string your Hono app would use (e.g. `/api/*`). The legacy top-level `middleware` field still works but is deprecated.

@@ -16,20 +16,23 @@ import { ClientKit } from "@ai_kit/client-kit";
 const client = new ClientKit({
   baseUrl: "https://agents.internal.aidalinfo.fr",
   headers: { Authorization: `Bearer ${process.env.SERVER_TOKEN}` },
+});
+
+const agent = await client.getAgent("support");
+const answer = await client.generateAgent("support", {
+  prompt: "Donne-moi le résumé de la dernière release.",
   runtime: {
     metadata: { tenant: "aidalinfo" },
     ctx: { locale: "fr-FR" },
   },
 });
 
-const agent = await client.getAgent("support");
-const answer = await client.generateAgent("support", {
-  prompt: "Donne-moi le résumé de la dernière release.",
-});
-
 const run = await client.runWorkflow("enrich-contact", {
   inputData: { contactId: "123" },
-  metadata: { requestId: "run_abc" },
+  runtime: {
+    metadata: { requestId: "run_abc" },
+    ctx: { locale: "fr-CA" },
+  },
 });
 
 if (run.status === "waiting_human" && run.pendingHuman) {
@@ -48,4 +51,5 @@ if (run.status === "waiting_human" && run.pendingHuman) {
 - `runWorkflow(id, payload)`
 - `resumeWorkflow(id, runId, payload)`
 
-Les métadonnées et le contexte (`ctx`) définis dans `runtime` sont fusionnés automatiquement avec ceux fournis à l’appel.
+Les métadonnées et le contexte (`ctx`) définis dans `runtime` sont fusionnés automatiquement avec ceux fournis directement dans la charge utile (`metadata`/`ctx`).
+Vous pouvez transmettre ces surcharges pour chaque appel via la clé `runtime` (ou son alias `runtimeContext`).

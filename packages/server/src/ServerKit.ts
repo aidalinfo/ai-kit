@@ -3,140 +3,57 @@ import { swaggerUI } from "@hono/swagger-ui";
 import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { jwtVerify } from "jose";
 import { z } from "zod";
 import type {
   Agent,
-  Workflow,
   WorkflowEvent,
   WorkflowRun,
   WorkflowRunOptions,
   WorkflowRunResult,
 } from "@ai_kit/core";
-import packageJson from "../package.json" with { type: "json" };
 import { buildOpenAPIDocument } from "./swagger.js";
 import {
   instrumentServerTelemetry,
   type ServerTelemetryOptions,
 } from "./instrument.js";
+import {
+  ensureAgentPayload,
+  normalizeError,
+} from "./serverKit/errors.js";
+import {
+  resolveSwaggerOptions,
+  type NormalizedSwaggerOptions,
+} from "./serverKit/swaggerOptions.js";
+import { resolveTelemetryOptions } from "./serverKit/telemetry.js";
+import {
+  resolveAuthOptions,
+  createAuthMiddleware,
+} from "./serverKit/auth.js";
+import {
+  resolveMiddlewareEntries,
+  normalizeMiddleware,
+} from "./serverKit/middleware.js";
+import {
+  resolveApiRouteEntries,
+} from "./serverKit/apiRoutes.js";
+import {
+  sendSseEvent,
+  hasDataStreamResponse,
+  hasReadableStream,
+} from "./serverKit/streaming.js";
+import type {
+  AnyWorkflow,
+  ApiRouteDefinition,
+  ListenOptions,
+  ServerKitConfig,
+  ServerMiddleware,
+} from "./serverKit/types.js";
 
-type AnyWorkflow = Workflow<any, any, Record<string, unknown>>;
 type AnyWorkflowRun = WorkflowRun<any, any, Record<string, unknown>>;
-
-export interface SwaggerOptions {
-  enabled?: boolean;
-  route?: string;
-  title?: string;
-  version?: string;
-  description?: string;
-}
-
-export interface ServerKitConfig {
-  agents?: Record<string, Agent>;
-  workflows?: Record<string, AnyWorkflow>;
-  server?: ServerRuntimeOptions;
-  /**
-   * @deprecated Use server.middleware instead.
-   */
-  middleware?: ServerMiddleware[];
-  swagger?: SwaggerOptions | boolean;
-  telemetry?: boolean | ServerTelemetryOptions;
-}
-
-export type ServerMiddleware =
-  | MiddlewareHandler
-  | ServerMiddlewareConfig;
-
-export interface ServerMiddlewareConfig {
-  path?: string;
-  handler: MiddlewareHandler;
-}
-
-export interface ServerRuntimeOptions {
-  middleware?: ServerMiddleware[];
-  apiRoutes?: ApiRouteDefinition[];
-  auth?: ServerAuthConfig;
-}
-
-export interface ServerAuthConfig {
-  enabled?: boolean;
-  secret?: string;
-}
-
-const SUPPORTED_HTTP_METHODS = [
-  "GET",
-  "POST",
-  "PUT",
-  "PATCH",
-  "DELETE",
-  "OPTIONS",
-] as const;
-
-export type ApiRouteMethod = (typeof SUPPORTED_HTTP_METHODS)[number];
-
-export interface ApiRouteConfig {
-  method?: ApiRouteMethod | Lowercase<ApiRouteMethod>;
-  handler: MiddlewareHandler;
-  middleware?: MiddlewareHandler[];
-}
-
-export interface ApiRouteDefinition {
-  path: string;
-  method: ApiRouteMethod;
-  handler: MiddlewareHandler;
-  middleware?: MiddlewareHandler[];
-}
-
-export interface ListenOptions {
-  port?: number;
-  hostname?: string;
-  signal?: AbortSignal;
-}
 
 interface ResumePayload {
   stepId: string;
   data: unknown;
-}
-
-interface NormalizedSwaggerOptions {
-  enabled: boolean;
-  uiPath: string;
-  jsonPath: string;
-  title: string;
-  version: string;
-  description?: string;
-}
-
-const packageVersion =
-  typeof packageJson?.version === "string" ? packageJson.version : "1.0.0";
-const DEFAULT_SWAGGER_ROUTE = "/swagger";
-const DEFAULT_SWAGGER_TITLE = "AI Kit API";
-
-const invalidAgentPayload = new HTTPException(400, {
-  message: "Agent request payload must include either prompt or messages",
-});
-
-function normalizeError(error: unknown) {
-  if (error instanceof HTTPException) {
-    return error;
-  }
-
-  const message =
-    error instanceof Error ? error.message : "Internal Server Error";
-
-  return new HTTPException(500, { message });
-}
-
-function ensureAgentPayload(payload: Record<string, unknown>) {
-  if (!("prompt" in payload) && !("messages" in payload)) {
-    throw invalidAgentPayload;
-  }
-}
-
-function sendSseEvent(controller: ReadableStreamDefaultController<Uint8Array>, event: string, data: unknown) {
-  const encoder = new TextEncoder();
-  const formatted = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  controller.enqueue(encoder.encode(formatted));
 }
 
 export class ServerKit {
@@ -588,235 +505,16 @@ export function createServerKit(config: ServerKitConfig = {}) {
   return new ServerKit(config);
 }
 
-export function registerApiRoute(
-  path: string,
-  config: ApiRouteConfig,
-): ApiRouteDefinition {
-  const route: ApiRouteDefinition = {
-    path,
-    method: normalizeApiRouteMethod(config.method),
-    handler: config.handler,
-    middleware: config.middleware,
-  };
-
-  return normalizeApiRoute(route);
-}
-
-interface AgentStreamLike {
-  toDataStreamResponse?: () => Response;
-  toReadableStream?: () => ReadableStream<Uint8Array>;
-}
-
-function hasDataStreamResponse(value: unknown): value is Required<Pick<AgentStreamLike, "toDataStreamResponse">> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as AgentStreamLike).toDataStreamResponse === "function"
-  );
-}
-
-function hasReadableStream(value: unknown): value is Required<Pick<AgentStreamLike, "toReadableStream">> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as AgentStreamLike).toReadableStream === "function"
-  );
-}
-
-function resolveSwaggerOptions(
-  value: ServerKitConfig["swagger"],
-): NormalizedSwaggerOptions {
-  const defaultEnabled = process.env.NODE_ENV !== "production";
-  const asOptions =
-    typeof value === "object" && value !== null ? (value as SwaggerOptions) : undefined;
-
-  const uiPath = normalizeRoute(asOptions?.route);
-  const jsonPath = deriveJsonPath(uiPath);
-
-  return {
-    enabled:
-      typeof value === "boolean"
-        ? value
-        : asOptions?.enabled ?? defaultEnabled,
-    uiPath,
-    jsonPath,
-    title: asOptions?.title ?? DEFAULT_SWAGGER_TITLE,
-    version: asOptions?.version ?? packageVersion,
-    description: asOptions?.description,
-  };
-}
-
-function normalizeRoute(route?: string) {
-  const target = route?.trim() || DEFAULT_SWAGGER_ROUTE;
-  const withSlash = ensureLeadingSlash(target);
-
-  if (withSlash.length > 1 && withSlash.endsWith("/")) {
-    return withSlash.replace(/\/+$/, "");
-  }
-
-  return withSlash || DEFAULT_SWAGGER_ROUTE;
-}
-
-function ensureLeadingSlash(route: string) {
-  return route.startsWith("/") ? route : `/${route}`;
-}
-
-function deriveJsonPath(uiPath: string) {
-  if (uiPath.endsWith(".json")) {
-    return uiPath;
-  }
-
-  return `${uiPath}.json`;
-}
-
-function resolveTelemetryOptions(
-  value: ServerKitConfig["telemetry"],
-): ServerTelemetryOptions {
-  if (typeof value === "boolean") {
-    return { enabled: value };
-  }
-
-  return value ?? { enabled: false };
-}
-
-type NormalizedAuthOptions = { enabled: false } | { enabled: true; secret: string };
-
-function resolveAuthOptions(auth?: ServerAuthConfig): NormalizedAuthOptions {
-  if (!auth) {
-    return { enabled: false };
-  }
-
-  const enabled = auth.enabled ?? true;
-
-  if (!enabled) {
-    return { enabled: false };
-  }
-
-  if (typeof auth.secret !== "string" || auth.secret.trim().length === 0) {
-    throw new Error(
-      "Server auth is enabled but no secret provided. Set server.auth.secret to a non-empty string.",
-    );
-  }
-
-  const secret = auth.secret.trim();
-
-  return { enabled: true, secret };
-}
-
-function createAuthMiddleware(options: Extract<NormalizedAuthOptions, { enabled: true }>) {
-  const secretKey = new TextEncoder().encode(options.secret);
-
-  return (async (c, next) => {
-    const header = c.req.header("authorization");
-
-    if (!header) {
-      throw new HTTPException(401, { message: "Missing Authorization header" });
-    }
-
-    const token = extractBearerToken(header);
-
-    if (!token) {
-      throw new HTTPException(401, {
-        message: "Authorization header must use the Bearer scheme",
-      });
-    }
-
-    try {
-      const { payload } = await jwtVerify(token, secretKey);
-      c.set("auth", { token, payload });
-    } catch (error) {
-      console.error("Failed to verify authorization token", error);
-      throw new HTTPException(401, { message: "Invalid authorization token" });
-    }
-
-    await next();
-  }) satisfies MiddlewareHandler;
-}
-
-function extractBearerToken(header: string) {
-  const [scheme, ...rest] = header.split(/\s+/);
-  if (!scheme || scheme.toLowerCase() !== "bearer") {
-    return undefined;
-  }
-
-  const token = rest.join(" ").trim();
-  return token.length > 0 ? token : undefined;
-}
-
-function normalizeMiddleware(entry: ServerMiddleware): ServerMiddlewareConfig {
-  if (typeof entry === "function") {
-    return { handler: entry };
-  }
-
-  if (entry.path !== undefined && typeof entry.path !== "string") {
-    throw new Error("Server middleware path must be a string.");
-  }
-
-  return entry;
-}
-
-function resolveMiddlewareEntries(config: ServerKitConfig) {
-  const legacy = config.middleware ?? [];
-  const nested = config.server?.middleware ?? [];
-
-  if (legacy.length && !config.server?.middleware?.length) {
-    console.warn("ServerKitConfig.middleware is deprecated. Use server.middleware instead.");
-  }
-
-  return [...legacy, ...nested];
-}
-
-function resolveApiRouteEntries(config: ServerKitConfig) {
-  const routes = config.server?.apiRoutes ?? [];
-  return routes.map(normalizeApiRoute);
-}
-
-function normalizeApiRoute(route: ApiRouteDefinition): ApiRouteDefinition {
-  if (typeof route.path !== "string") {
-    throw new Error("API route path must be a string.");
-  }
-
-  if (typeof route.handler !== "function") {
-    throw new Error("API route handler must be a function.");
-  }
-
-  const path = ensureLeadingSlash(route.path.trim());
-  const method = normalizeApiRouteMethod(route.method);
-
-  const middleware = route.middleware?.map((entry, index) => {
-    if (typeof entry !== "function") {
-      throw new Error(
-        `API route middleware at index ${index} for ${path} must be a function.`,
-      );
-    }
-
-    return entry;
-  });
-
-  return {
-    path,
-    method,
-    handler: route.handler,
-    middleware,
-  };
-}
-
-function normalizeApiRouteMethod(
-  method?: ApiRouteMethod | Lowercase<ApiRouteMethod>,
-): ApiRouteMethod {
-  if (!method) {
-    return "GET";
-  }
-
-  const candidate = method.toUpperCase();
-
-  if (!isSupportedHttpMethod(candidate)) {
-    throw new Error(`Unsupported HTTP method for API route: ${method}`);
-  }
-
-  return candidate as ApiRouteMethod;
-}
-
-function isSupportedHttpMethod(value: string): value is ApiRouteMethod {
-  return (SUPPORTED_HTTP_METHODS as readonly string[]).includes(value);
-}
+export { registerApiRoute } from "./serverKit/apiRoutes.js";
+export type {
+  ApiRouteConfig,
+  ApiRouteDefinition,
+  ApiRouteMethod,
+  ListenOptions,
+  ServerAuthConfig,
+  ServerKitConfig,
+  ServerMiddleware,
+  ServerMiddlewareConfig,
+  ServerRuntimeOptions,
+  SwaggerOptions,
+} from "./serverKit/types.js";

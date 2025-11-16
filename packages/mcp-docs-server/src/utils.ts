@@ -35,6 +35,7 @@ export function getDocsRoot(): string {
 
   const candidates = [
     path.resolve(packageRoot, "dist", "docs"),
+    path.resolve(packageRoot, "../mintlify-docs/en"),
     path.resolve(packageRoot, "docs"),
     path.resolve(packageRoot, "../docs/src/content/docs")
   ];
