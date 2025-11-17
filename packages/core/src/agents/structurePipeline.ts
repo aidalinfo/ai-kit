@@ -550,7 +550,7 @@ async function callGenerateObjectDirect<
     const payload = {
       ...restWithoutContext,
       model,
-      system,
+      system: mergeSystemWithSchema(system, schema),
       schema,
     } as Omit<WithPrompt<GenerateTextParams>, "experimental_output"> & {
       experimental_context?: unknown;
@@ -607,7 +607,7 @@ async function callGenerateObjectDirect<
     const payload = {
       ...restWithoutContext,
       model,
-      system,
+      system: mergeSystemWithSchema(system, schema),
       schema,
     } as Omit<WithMessages<GenerateTextParams>, "experimental_output"> & {
       experimental_context?: unknown;
@@ -880,6 +880,24 @@ function serializeObjectResult(objectResult: unknown): string {
   } catch {
     return "";
   }
+}
+
+function mergeSystemWithSchema(
+  system: string | undefined,
+  schema: ReturnType<typeof jsonSchema>,
+): string {
+  const schemaPrompt = buildSchemaInstruction(schema);
+  return system ? `${system}\n\n${schemaPrompt}` : schemaPrompt;
+}
+
+function buildSchemaInstruction(schema: ReturnType<typeof jsonSchema>): string {
+  const schemaJson = JSON.stringify(schema, null, 2);
+  return [
+    "You must return a valid JSON object that matches the following schema exactly.",
+    "All fields are required only if specified. Use null for missing or uncertain values.",
+    "Do not include explanations or extra keys. Respond with JSON only.",
+    schemaJson,
+  ].join("\n");
 }
 
 const EMPTY_ASYNC_ITERABLE = {
