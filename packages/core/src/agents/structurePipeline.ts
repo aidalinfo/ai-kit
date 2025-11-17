@@ -4,10 +4,12 @@ import {
   streamObject,
   streamText,
   jsonSchema,
+  type GenerateObjectResult,
   type LanguageModel,
   type ToolSet,
   type GenerateTextResult,
   type StreamTextResult,
+  type ReasoningOutput,
 } from "ai";
 
 import { RuntimeStore, type RuntimeState } from "../runtime/store.js";
@@ -59,6 +61,18 @@ interface StructuredStreamPipelineParams<
   options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
   telemetryEnabled: boolean;
   loopToolsEnabled: boolean;
+}
+
+interface StructuredDirectGenerateParams<
+  OUTPUT,
+  PARTIAL_OUTPUT,
+  STATE extends RuntimeState = RuntimeState,
+> {
+  model: LanguageModel;
+  system?: string;
+  structuredOutput: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
+  options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
+  telemetryEnabled: boolean;
 }
 
 export function shouldUseStructuredPipeline<OUTPUT, PARTIAL_OUTPUT>(
@@ -125,6 +139,34 @@ export async function generateWithStructuredPipeline<
     messages: structuringMessages,
     schema,
   });
+
+  setExperimentalOutput(textResult, objectResult.object as OUTPUT);
+
+  return textResult;
+}
+
+export async function generateWithDirectStructuredObject<
+  OUTPUT,
+  PARTIAL_OUTPUT,
+  STATE extends RuntimeState = RuntimeState,
+>(
+  params: StructuredDirectGenerateParams<OUTPUT, PARTIAL_OUTPUT, STATE>,
+) {
+  const { model, system, structuredOutput, options, telemetryEnabled } = params;
+
+  const schema = jsonSchema(
+    getJsonSchemaFromStructuredOutput(structuredOutput),
+  );
+
+  const objectResult = await callGenerateObjectDirect({
+    model,
+    system,
+    options,
+    telemetryEnabled,
+    schema,
+  });
+
+  const textResult = createGenerateTextResultFromObject(objectResult);
 
   setExperimentalOutput(textResult, objectResult.object as OUTPUT);
 
@@ -231,8 +273,21 @@ function buildStructuringMessages({
   originalPrompt?: GenerateTextParams["prompt"];
   originalMessages?: GenerateTextParams["messages"];
 }): NonNullable<GenerateTextParams["messages"]> {
+  const messageList = originalMessages as ModelMessages | undefined;
+  const latestUser = extractLatestUserContent(messageList);
+
+  if (!latestUser && messageList && messageList.length > 0) {
+    return [
+      ...messageList,
+      {
+        role: "assistant",
+        content: text,
+      },
+    ];
+  }
+
   const userContent =
-    flattenPrompt(originalPrompt) ?? extractLatestUserContent(originalMessages) ?? text;
+    flattenPrompt(originalPrompt) ?? latestUser ?? text;
 
   return [
     {
@@ -451,6 +506,145 @@ async function callGenerateText<
   throw new Error("Structured pipeline requires prompt or messages.");
 }
 
+async function callGenerateObjectDirect<
+  OUTPUT,
+  PARTIAL_OUTPUT,
+  STATE extends RuntimeState,
+>({
+  model,
+  system,
+  options,
+  telemetryEnabled,
+  schema,
+}: {
+  model: LanguageModel;
+  system?: string;
+  options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
+  telemetryEnabled: boolean;
+  schema: ReturnType<typeof jsonSchema>;
+}): Promise<GenerateObjectResult<OUTPUT>> {
+  if ("prompt" in options && options.prompt !== undefined) {
+    const {
+      system: _system,
+      structuredOutput: _structured,
+      runtime,
+      experimental_output: _experimental,
+      toon: _toon,
+      loopTools: _loopTools,
+      maxStepTools: _maxStepTools,
+      ...rest
+    } =
+      options as WithPrompt<GenerateTextParams> & {
+        structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
+        runtime?: RuntimeStore<STATE>;
+        telemetry?: AgentTelemetryOverrides;
+      };
+    const {
+      experimental_context,
+      telemetry: telemetryOverrides,
+      experimental_telemetry,
+      ...restWithoutContext
+    } = rest as {
+      experimental_context?: unknown;
+      telemetry?: AgentTelemetryOverrides;
+      experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
+    } & typeof rest;
+
+    const payload = {
+      ...restWithoutContext,
+      model,
+      system,
+      schema,
+    } as Omit<WithPrompt<GenerateTextParams>, "experimental_output"> & {
+      experimental_context?: unknown;
+      experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
+      schema: ReturnType<typeof jsonSchema>;
+    };
+
+    const mergedContext = RuntimeStore.mergeExperimentalContext(
+      experimental_context,
+      runtime,
+    );
+
+    if (mergedContext !== undefined) {
+      payload.experimental_context = mergedContext;
+    }
+
+    const mergedTelemetry = mergeTelemetryConfig({
+      agentTelemetryEnabled: telemetryEnabled,
+      overrides: telemetryOverrides,
+      existing: experimental_telemetry,
+    });
+
+    if (mergedTelemetry !== undefined) {
+      payload.experimental_telemetry = mergedTelemetry;
+    }
+
+    return generateObject(payload);
+  }
+
+  if ("messages" in options && options.messages !== undefined) {
+    const {
+      system: _system,
+      structuredOutput: _structured,
+      runtime,
+      experimental_output: _experimental,
+      ...rest
+    } =
+      options as WithMessages<GenerateTextParams> & {
+        structuredOutput?: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
+        runtime?: RuntimeStore<STATE>;
+        telemetry?: AgentTelemetryOverrides;
+      };
+    const {
+      experimental_context,
+      telemetry: telemetryOverrides,
+      experimental_telemetry,
+      loopTools: _loopTools,
+      maxStepTools: _maxStepTools,
+      ...restWithoutContext
+    } = rest as {
+      experimental_context?: unknown;
+      telemetry?: AgentTelemetryOverrides;
+      experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
+    } & typeof rest & { loopTools?: unknown; maxStepTools?: unknown };
+
+    const payload = {
+      ...restWithoutContext,
+      model,
+      system,
+      schema,
+    } as Omit<WithMessages<GenerateTextParams>, "experimental_output"> & {
+      experimental_context?: unknown;
+      experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
+      schema: ReturnType<typeof jsonSchema>;
+    };
+
+    const mergedContext = RuntimeStore.mergeExperimentalContext(
+      experimental_context,
+      runtime,
+    );
+
+    if (mergedContext !== undefined) {
+      payload.experimental_context = mergedContext;
+    }
+
+    const mergedTelemetry = mergeTelemetryConfig({
+      agentTelemetryEnabled: telemetryEnabled,
+      overrides: telemetryOverrides,
+      existing: experimental_telemetry,
+    });
+
+    if (mergedTelemetry !== undefined) {
+      payload.experimental_telemetry = mergedTelemetry;
+    }
+
+    return generateObject(payload);
+  }
+
+  throw new Error("Structured pipeline requires prompt or messages.");
+}
+
 async function callStreamText<
   OUTPUT,
   PARTIAL_OUTPUT,
@@ -624,6 +818,73 @@ function extractObjectCallSettings(options: Partial<GenerateTextParams>) {
     headers,
     providerOptions,
   });
+}
+
+function createGenerateTextResultFromObject<OUTPUT>(
+  objectResult: GenerateObjectResult<OUTPUT>,
+): GenerateTextResult<ToolSet, OUTPUT> {
+  const serializedObject = serializeObjectResult(objectResult.object);
+  const reasoningParts: ReasoningOutput[] = objectResult.reasoning
+    ? [{ type: "reasoning", text: objectResult.reasoning }]
+    : [];
+  const responseWithMessages = {
+    ...objectResult.response,
+    messages: [] as GenerateTextResult<ToolSet, OUTPUT>["response"]["messages"],
+  };
+
+  const baseStep: Omit<
+    GenerateTextResult<ToolSet, OUTPUT>,
+    "totalUsage" | "steps" | "experimental_output"
+  > = {
+    content: serializedObject
+      ? [{ type: "text", text: serializedObject }]
+      : [],
+    text: serializedObject,
+    reasoning: reasoningParts,
+    reasoningText: objectResult.reasoning,
+    files: [],
+    sources: [],
+    toolCalls: [],
+    staticToolCalls: [],
+    dynamicToolCalls: [],
+    toolResults: [],
+    staticToolResults: [],
+    dynamicToolResults: [],
+    finishReason: objectResult.finishReason,
+    usage: objectResult.usage,
+    warnings: objectResult.warnings,
+    request: objectResult.request,
+    response: responseWithMessages,
+    providerMetadata: objectResult.providerMetadata,
+  };
+
+  return {
+    ...baseStep,
+    totalUsage: objectResult.usage,
+    steps: [
+      {
+        ...baseStep,
+        response: responseWithMessages,
+      },
+    ],
+    experimental_output: undefined as unknown as OUTPUT,
+  };
+}
+
+function serializeObjectResult(objectResult: unknown): string {
+  if (objectResult == null) {
+    return "";
+  }
+
+  if (typeof objectResult === "string") {
+    return objectResult;
+  }
+
+  try {
+    return JSON.stringify(objectResult, null, 2);
+  } catch {
+    return "";
+  }
 }
 
 const EMPTY_ASYNC_ITERABLE = {

@@ -106,3 +106,5 @@ const result = await assistant.generate({
 ```
 
 Behind the scenes `codeSchema` is typed as `AgentStructuredOutput<typeof schema>`, keeping the Scaleway requirements and your DX identical to OpenAI/Google workflows.
+
+> When you target a non-OpenAI provider **without tools**, AI Kit now goes straight to `generateObject`. Your original (text or multimodal) messages are enough to populate `experimental_output`; there’s no need to remind the model to “answer in JSON”.

@@ -106,3 +106,5 @@ const result = await assistant.generate({
 ```
 
 `codeSchema` est automatiquement typé comme `AgentStructuredOutput<typeof schema>`, ce qui garantit la compatibilité Scaleway tout en conservant la même DX qu’avec OpenAI/Google.
+
+> Lorsque vous ciblez un provider non-OpenAI **sans outil**, AI Kit appelle désormais directement `generateObject`. Les messages (texte ou image) que vous passez à l’agent suffisent donc pour alimenter `experimental_output`, même sans rappeler au modèle comment formater la réponse.
