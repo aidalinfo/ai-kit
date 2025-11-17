@@ -4,10 +4,10 @@ description: "Valider les réponses de vos agents avec Zod et `structuredOutput`
 locale: fr
 ---
 
-Utilisez l’option `structuredOutput` pour contraindre l’agent à respecter un schéma `zod`. Le schéma est transmis à `experimental_output` du SDK `ai` et le résultat renvoyé est typé.
+Utilisez `structuredOutput` pour contraindre l’agent à respecter un schéma `zod`. Appuyez-vous systématiquement sur `Output.object({ schema: z.object(...) })` pour fournir les bonnes indications aux modèles OpenAI/Google et récupérer un typage automatique.
 
 ```ts
-import { Output } from "@ai_kit/core/agents";
+import { Output } from "@ai_kit/core";
 import { z } from "zod";
 
 const personSpec = Output.object({
@@ -77,3 +77,36 @@ console.log(result.experimental_output);
 - Préférez `agent.generate` pour la génération structurée : le mode streaming reste expérimental.
 - Logguez les erreurs de parsing pour affiner vos prompts ou relancer une tentative.
 - Distinguez les sorties « strictes » (identifiants, métadonnées) des contenus libres (résumés, réponses longues).
+
+## Modèles Scaleway
+
+L’API compatible OpenAI de Scaleway applique encore les schémas côté client. Conservez un typage propre en annotant vos schémas avec `AgentStructuredOutput` tout en continuant d’utiliser `Output.object` :
+
+```ts
+import { Agent, Output, scaleway, type AgentStructuredOutput } from "@ai_kit/core";
+import { z } from "zod";
+
+const codeSchema: AgentStructuredOutput<{
+  language: string;
+  code: string;
+  explanation: string;
+}> = Output.object({
+  schema: z.object({
+    language: z.string(),
+    code: z.string(),
+    explanation: z.string(),
+  }),
+});
+
+const assistant = new Agent({
+  name: "code-assistant",
+  model: scaleway("qwen3-coder-30b-a3b-instruct"),
+});
+
+const result = await assistant.generate({
+  prompt: "Produis un snippet Python commenté.",
+  structuredOutput: codeSchema,
+});
+```
+
+`AgentStructuredOutput` reflète ce que l’agent attend pour Scaleway tout en conservant la même DX que les exemples OpenAI/Google.

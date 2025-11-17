@@ -30,6 +30,11 @@ export type StructuredOutput<OUTPUT, PARTIAL_OUTPUT> = Output.Output<
   PARTIAL_OUTPUT
 >;
 
+export type AgentStructuredOutput<OUTPUT> = StructuredOutput<
+  OUTPUT,
+  Partial<OUTPUT>
+>;
+
 export type BaseAgentOptions<
   T,
   OUTPUT = never,

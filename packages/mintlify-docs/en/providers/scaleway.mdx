@@ -59,11 +59,17 @@ console.log(result.text);
 
 ### Structured output
 
+> Scaleway still validates schemas on the client pipeline. Type your schema with `AgentStructuredOutput` to keep inference and DX identical to OpenAI/Google.
+
 ```ts
-import { Agent, scaleway, Output } from "@ai_kit/core";
+import { Agent, scaleway, Output, type AgentStructuredOutput } from "@ai_kit/core";
 import { z } from "zod";
 
-const codeSchema = Output.object({
+const codeSchema: AgentStructuredOutput<{
+  language: string;
+  code: string;
+  explanation: string;
+}> = Output.object({
   schema: z.object({
     language: z.string(),
     code: z.string(),

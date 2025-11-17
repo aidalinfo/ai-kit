@@ -4,10 +4,10 @@ description: "Validate agent responses with Zod and the `structuredOutput` optio
 locale: en
 ---
 
-Use `structuredOutput` to force the agent to respect a `zod` schema. The schema is passed to the AI SDK `experimental_output` field and the result is typed accordingly.
+Use `structuredOutput` to force the agent to respect a `zod` schema. Always build the schema with `Output.object({ schema: z.object(...) })` so OpenAI/Google models get the right hints and TypeScript infers your payload automatically.
 
 ```ts
-import { Output } from "@ai_kit/core/agents";
+import { Output } from "@ai_kit/core";
 import { z } from "zod";
 
 const personSpec = Output.object({
@@ -77,3 +77,36 @@ console.log(result.experimental_output);
 - Prefer `agent.generate` for structured generation—streaming + schemas remains experimental.
 - Log parsing errors to fine-tune prompts or trigger retries.
 - Separate “strict” outputs (IDs, metadata) from free-form content (summaries, answers).
+
+## Scaleway models
+
+Scaleway’s OpenAI-compatible endpoint still validates schemas client-side. Keep TS inference and DX consistent by annotating your schema with `AgentStructuredOutput` while still building it with `Output.object`:
+
+```ts
+import { Agent, Output, scaleway, type AgentStructuredOutput } from "@ai_kit/core";
+import { z } from "zod";
+
+const codeSchema: AgentStructuredOutput<{
+  language: string;
+  code: string;
+  explanation: string;
+}> = Output.object({
+  schema: z.object({
+    language: z.string(),
+    code: z.string(),
+    explanation: z.string(),
+  }),
+});
+
+const assistant = new Agent({
+  name: "code-assistant",
+  model: scaleway("qwen3-coder-30b-a3b-instruct"),
+});
+
+const result = await assistant.generate({
+  prompt: "Generate a commented Python snippet.",
+  structuredOutput: codeSchema,
+});
+```
+
+`AgentStructuredOutput` mirrors what the agent expects for Scaleway while the rest of your code stays identical to OpenAI/Google samples.
