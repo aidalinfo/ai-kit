@@ -529,9 +529,6 @@ async function callGenerateObjectDirect<
       structuredOutput: _structured,
       runtime,
       experimental_output: _experimental,
-      toon: _toon,
-      loopTools: _loopTools,
-      maxStepTools: _maxStepTools,
       ...rest
     } =
       options as WithPrompt<GenerateTextParams> & {
@@ -600,14 +597,12 @@ async function callGenerateObjectDirect<
       experimental_context,
       telemetry: telemetryOverrides,
       experimental_telemetry,
-      loopTools: _loopTools,
-      maxStepTools: _maxStepTools,
       ...restWithoutContext
     } = rest as {
       experimental_context?: unknown;
       telemetry?: AgentTelemetryOverrides;
       experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
-    } & typeof rest & { loopTools?: unknown; maxStepTools?: unknown };
+    } & typeof rest;
 
     const payload = {
       ...restWithoutContext,
