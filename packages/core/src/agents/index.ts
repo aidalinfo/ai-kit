@@ -44,6 +44,7 @@ export type {
   AgentStreamOptions,
   AgentStreamResult,
   AgentTelemetryOverrides,
+  AgentStructuredOutput,
 } from "./types.js";
 export { DEFAULT_MAX_STEP_TOOLS } from "./toolLoop.js";
 
