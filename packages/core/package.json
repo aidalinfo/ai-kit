@@ -1,6 +1,6 @@
 {
   "name": "@ai_kit/core",
-  "version": "1.0.26-alpha-03",
+  "version": "1.0.26-alpha-04",
   "description": "",
   "type": "module",
   "main": "./dist/index.js",

@@ -11,6 +11,7 @@ import {
 import { RuntimeStore, type RuntimeState } from "../runtime/store.js";
 
 import {
+  generateWithDirectStructuredObject,
   generateWithStructuredPipeline,
   shouldUseStructuredPipeline,
   streamWithStructuredPipeline,
@@ -126,6 +127,7 @@ export class Agent {
     const runtime = options.runtime;
     const loopToolsOption = options.loopTools;
     const maxStepToolsOption = options.maxStepTools;
+    const hasRegisteredTools = hasAgentTools(this.tools);
     const loopSettings = createToolLoopSettings({
       loopToolsEnabled: loopToolsOption ?? this.loopToolsEnabled,
       tools: this.tools,
@@ -143,12 +145,26 @@ export class Agent {
 
     const callGenerate = async (runtimeForCall?: RuntimeStore<STATE>) => {
       const toolSet = toToolSet(this.tools);
-      if (
-        structuredOutput &&
+      const structuredPipelineEnabled =
+        !!structuredOutput &&
         shouldUseStructuredPipeline(this.model, this.tools, structuredOutput, {
           toon: useToon,
-        })
-      ) {
+        });
+
+      if (structuredOutput && structuredPipelineEnabled && !hasRegisteredTools) {
+        const preparedOptions = prepareOptionsForRuntime(options, runtimeForCall);
+        return finalizeResult(
+          generateWithDirectStructuredObject({
+            model: this.model,
+            system,
+            structuredOutput,
+            options: preparedOptions,
+            telemetryEnabled: this.telemetryEnabled,
+          }),
+        );
+      }
+
+      if (structuredOutput && structuredPipelineEnabled) {
         const preparedOptions = prepareOptionsForRuntime(options, runtimeForCall);
         return finalizeResult(
           runAgentWithToolLoop({
@@ -573,6 +589,14 @@ export class Agent {
       }
     });
   }
+}
+
+function hasAgentTools(tools: AgentTools | undefined): boolean {
+  if (!tools) {
+    return false;
+  }
+
+  return Object.keys(tools).length > 0;
 }
 
 function prepareOptionsForRuntime<
