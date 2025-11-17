@@ -1,5 +1,5 @@
 import { describe, it, expectTypeOf } from "vitest";
-import { Output } from "ai";
+import { Output } from "./index.js";
 import { z } from "zod";
 
 import type { AgentStructuredOutput, StructuredOutput } from "./types.js";

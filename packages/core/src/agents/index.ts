@@ -1,9 +1,10 @@
+import type { FlexibleSchema } from "@ai-sdk/provider-utils";
 import {
   generateText,
   streamText,
   type LanguageModel,
   type ToolSet,
-  Output,
+  Output as BaseOutput,
   type StreamTextResult,
 } from "ai";
 
@@ -20,6 +21,7 @@ import {
   type AgentGenerateResult,
   type AgentStreamOptions,
   type AgentStreamResult,
+  type AgentStructuredOutput,
   type AgentTools,
   type GenerateTextParams,
   type StreamTextParams,
@@ -37,7 +39,13 @@ import {
 import { buildToonSystemPrompt, parseToonStructuredOutput } from "./toon.js";
 import { getJsonSchemaFromStructuredOutput } from "./structuredOutputSchema.js";
 
-export { Output } from "ai";
+const Output = BaseOutput as typeof BaseOutput & {
+  object: <SCHEMA extends FlexibleSchema<unknown>>(options: {
+    schema: SCHEMA;
+  }) => AgentStructuredOutput<SCHEMA>;
+};
+
+export { Output };
 export type {
   AgentGenerateOptions,
   AgentGenerateResult,
