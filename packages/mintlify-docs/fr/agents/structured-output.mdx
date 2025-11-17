@@ -80,17 +80,13 @@ console.log(result.experimental_output);
 
 ## Modèles Scaleway
 
-L’API compatible OpenAI de Scaleway applique encore les schémas côté client. Conservez un typage propre en annotant vos schémas avec `AgentStructuredOutput` tout en continuant d’utiliser `Output.object` :
+L’API compatible OpenAI de Scaleway applique encore les schémas côté client. La librairie infère désormais automatiquement `AgentStructuredOutput` à partir de votre schéma Zod, vous pouvez donc conserver exactement la même écriture :
 
 ```ts
-import { Agent, Output, scaleway, type AgentStructuredOutput } from "@ai_kit/core";
+import { Agent, Output, scaleway } from "@ai_kit/core";
 import { z } from "zod";
 
-const codeSchema: AgentStructuredOutput<{
-  language: string;
-  code: string;
-  explanation: string;
-}> = Output.object({
+const codeSchema = Output.object({
   schema: z.object({
     language: z.string(),
     code: z.string(),
@@ -109,4 +105,4 @@ const result = await assistant.generate({
 });
 ```
 
-`AgentStructuredOutput` reflète ce que l’agent attend pour Scaleway tout en conservant la même DX que les exemples OpenAI/Google.
+`codeSchema` est automatiquement typé comme `AgentStructuredOutput<typeof schema>`, ce qui garantit la compatibilité Scaleway tout en conservant la même DX qu’avec OpenAI/Google.
