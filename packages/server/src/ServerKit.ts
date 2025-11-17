@@ -5,9 +5,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type {
-  Agent,
   WorkflowEvent,
-  WorkflowRun,
   WorkflowRunOptions,
   WorkflowRunResult,
 } from "@ai_kit/core";
@@ -42,14 +40,16 @@ import {
   hasReadableStream,
 } from "./serverKit/streaming.js";
 import type {
+  AgentLike,
   AnyWorkflow,
   ApiRouteDefinition,
   ListenOptions,
   ServerKitConfig,
   ServerMiddleware,
+  WorkflowRunLike,
 } from "./serverKit/types.js";
 
-type AnyWorkflowRun = WorkflowRun<
+type AnyWorkflowRun = WorkflowRunLike<
   any,
   any,
   Record<string, unknown>,
@@ -63,7 +63,7 @@ interface ResumePayload {
 
 export class ServerKit {
   readonly app: Hono;
-  private readonly agents: Map<string, Agent>;
+  private readonly agents: Map<string, AgentLike>;
   private readonly workflows: Map<string, AnyWorkflow>;
   private readonly runs: Map<string, Map<string, AnyWorkflowRun>>;
   private readonly swaggerOptions?: NormalizedSwaggerOptions;
