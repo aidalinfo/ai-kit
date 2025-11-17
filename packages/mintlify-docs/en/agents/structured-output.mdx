@@ -80,17 +80,13 @@ console.log(result.experimental_output);
 
 ## Scaleway models
 
-Scaleway’s OpenAI-compatible endpoint still validates schemas client-side. Keep TS inference and DX consistent by annotating your schema with `AgentStructuredOutput` while still building it with `Output.object`:
+Scaleway’s OpenAI-compatible endpoint still validates schemas client-side. The SDK now infers `AgentStructuredOutput` straight from your Zod schema, so you can keep the exact same builder and pass it to Scaleway without extra generics:
 
 ```ts
-import { Agent, Output, scaleway, type AgentStructuredOutput } from "@ai_kit/core";
+import { Agent, Output, scaleway } from "@ai_kit/core";
 import { z } from "zod";
 
-const codeSchema: AgentStructuredOutput<{
-  language: string;
-  code: string;
-  explanation: string;
-}> = Output.object({
+const codeSchema = Output.object({
   schema: z.object({
     language: z.string(),
     code: z.string(),
@@ -109,4 +105,4 @@ const result = await assistant.generate({
 });
 ```
 
-`AgentStructuredOutput` mirrors what the agent expects for Scaleway while the rest of your code stays identical to OpenAI/Google samples.
+Behind the scenes `codeSchema` is typed as `AgentStructuredOutput<typeof schema>`, keeping the Scaleway requirements and your DX identical to OpenAI/Google workflows.

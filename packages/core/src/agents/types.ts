@@ -1,3 +1,4 @@
+import type { FlexibleSchema, InferSchema } from "@ai-sdk/provider-utils";
 import {
   generateText,
   streamText,
@@ -30,10 +31,10 @@ export type StructuredOutput<OUTPUT, PARTIAL_OUTPUT> = Output.Output<
   PARTIAL_OUTPUT
 >;
 
-export type AgentStructuredOutput<OUTPUT> = StructuredOutput<
-  OUTPUT,
-  Partial<OUTPUT>
->;
+export type AgentStructuredOutput<SchemaOrOutput> =
+  SchemaOrOutput extends FlexibleSchema<unknown>
+    ? StructuredOutput<InferSchema<SchemaOrOutput>, Partial<InferSchema<SchemaOrOutput>>>
+    : StructuredOutput<SchemaOrOutput, Partial<SchemaOrOutput>>;
 
 export type BaseAgentOptions<
   T,
