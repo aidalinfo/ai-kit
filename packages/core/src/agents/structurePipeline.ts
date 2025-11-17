@@ -75,10 +75,7 @@ export function shouldUseStructuredPipeline<OUTPUT, PARTIAL_OUTPUT>(
     return false;
   }
 
-  return (
-    hasTools(tools) &&
-    (getProvider(model)?.toLowerCase() ?? "") !== OPENAI_PROVIDER_ID
-  );
+  return (getProvider(model)?.toLowerCase() ?? "") !== OPENAI_PROVIDER_ID;
 }
 
 export async function generateWithStructuredPipeline<
@@ -219,10 +216,6 @@ export async function streamWithStructuredPipeline<
   });
 
   return streamResult;
-}
-
-function hasTools(tools: AgentTools): boolean {
-  return !!tools && Object.keys(tools).length > 0;
 }
 
 function getProvider(model: LanguageModel): string | undefined {
