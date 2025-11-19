@@ -33,8 +33,10 @@ export type StructuredOutput<OUTPUT, PARTIAL_OUTPUT> = Output.Output<
 
 export type AgentStructuredOutput<SchemaOrOutput> =
   SchemaOrOutput extends FlexibleSchema<unknown>
-    ? StructuredOutput<InferSchema<SchemaOrOutput>, Partial<InferSchema<SchemaOrOutput>>>
-    : StructuredOutput<SchemaOrOutput, Partial<SchemaOrOutput>>;
+  ? StructuredOutput<InferSchema<SchemaOrOutput>, Partial<InferSchema<SchemaOrOutput>>>
+  : StructuredOutput<SchemaOrOutput, Partial<SchemaOrOutput>>;
+
+import type { MemoryOptions } from "../memory/types.js";
 
 export type BaseAgentOptions<
   T,
@@ -49,6 +51,7 @@ export type BaseAgentOptions<
   telemetry?: AgentTelemetryOverrides;
   loopTools?: boolean;
   maxStepTools?: number;
+  memory?: MemoryOptions;
 };
 
 export type AgentGenerateOptions<
@@ -57,17 +60,17 @@ export type AgentGenerateOptions<
   STATE extends RuntimeState = RuntimeState,
 > =
   | BaseAgentOptions<
-      WithPrompt<GenerateTextParams>,
-      OUTPUT,
-      PARTIAL_OUTPUT,
-      STATE
-    >
+    WithPrompt<GenerateTextParams>,
+    OUTPUT,
+    PARTIAL_OUTPUT,
+    STATE
+  >
   | BaseAgentOptions<
-      WithMessages<GenerateTextParams>,
-      OUTPUT,
-      PARTIAL_OUTPUT,
-      STATE
-    >;
+    WithMessages<GenerateTextParams>,
+    OUTPUT,
+    PARTIAL_OUTPUT,
+    STATE
+  >;
 
 export type AgentStreamOptions<
   OUTPUT = never,
@@ -75,17 +78,17 @@ export type AgentStreamOptions<
   STATE extends RuntimeState = RuntimeState,
 > =
   | BaseAgentOptions<
-      WithPrompt<StreamTextParams>,
-      OUTPUT,
-      PARTIAL_OUTPUT,
-      STATE
-    >
+    WithPrompt<StreamTextParams>,
+    OUTPUT,
+    PARTIAL_OUTPUT,
+    STATE
+  >
   | BaseAgentOptions<
-      WithMessages<StreamTextParams>,
-      OUTPUT,
-      PARTIAL_OUTPUT,
-      STATE
-    >;
+    WithMessages<StreamTextParams>,
+    OUTPUT,
+    PARTIAL_OUTPUT,
+    STATE
+  >;
 
 type ProviderToolSet = Record<string, Tool<unknown, unknown>>;
 

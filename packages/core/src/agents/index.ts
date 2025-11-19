@@ -16,6 +16,8 @@ import {
   shouldUseStructuredPipeline,
   streamWithStructuredPipeline,
 } from "./structurePipeline.js";
+import { Memory } from "../memory/index.js";
+import type { AiKitMemoryConfig } from "../memory/types.js";
 import {
   toToolSet,
   type AgentGenerateOptions,
@@ -66,6 +68,7 @@ export interface AgentConfig {
   loopTools?: boolean;
   maxStepTools?: number;
   toon?: boolean;
+  memory?: AiKitMemoryConfig;
 }
 
 export class Agent {
@@ -77,6 +80,7 @@ export class Agent {
   private loopToolsEnabled: boolean;
   private maxStepTools: number;
   private toonEnabled: boolean;
+  readonly memory?: Memory;
 
   constructor({
     name,
@@ -87,6 +91,7 @@ export class Agent {
     loopTools,
     maxStepTools,
     toon,
+    memory,
   }: AgentConfig) {
     this.name = name;
     this.instructions = instructions;
@@ -96,11 +101,54 @@ export class Agent {
     this.loopToolsEnabled = loopTools ?? false;
     this.maxStepTools = maxStepTools ?? DEFAULT_MAX_STEP_TOOLS;
     this.toonEnabled = toon ?? false;
+    if (memory) {
+      this.memory = new Memory(memory);
+    }
   }
 
   withTelemetry(enabled: boolean = true) {
     this.telemetryEnabled = enabled;
     return this;
+  }
+
+  private async retrieveMemories(
+    query: string,
+    options?: { thread?: string; metadata?: Record<string, unknown> }
+  ): Promise<string> {
+    if (!this.memory) return "";
+
+    const searchResult = await this.memory.search(query, {
+      userId: options?.metadata?.["user-id"] as string | undefined,
+      agentId: this.name,
+      runId: options?.thread,
+      limit: 5,
+    });
+
+    if (!searchResult || !searchResult.results || searchResult.results.length === 0) return "";
+
+    const memories = searchResult.results.map((m) => m.memory).join("\n");
+    return `\nContext from memory:\n${memories}\n`;
+  }
+
+  private async saveMemory(
+    input: string,
+    output: string,
+    options?: { thread?: string; metadata?: Record<string, unknown> }
+  ) {
+    if (!this.memory) return;
+
+    // Run in background to not block response
+    this.memory.add([
+      { role: "user", content: input },
+      { role: "assistant", content: output },
+    ], {
+      userId: options?.metadata?.["user-id"] as string | undefined,
+      agentId: this.name,
+      runId: options?.thread,
+      metadata: options?.metadata,
+    }).catch((err) => {
+      console.error("Failed to save memory:", err);
+    });
   }
 
   async generate<
@@ -110,7 +158,11 @@ export class Agent {
   >(
     options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>,
   ): Promise<AgentGenerateResult<OUTPUT>> {
-    const providedSystem = options.system ?? this.instructions;
+    const memoryContext = await this.retrieveMemories(
+      typeof options.prompt === "string" ? options.prompt : "", // Simple check, ideally extract text from messages too
+      options.memory
+    );
+    const providedSystem = (options.system ?? this.instructions ?? "") + memoryContext;
     const structuredOutput = options.structuredOutput;
     const useToon = options.toon ?? this.toonEnabled;
     if (useToon && !structuredOutput) {
@@ -120,9 +172,9 @@ export class Agent {
     const system =
       useToon && structuredOutput
         ? buildToonSystemPrompt(
-            providedSystem,
-            getJsonSchemaFromStructuredOutput(structuredOutput),
-          )
+          providedSystem,
+          getJsonSchemaFromStructuredOutput(structuredOutput),
+        )
         : providedSystem;
     const runtime = options.runtime;
     const loopToolsOption = options.loopTools;
@@ -140,6 +192,18 @@ export class Agent {
       if (useToon && structuredOutput) {
         await parseToonStructuredOutput(resolved, structuredOutput);
       }
+
+      // Save memory if applicable
+      if (this.memory && "prompt" in options && typeof options.prompt === "string") {
+        // For structured output, we might want to save the JSON or a summary. 
+        // For now, saving the raw text result if available, or just skipping if complex.
+        // AgentGenerateResult has 'text' property usually? 
+        // GenerateTextResult has 'text'.
+        if (resolved.text) {
+          this.saveMemory(options.prompt, resolved.text, options.memory);
+        }
+      }
+
       return resolved;
     };
 
@@ -369,7 +433,11 @@ export class Agent {
   >(
     options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>,
   ): Promise<AgentStreamResult<PARTIAL_OUTPUT>> {
-    const system = options.system ?? this.instructions;
+    const memoryContext = await this.retrieveMemories(
+      "prompt" in options && typeof options.prompt === "string" ? options.prompt : "",
+      options.memory
+    );
+    const system = (options.system ?? this.instructions ?? "") + memoryContext;
     const structuredOutput = options.structuredOutput;
     const useToon = options.toon ?? this.toonEnabled;
     if (useToon) {
@@ -488,7 +556,17 @@ export class Agent {
               payload.experimental_telemetry = mergedTelemetry;
             }
 
-            return streamText(payload);
+            return streamText({
+              ...payload,
+              onFinish: (event) => {
+                if (this.memory && "prompt" in options && typeof options.prompt === "string") {
+                  this.saveMemory(options.prompt, event.text, options.memory);
+                }
+                if (payload.onFinish) {
+                  payload.onFinish(event);
+                }
+              },
+            });
           },
         });
         attachRuntimeToStream(streamResult, runtimeForCall);
@@ -564,7 +642,20 @@ export class Agent {
               payload.experimental_telemetry = mergedTelemetry;
             }
 
-            return streamText(payload);
+            return streamText({
+              ...payload,
+              onFinish: (event) => {
+                if (this.memory) {
+                  const lastMessage = options.messages[options.messages.length - 1];
+                  if (lastMessage.role === 'user' && typeof lastMessage.content === 'string') {
+                    this.saveMemory(lastMessage.content, event.text, options.memory);
+                  }
+                }
+                if (payload.onFinish) {
+                  payload.onFinish(event);
+                }
+              },
+            });
           },
         });
         attachRuntimeToStream(streamResult, runtimeForCall);
