@@ -69,7 +69,8 @@
                   "fr/agents/structured-output",
                   "fr/agents/toon",
                   "fr/agents/streaming",
-                  "fr/agents/runtime"
+                  "fr/agents/runtime",
+                  "fr/agents/memory"
                 ]
               },
               {
@@ -160,7 +161,8 @@
                   "en/agents/structured-output",
                   "en/agents/toon",
                   "en/agents/streaming",
-                  "en/agents/runtime"
+                  "en/agents/runtime",
+                  "en/agents/memory"
                 ]
               },
               {
@@ -224,14 +226,14 @@
   },
   "contextual": {
     "options": [
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
+      "view",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "cursor",
+      "vscode"
+    ]
   },
   "footer": {
     "socials": {

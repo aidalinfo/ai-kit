@@ -1,0 +1,125 @@
+---
+title: 'Memory'
+description: 'Give your agents long-term memory with Mem0 integration'
+icon: 'brain'
+---
+
+AI Kit integrates with [Mem0](https://mem0.ai) to provide a powerful and simple memory layer for your agents. This allows agents to remember past interactions, user preferences, and context across different sessions.
+
+## Overview
+
+The memory system automatically:
+1.  **Retrieves** relevant memories based on the current user input before generating a response.
+2.  **Injects** these memories into the system prompt.
+3.  **Stores** the new interaction (user input and agent response) into the vector store after the response is generated.
+
+## Configuration
+
+To enable memory, you need to provide a `memory` configuration object when initializing your `Agent`.
+
+### 1. Simple (In-Memory)
+
+For testing or temporary agents, you can initialize memory without any configuration. This uses an in-memory vector store that resets when the process ends.
+
+```typescript
+const agent = new Agent({
+  name: "simple-agent",
+  model: openai("gpt-4o"),
+  memory: {}, // Enables default in-memory storage
+});
+```
+
+### 2. Local Persistence
+
+To persist chat history locally between runs, provide a `path` where the SQLite database should be stored.
+
+```typescript
+const agent = new Agent({
+  name: "local-agent",
+  model: openai("gpt-4o"),
+  memory: {
+    path: "memory.db", // Path to store the history database
+  },
+});
+```
+
+### 3. Advanced (PgVector)
+
+For production applications, we recommend using a robust vector database like PostgreSQL with `pgvector`.
+
+```typescript
+const agent = new Agent({
+  name: "prod-agent",
+  model: openai("gpt-4o"),
+  memory: {
+    vectorStore: {
+      provider: "pgvector",
+      config: {
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        host: process.env.DB_HOST,
+        dbname: process.env.DB_NAME,
+        collectionName: "agent_memories",
+      },
+    },
+    embedder: {
+      provider: "openai",
+      config: {
+        apiKey: process.env.OPENAI_API_KEY,
+        model: "text-embedding-3-small",
+      },
+    },
+  },
+});
+```
+
+#### PgVector Setup
+
+Ensure your PostgreSQL database has the `vector` extension enabled:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+## Usage
+
+Once configured, you can use the `memory` option in `generate` and `stream` methods to pass context identifiers like `thread` (run ID) and `metadata` (user ID, etc.).
+
+### Streaming with Memory
+
+```typescript
+const stream = await agent.stream("My name is Alice", {
+  memory: {
+    thread: "session-123",
+    metadata: {
+      "user-id": "user-alice",
+    },
+  },
+});
+
+// The agent will store "My name is Alice" associated with user-alice.
+```
+
+### Retrieving Context
+
+In a subsequent call, even in a new session, the agent will recall the information:
+
+```typescript
+const response = await agent.generate({
+  prompt: "What is my name?",
+  memory: {
+    thread: "session-456", // Different session
+    metadata: {
+      "user-id": "user-alice", // Same user
+    },
+  },
+});
+
+console.log(response.text); // "Your name is Alice."
+```
+
+## Advanced Configuration
+
+The `memory` configuration accepts the standard `mem0` configuration object, allowing you to customize the embedder, vector store, and LLM used for memory operations.
+
+Refer to the [Mem0 documentation](https://docs.mem0.ai/overview) for more advanced configuration options.
