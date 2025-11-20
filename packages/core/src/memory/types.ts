@@ -5,24 +5,9 @@ export interface MemoryOptions {
     metadata?: Record<string, unknown>;
 }
 
-export interface PgVectorConfig {
-    collectionName?: string;
-    embeddingModelDims?: number;
-    user?: string;
-    password?: string;
-    host?: string;
-    port?: number;
-    dbname?: string;
-    diskann?: boolean;
-    hnsw?: boolean;
-}
-
 export interface SimplifiedMemoryConfig {
     path?: string;
-    vectorStore?: {
-        provider: "pgvector";
-        config: PgVectorConfig;
-    };
+    vectorStore?: MemoryConfig["vectorStore"];
     embedder?: MemoryConfig["embedder"];
     history?: HistoryStoreConfig;
     llm?: MemoryConfig["llm"];
