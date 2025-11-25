@@ -6,7 +6,7 @@ import type {
   AgentStructuredOutput,
   StructuredOutput,
 } from "./types.js";
-import type { PartialObject } from "ai";
+import type { DeepPartial } from "ai";
 
 describe("AgentStructuredOutput", () => {
   it("infers the output type when receiving a schema", () => {
@@ -26,7 +26,7 @@ describe("AgentStructuredOutput", () => {
     type LegacyOutput = AgentStructuredOutput<{ foo: string }>;
 
     expectTypeOf<LegacyOutput>().toEqualTypeOf<
-      StructuredOutput<{ foo: string }, PartialObject<{ foo: string }>>
+      StructuredOutput<{ foo: string }, DeepPartial<{ foo: string }>>
     >();
   });
 });
