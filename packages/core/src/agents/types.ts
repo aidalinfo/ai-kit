@@ -7,6 +7,7 @@ import {
   type StreamTextResult,
   type Tool,
   type ToolSet,
+  type DeepPartial,
 } from "ai";
 
 import type { RuntimeState, RuntimeStore } from "../runtime/store.js";
@@ -31,19 +32,10 @@ export type StructuredOutput<OUTPUT, PARTIAL_OUTPUT> = Output.Output<
   PARTIAL_OUTPUT
 >;
 
-type PartialObject<T> = {
-  [K in keyof T]?: T[K] extends Record<string, unknown>
-    ? PartialObject<T[K]>
-    : T[K];
-};
-
 export type AgentStructuredOutput<SchemaOrOutput> =
   SchemaOrOutput extends FlexibleSchema<unknown>
-  ? StructuredOutput<
-    InferSchema<SchemaOrOutput>,
-    PartialObject<InferSchema<SchemaOrOutput>>
-  >
-  : StructuredOutput<SchemaOrOutput, PartialObject<SchemaOrOutput>>;
+  ? StructuredOutput<InferSchema<SchemaOrOutput>, DeepPartial<InferSchema<SchemaOrOutput>>>
+  : StructuredOutput<SchemaOrOutput, DeepPartial<SchemaOrOutput>>;
 
 import type { MemoryOptions } from "../memory/types.js";
 
