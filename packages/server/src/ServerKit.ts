@@ -70,7 +70,7 @@ export class ServerKit {
 
   constructor(config: ServerKitConfig = {}) {
     this.agents = new Map(Object.entries(config.agents ?? {}));
-    this.workflows = new Map(Object.entries(config.workflows ?? {}));
+    this.workflows = this.buildWorkflowMap(config.workflows);
     this.runs = new Map();
     this.app = new Hono();
     const telemetryOptions = resolveTelemetryOptions(config.telemetry);
@@ -139,6 +139,28 @@ export class ServerKit {
     }
 
     return server;
+  }
+
+  private buildWorkflowMap(workflows?: Record<string, AnyWorkflow>) {
+    const map = new Map<string, AnyWorkflow>();
+
+    if (!workflows) {
+      return map;
+    }
+
+    for (const workflow of Object.values(workflows)) {
+      if (!workflow?.id || typeof workflow.id !== "string" || workflow.id.length === 0) {
+        throw new Error("Workflows must define a non-empty string id");
+      }
+
+      if (map.has(workflow.id)) {
+        throw new Error(`Duplicate workflow id detected: ${workflow.id}`);
+      }
+
+      map.set(workflow.id, workflow);
+    }
+
+    return map;
   }
 
   private registerRoutes() {
@@ -477,9 +499,8 @@ export class ServerKit {
   }
 
   private listWorkflows() {
-    return Array.from(this.workflows.entries()).map(([id, workflow]) => ({
-      id,
-      workflowId: workflow.id,
+    return Array.from(this.workflows.values()).map(workflow => ({
+      id: workflow.id,
       description: workflow.description,
     }));
   }

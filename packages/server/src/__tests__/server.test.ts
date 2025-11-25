@@ -124,13 +124,13 @@ describe("ServerKit", () => {
 
     const run = new StubWorkflowRun(result, [], result);
     const workflow = {
-      id: "demo",
+      id: "workflow-demo",
       createRun: vi.fn(() => run as unknown as WorkflowRun<any, any, Record<string, unknown>>),
     } as unknown as Workflow<any, any, Record<string, unknown>>;
 
     const server = new ServerKit({ workflows: { demo: workflow } });
 
-    const response = await server.app.request("/api/workflows/demo/run", {
+    const response = await server.app.request("/api/workflows/workflow-demo/run", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ inputData: { foo: "bar" } }),
@@ -162,8 +162,7 @@ describe("ServerKit", () => {
     await expect(response.json()).resolves.toEqual({
       workflows: [
         {
-          id: "demo",
-          workflowId: "workflow-demo",
+          id: "workflow-demo",
           description: "Demo workflow",
         },
       ],
