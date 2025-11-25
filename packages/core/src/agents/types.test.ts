@@ -2,7 +2,11 @@ import { describe, it, expectTypeOf } from "vitest";
 import { Output } from "./index.js";
 import { z } from "zod";
 
-import type { AgentStructuredOutput, StructuredOutput } from "./types.js";
+import type {
+  AgentStructuredOutput,
+  StructuredOutput,
+} from "./types.js";
+import type { PartialObject } from "ai";
 
 describe("AgentStructuredOutput", () => {
   it("infers the output type when receiving a schema", () => {
@@ -22,7 +26,7 @@ describe("AgentStructuredOutput", () => {
     type LegacyOutput = AgentStructuredOutput<{ foo: string }>;
 
     expectTypeOf<LegacyOutput>().toEqualTypeOf<
-      StructuredOutput<{ foo: string }, Partial<{ foo: string }>>
+      StructuredOutput<{ foo: string }, PartialObject<{ foo: string }>>
     >();
   });
 });
