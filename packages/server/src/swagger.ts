@@ -80,15 +80,11 @@ const agentSummarySchema: OpenAPIV3.SchemaObject = {
 
 const workflowSummarySchema: OpenAPIV3.SchemaObject = {
   type: "object",
-  required: ["id", "workflowId"],
+  required: ["id"],
   properties: {
     id: {
       type: "string",
       description: "Identifier used to address the workflow via the API.",
-    },
-    workflowId: {
-      type: "string",
-      description: "Internal workflow identifier declared during creation.",
     },
     description: {
       type: "string",
