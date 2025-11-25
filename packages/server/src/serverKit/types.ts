@@ -3,7 +3,6 @@ import type {
   AgentGenerateResult,
   AgentStreamOptions,
   AgentStreamResult,
-  RuntimeState,
   WorkflowEvent,
   WorkflowRunOptions,
   WorkflowRunResult,
@@ -14,16 +13,15 @@ import { SUPPORTED_HTTP_METHODS } from "./constants.js";
 
 export interface AgentLike<
   OUTPUT = never,
-  PARTIAL_OUTPUT = never,
-  STATE extends RuntimeState = RuntimeState,
+  PARTIAL_OUTPUT = never
 > {
   name: string;
   instructions?: string;
   generate: (
-    options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>,
+    options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT>,
   ) => Promise<AgentGenerateResult<OUTPUT>>;
   stream: (
-    options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>,
+    options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT>,
   ) => Promise<AgentStreamResult<PARTIAL_OUTPUT>> | AgentStreamResult<PARTIAL_OUTPUT>;
 }
 
