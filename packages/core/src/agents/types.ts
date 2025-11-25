@@ -7,7 +7,6 @@ import {
   type StreamTextResult,
   type Tool,
   type ToolSet,
-  type PartialObject,
 } from "ai";
 
 import type { RuntimeState, RuntimeStore } from "../runtime/store.js";
@@ -31,6 +30,12 @@ export type StructuredOutput<OUTPUT, PARTIAL_OUTPUT> = Output.Output<
   OUTPUT,
   PARTIAL_OUTPUT
 >;
+
+type PartialObject<T> = {
+  [K in keyof T]?: T[K] extends Record<string, unknown>
+    ? PartialObject<T[K]>
+    : T[K];
+};
 
 export type AgentStructuredOutput<SchemaOrOutput> =
   SchemaOrOutput extends FlexibleSchema<unknown>
