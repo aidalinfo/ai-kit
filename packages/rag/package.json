@@ -1,6 +1,6 @@
 {
   "name": "@ai_kit/rag",
-  "version": "0.1.0-alpha-02",
+  "version": "0.1.0-alpha-03",
   "description": "RAG abstraction layer for AI Kit (documents, chunking, embeddings, vector stores).",
   "type": "module",
   "main": "./dist/index.js",
@@ -8,6 +8,8 @@
   "exports": {
     ".": {
       "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js",
       "types": "./dist/index.d.ts"
     }
   },

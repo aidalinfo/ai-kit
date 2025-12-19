@@ -93,6 +93,12 @@
                 ]
               },
               {
+                "group": "RAG",
+                "pages": [
+                  "fr/rag/index"
+                ]
+              },
+              {
                 "group": "Télémétrie",
                 "pages": [
                   "fr/telemetrie/index",
@@ -182,6 +188,12 @@
                 "group": "Utilities",
                 "pages": [
                   "en/utils/chunking"
+                ]
+              },
+              {
+                "group": "RAG",
+                "pages": [
+                  "en/rag/index"
                 ]
               },
               {
