@@ -31,3 +31,54 @@ const answer = await rag.answer({
 - `ingest` (chunk → embed → upsert), `search` (embed query → vector store), `answer` (search → prompt RAG avec placeholders `{query}`/`{context}` + streaming via `answer.stream`).
 
 Voir `package-rag.md` pour le design détaillé et la roadmap.
+
+## Utiliser Postgres + pgvector
+
+Pré-requis :
+- Extensions installées sur votre base : `CREATE EXTENSION IF NOT EXISTS vector;`
+- Dépendances côté projet : `pnpm add pg pgvector @ai_kit/rag @ai-sdk/openai`
+- Variable d’environnement : `POSTGRES_CONNECTION_STRING=postgres://user:password@host:5432/db`
+
+Exemple :
+
+```ts
+import { createRag, RagDocument, PgVectorStore } from "@ai_kit/rag";
+import { openai } from "@ai-sdk/openai";
+
+const rag = createRag({
+  embedder: openai.embedding("text-embedding-3-small"),
+  store: new PgVectorStore({
+    connectionString: process.env.POSTGRES_CONNECTION_STRING!,
+    // options: tableName, schema, indexName, dimensions, pool
+  }),
+  chunker: { size: 512, overlap: 50 },
+});
+
+await rag.ingest({
+  namespace: "kb",
+  documents: [RagDocument.fromText("Paris est la capitale de la France")],
+});
+
+// Requête RAG : recherche seule
+const results = await rag.search({
+  namespace: "kb",
+  query: "Quelle est la capitale de la France ?",
+  topK: 3,
+});
+
+console.log(results.map((r) => ({ score: r.score, text: r.chunk.text })));
+
+// Ou génération complète
+const answer = await rag.answer({
+  namespace: "kb",
+  query: "Quelle est la capitale de la France ?",
+  model: openai("gpt-4o-mini"),
+});
+
+console.log(answer.text);
+```
+
+Notes :
+- Le store crée le schéma/table/index IVFFLAT au démarrage si besoin (`rag_vectors` par défaut). Pensez à `ANALYZE` si vous venez de peupler la table pour de meilleures perfs.
+- `upsertMode: "replace"` dans `ingest` supprime le namespace avant réinsertion (si votre Postgres autorise `DELETE`).
+- Le connecteur utilise cosine distance (`vector_cosine_ops`). Ajustez `dimensions` si votre modèle ne correspond pas à la taille par défaut détectée par pgvector.

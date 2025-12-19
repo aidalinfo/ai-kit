@@ -20,6 +20,9 @@ export type RagNamespace = string;
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
+type LegacyEmbeddingModel = { specificationVersion?: "v1"; [key: string]: unknown };
+type AnyEmbeddingModel = EmbeddingModel | LegacyEmbeddingModel;
+
 export interface RagDocumentInput {
   id?: string;
   text: string;
@@ -145,7 +148,7 @@ export interface RagHooks {
 }
 
 export interface RagConfig {
-  embedder: Embedder | EmbeddingModel;
+  embedder: Embedder | AnyEmbeddingModel;
   store: VectorStore;
   chunker?: ChunkerConfig;
   telemetry?: boolean;
@@ -389,7 +392,7 @@ function toChunkedDocument(document: RagDocument, chunk: Chunk): ChunkedDocument
   };
 }
 
-function resolveEmbedder(embedder: Embedder | EmbeddingModel): Embedder {
+function resolveEmbedder(embedder: Embedder | AnyEmbeddingModel): Embedder {
   if (typeof embedder === "function") {
     return embedder;
   }
@@ -397,7 +400,7 @@ function resolveEmbedder(embedder: Embedder | EmbeddingModel): Embedder {
   return async (values: string[]) => {
     try {
       const result = await sdkEmbedMany({
-        model: embedder,
+        model: embedder as any,
         values,
       });
 
