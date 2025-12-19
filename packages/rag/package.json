@@ -1,0 +1,62 @@
+{
+  "name": "@ai_kit/rag",
+  "version": "0.1.0-alpha-01",
+  "description": "RAG abstraction layer for AI Kit (documents, chunking, embeddings, vector stores).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "prepare": "pnpm run build",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "ai",
+    "rag",
+    "vector",
+    "retrieval",
+    "chunking"
+  ],
+  "license": "MIT",
+  "packageManager": "pnpm@10.15.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "latest",
+    "ai": "latest",
+    "zod": "^4.1.12"
+  },
+  "peerDependencies": {
+    "@ai_kit/core": ">=1.0.26-alpha-08 <2",
+    "pg": ">=8.16.3",
+    "pgvector": ">=0.2.1"
+  },
+  "peerDependenciesMeta": {
+    "pg": {
+      "optional": true
+    },
+    "pgvector": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@ai_kit/core": "workspace:^",
+    "@types/node": "^24.7.0",
+    "@types/pg": "^8.15.6",
+    "pg": "^8.16.3",
+    "pgvector": "^0.2.1",
+    "typescript": "^5.9.2",
+    "vitest": "^2.1.3"
+  }
+}
