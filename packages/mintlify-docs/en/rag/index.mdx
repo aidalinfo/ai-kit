@@ -1,0 +1,57 @@
+---
+title: RAG
+description: Build a retrieval pipeline with @ai_kit/rag using OpenAI embeddings and MemoryVectorStore.
+---
+
+### Installation
+
+```bash
+npm i @ai_kit/rag
+```
+
+### Quickstart (search only)
+
+```ts
+import { createRag, MemoryVectorStore, RagDocument } from "@ai_kit/rag";
+import { openai } from "@ai-sdk/openai";
+
+const rag = createRag({
+  embedder: openai.embedding("text-embedding-3-small"),
+  store: new MemoryVectorStore(),
+  chunker: { size: 240, overlap: 40 },
+});
+
+const doc = RagDocument.fromText(
+  "Paris est la capitale de la France. Lyon est connue pour sa gastronomie. Marseille est un grand port sur la Mediterranee."
+);
+
+await rag.ingest({ namespace: "demo", documents: [doc] });
+
+const results = await rag.search({
+  namespace: "demo",
+  query: "Quelle ville est la capitale de la France ?",
+  topK: 3,
+});
+
+console.log(results.map((result) => ({ score: result.score, text: result.chunk.text })));
+```
+
+### Add namespace metadata during ingest
+
+```ts
+await rag.ingest({
+  namespace: "demo",
+  documents: [RagDocument.fromText("Paris est la capitale de la France", { lang: "fr" })],
+  metadata: { tenant: "fr" }, // merged into each chunk metadata
+});
+
+const results = await rag.search({
+  namespace: "demo",
+  query: "capitale",
+  filter: { tenant: "fr" }, // works with MemoryVectorStore and PgVectorStore
+});
+```
+
+### Notes
+- `MemoryVectorStore` is great for prototyping; switch to `PgVectorStore` for persistence.
+- `answer` chains `search` + generation if you need a full RAG response; `answer.stream` streams tokens when the model supports it.

@@ -163,6 +163,7 @@ export interface IngestParams {
   namespace: RagNamespace;
   documents: Array<RagDocument | RagDocumentInput>;
   upsertMode?: "replace" | "merge";
+  metadata?: Record<string, unknown>;
 }
 
 export interface SearchParams {
@@ -250,7 +251,7 @@ export function createRag(config: RagConfig): RagEngine {
       const namespace = validateNamespace(params.namespace);
       const documents = params.documents.map(normalizeDocument);
 
-      const chunked = documents.flatMap((doc) => chunkDocument(doc, chunkOptions));
+      const chunked = documents.flatMap((doc) => chunkDocument(doc, chunkOptions, params.metadata));
       if (chunked.length === 0) {
         return;
       }
@@ -374,22 +375,40 @@ function toChunkOptions(config?: ChunkerConfig): RecursiveChunkOptions {
   };
 }
 
-function chunkDocument(document: RagDocument, options: RecursiveChunkOptions): ChunkedDocument[] {
+function chunkDocument(
+  document: RagDocument,
+  options: RecursiveChunkOptions,
+  metadata?: Record<string, unknown>,
+): ChunkedDocument[] {
   const chunks = splitTextRecursively(document.text, options as RecursiveChunkOptions);
-  return chunks.map((chunk) => toChunkedDocument(document, chunk));
+  return chunks.map((chunk) => toChunkedDocument(document, chunk, metadata));
 }
 
-function toChunkedDocument(document: RagDocument, chunk: Chunk): ChunkedDocument {
+function toChunkedDocument(
+  document: RagDocument,
+  chunk: Chunk,
+  metadata?: Record<string, unknown>,
+): ChunkedDocument {
   return {
     id: `${document.id}::${chunk.index}`,
     documentId: document.id,
     text: chunk.content,
     index: chunk.index,
-    metadata: document.metadata,
+    metadata: mergeMetadata(document.metadata, metadata),
     source: document.source,
     start: chunk.start,
     end: chunk.end,
   };
+}
+
+function mergeMetadata(
+  primary?: Record<string, unknown>,
+  secondary?: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  if (!primary && !secondary) return undefined;
+  if (!primary) return secondary;
+  if (!secondary) return primary;
+  return { ...secondary, ...primary };
 }
 
 function resolveEmbedder(embedder: Embedder | AnyEmbeddingModel): Embedder {

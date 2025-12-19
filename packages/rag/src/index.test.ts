@@ -51,6 +51,18 @@ describe("RAG ingestion and search", () => {
     const newResults = await rag.search({ namespace: "kb", query: "Second" });
     expect(newResults[0]?.chunk.text).toContain("Second");
   });
+
+  test("ingest merges namespace metadata into vectors", async () => {
+    const rag = createEngine();
+    await rag.ingest({
+      namespace: "kb",
+      documents: [RagDocument.fromText("Hello metadata", { doc: true })],
+      metadata: { global: true },
+    });
+
+    const results = await rag.search({ namespace: "kb", query: "Hello" });
+    expect(results[0]?.metadata).toMatchObject({ doc: true, global: true });
+  });
 });
 
 describe("RAG answer", () => {
