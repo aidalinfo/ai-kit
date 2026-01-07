@@ -179,6 +179,17 @@ export class ServerKit {
       ensureAgentPayload(payload);
 
       const result = await agent.generate(payload as never);
+
+      // Include experimental_output in the response if it exists
+      // (it's non-enumerable so needs to be explicitly serialized)
+      const response = result as any;
+      if ("experimental_output" in response) {
+        return c.json({
+          ...result,
+          experimental_output: response.experimental_output,
+        });
+      }
+
       return c.json(result);
     });
 
