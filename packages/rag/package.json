@@ -35,8 +35,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@ai-sdk/openai": "latest",
-    "ai": "latest",
+    "@ai-sdk/openai": "3.0.51",
+    "ai": "6.0.149",
     "zod": "^4.1.12"
   },
   "peerDependencies": {

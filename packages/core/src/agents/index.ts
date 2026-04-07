@@ -173,7 +173,7 @@ export class Agent {
       useToon && structuredOutput
         ? buildToonSystemPrompt(
           providedSystem,
-          getJsonSchemaFromStructuredOutput(structuredOutput),
+          await getJsonSchemaFromStructuredOutput(structuredOutput),
         )
         : providedSystem;
     const runtime = options.runtime;
@@ -738,7 +738,7 @@ function prepareOptionsForRuntime<
 }
 
 function attachRuntimeToStream<STATE extends RuntimeState>(
-  streamResult: StreamTextResult<ToolSet, unknown>,
+  streamResult: StreamTextResult<ToolSet, any>,
   runtime: RuntimeStore<STATE> | undefined,
 ) {
   if (!runtime) {

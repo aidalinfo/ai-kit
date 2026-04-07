@@ -2,7 +2,6 @@ import type { FlexibleSchema, InferSchema } from "@ai-sdk/provider-utils";
 import {
   generateText,
   streamText,
-  Output,
   type GenerateTextResult,
   type StreamTextResult,
   type Tool,
@@ -27,10 +26,15 @@ export type StreamTextParams = FirstArg<typeof streamText>;
 export type WithPrompt<T> = Extract<T, { prompt: unknown }>;
 export type WithMessages<T> = Extract<T, { messages: unknown }>;
 
-export type StructuredOutput<OUTPUT, PARTIAL_OUTPUT> = Output.Output<
-  OUTPUT,
-  PARTIAL_OUTPUT
->;
+export type StructuredOutput<OUTPUT, PARTIAL_OUTPUT> = {
+  type?: string;
+  name?: string;
+  responseFormat?: {
+    schema?: unknown;
+  } | Promise<{ schema?: unknown }>;
+  parseOutput?: (...args: any[]) => Promise<OUTPUT> | OUTPUT;
+  [key: string]: unknown;
+};
 
 export type AgentStructuredOutput<SchemaOrOutput> =
   SchemaOrOutput extends FlexibleSchema<unknown>
@@ -109,12 +113,12 @@ export interface AgentLoopMetadata {
 
 export type AgentGenerateResult<OUTPUT> = GenerateTextResult<
   ToolSet,
-  OUTPUT
+  any
 > &
   AgentLoopMetadata;
 
 export type AgentStreamResult<PARTIAL_OUTPUT> = StreamTextResult<
   ToolSet,
-  PARTIAL_OUTPUT
+  any
 > &
   AgentLoopMetadata;
