@@ -1,6 +1,6 @@
 {
   "name": "@ai_kit/rag",
-  "version": "0.1.0-alpha-03",
+  "version": "0.1.0-alpha-04",
   "description": "RAG abstraction layer for AI Kit (documents, chunking, embeddings, vector stores).",
   "type": "module",
   "main": "./dist/index.js",
@@ -35,12 +35,12 @@
     "access": "public"
   },
   "dependencies": {
-    "@ai-sdk/openai": "latest",
-    "ai": "latest",
+    "@ai-sdk/openai": "3.0.51",
+    "ai": "6.0.149",
     "zod": "^4.1.12"
   },
   "peerDependencies": {
-    "@ai_kit/core": ">=1.0.26-alpha-08 <2",
+    "@ai_kit/core": ">=1.1.0 <2",
     "pg": ">=8.16.3",
     "pgvector": ">=0.2.1"
   },

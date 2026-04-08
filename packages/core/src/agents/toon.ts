@@ -55,7 +55,7 @@ export function buildToonSystemPrompt(
 }
 
 export async function parseToonStructuredOutput<OUTPUT>(
-  result: GenerateTextResult<ToolSet, OUTPUT>,
+  result: GenerateTextResult<ToolSet, any>,
   structuredOutput: StructuredOutput<OUTPUT, unknown>,
 ) {
   const payload = extractToonPayload(result.text);
@@ -96,18 +96,20 @@ export async function parseToonStructuredOutput<OUTPUT>(
 
   // Apply minimal type coercion based on schema expectations
   // This handles edge cases like numeric IDs that should be strings (e.g., SIRET numbers)
-  const schema = getJsonSchemaFromStructuredOutput(structuredOutput);
+  const schema = await getJsonSchemaFromStructuredOutput(structuredOutput);
   const coerced = schema ? coerceBySchema(decoded, schema) : decoded;
 
   const jsonText = JSON.stringify(coerced);
-  const parsedOutput = await structuredOutput.parseOutput(
-    { text: jsonText },
-    {
-      response: result.response,
-      usage: result.usage,
-      finishReason: result.finishReason,
-    },
-  );
+  const parsedOutput = structuredOutput.parseOutput
+    ? await structuredOutput.parseOutput(
+        { text: jsonText },
+        {
+          response: result.response,
+          usage: result.usage,
+          finishReason: result.finishReason,
+        },
+      )
+    : (coerced as OUTPUT);
 
   setExperimentalOutput(result, parsedOutput as OUTPUT);
 }

@@ -173,6 +173,12 @@ console.log(outcome.result);
 - `docs/core` : documentation interne (agents, chunks, workflows, bonnes pratiques).
 - `packages/mcp-docs-server` : serveur MCP exposant la documentation AI Kit.
 
+## Mémoire de projet
+
+- `memory-bank/` contient le cadre documentaire source de vérité utilisé par les agents OpenCode.
+- Parcourez d’abord `memory-bank/projectbrief.md`, `memory-bank/techContext.md` et `memory-bank/systemPatterns.md`.
+- Maintenez `memory-bank/activeContext.md` et `memory-bank/progress.md` à jour à chaque priorisation importante.
+
 ## Serveur MCP Docs
 
 Le package `@ai_kit/mcp-docs` fournit un serveur MCP qui diffuse toute la documentation (répertoire `docs/`, `README.md` racine, et les README de packages si présents). Deux outils sont exposés :
@@ -247,6 +253,7 @@ Le DSL accepte également des ressources (fichiers statiques ou dynamiques via t
 - Respectez la structure existante et les patterns introduits (ex. `TChunkDocument`, `createWorkflow`).
 - Ajoutez des tests Vitest lorsque vous livrez une fonctionnalité critique.
 - Documentez vos ajouts dans `docs/core` si vous introduisez un nouveau concept ou un flux important.
+- Documentez également toute décision d’architecture dans le dossier `memory-bank`.
 
 ## Ressources
 

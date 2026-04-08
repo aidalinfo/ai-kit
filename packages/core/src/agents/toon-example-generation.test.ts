@@ -6,14 +6,14 @@ import { getJsonSchemaFromStructuredOutput } from "./structuredOutputSchema.js";
 import { Output } from "ai";
 
 describe("TOON example generation", () => {
-  it("generates inline format for string arrays (not list format)", () => {
+  it("generates inline format for string arrays (not list format)", async () => {
     const structured = Output.object({
       schema: z.object({
         notes: z.array(z.string()),
       }),
     });
 
-    const jsonSchema = getJsonSchemaFromStructuredOutput(structured);
+    const jsonSchema = await getJsonSchemaFromStructuredOutput(structured);
     expect(jsonSchema).toBeDefined();
 
     const prompt = buildToonSystemPrompt("", jsonSchema!);
@@ -28,7 +28,7 @@ describe("TOON example generation", () => {
     expect(prompt).not.toMatch(/notes:\s*\n\s*-/);
   });
 
-  it("generates correct format for object arrays", () => {
+  it("generates correct format for object arrays", async () => {
     const structured = Output.object({
       schema: z.object({
         users: z.array(
@@ -40,7 +40,7 @@ describe("TOON example generation", () => {
       }),
     });
 
-    const jsonSchema = getJsonSchemaFromStructuredOutput(structured);
+    const jsonSchema = await getJsonSchemaFromStructuredOutput(structured);
     expect(jsonSchema).toBeDefined();
 
     const prompt = buildToonSystemPrompt("", jsonSchema!);
@@ -79,7 +79,7 @@ describe("TOON example generation", () => {
     }
   });
 
-  it("nested structures with string arrays", () => {
+  it("nested structures with string arrays", async () => {
     const structured = Output.object({
       schema: z.object({
         columns: z.array(
@@ -91,7 +91,7 @@ describe("TOON example generation", () => {
       }),
     });
 
-    const jsonSchema = getJsonSchemaFromStructuredOutput(structured);
+    const jsonSchema = await getJsonSchemaFromStructuredOutput(structured);
     expect(jsonSchema).toBeDefined();
 
     const prompt = buildToonSystemPrompt("", jsonSchema!);

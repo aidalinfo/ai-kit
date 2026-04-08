@@ -1,15 +1,12 @@
 import {
-  generateObject,
   generateText,
-  streamObject,
   streamText,
+  Output,
   jsonSchema,
-  type GenerateObjectResult,
   type LanguageModel,
   type ToolSet,
   type GenerateTextResult,
   type StreamTextResult,
-  type ReasoningOutput,
 } from "ai";
 
 import { RuntimeStore, type RuntimeState } from "../runtime/store.js";
@@ -122,7 +119,7 @@ export async function generateWithStructuredPipeline<
     });
 
   const schema = jsonSchema(
-    getJsonSchemaFromStructuredOutput(structuredOutput),
+    await getJsonSchemaFromStructuredOutput(structuredOutput),
   );
   const structuringMessages = buildStructuringMessages({
     text: textResult.text,
@@ -130,17 +127,17 @@ export async function generateWithStructuredPipeline<
     originalMessages,
   });
 
-  const objectResult = await generateObject({
+  const objectResult = await generateText({
     ...extractObjectCallSettings(
       options as unknown as Partial<GenerateTextParams>,
     ),
     model,
     system,
     messages: structuringMessages,
-    schema,
+    output: Output.object({ schema }),
   });
 
-  setExperimentalOutput(textResult, objectResult.object as OUTPUT);
+  setExperimentalOutput(textResult, objectResult.output as OUTPUT);
 
   return textResult;
 }
@@ -155,10 +152,10 @@ export async function generateWithDirectStructuredObject<
   const { model, system, structuredOutput, options, telemetryEnabled } = params;
 
   const schema = jsonSchema(
-    getJsonSchemaFromStructuredOutput(structuredOutput),
+    await getJsonSchemaFromStructuredOutput(structuredOutput),
   );
 
-  const objectResult = await callGenerateObjectDirect({
+  const textResult = await callGenerateTextDirect({
     model,
     system,
     options,
@@ -166,9 +163,7 @@ export async function generateWithDirectStructuredObject<
     schema,
   });
 
-  const textResult = createGenerateTextResultFromObject(objectResult);
-
-  setExperimentalOutput(textResult, objectResult.object as OUTPUT);
+  setExperimentalOutput(textResult, textResult.output as OUTPUT);
 
   return textResult;
 }
@@ -203,7 +198,7 @@ export async function streamWithStructuredPipeline<
   });
 
   const schema = jsonSchema(
-    getJsonSchemaFromStructuredOutput(structuredOutput),
+    await getJsonSchemaFromStructuredOutput(structuredOutput),
   );
   let pipelineError: unknown;
 
@@ -215,18 +210,18 @@ export async function streamWithStructuredPipeline<
       originalMessages,
     });
 
-    const objectStream = await streamObject({
+    const objectStream = await streamText({
       ...extractObjectCallSettings(
         options as unknown as Partial<GenerateTextParams>,
       ),
       model,
       system,
       messages: structuringMessages,
-      schema,
+      output: Output.object({ schema }),
     });
 
     try {
-      const finalObject = await objectStream.object;
+      const finalObject = await objectStream.output;
       setExperimentalOutput(streamResult, finalObject as OUTPUT);
     } catch (error) {
       pipelineError = error;
@@ -246,7 +241,7 @@ export async function streamWithStructuredPipeline<
     get() {
       return createDeferredAsyncIterable(async () => {
         const objectStream = await objectStreamPromise;
-        return objectStream.partialObjectStream ?? EMPTY_ASYNC_ITERABLE;
+        return objectStream.partialOutputStream ?? EMPTY_ASYNC_ITERABLE;
       });
     },
   });
@@ -378,7 +373,7 @@ async function callGenerateText<
   options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
   telemetryEnabled: boolean;
   loopToolsEnabled: boolean;
-}): Promise<GenerateTextResult<ToolSet, OUTPUT>> {
+}): Promise<GenerateTextResult<ToolSet, any>> {
   if ("prompt" in options && options.prompt !== undefined) {
     const {
       system: _system,
@@ -438,7 +433,7 @@ async function callGenerateText<
       payload.experimental_telemetry = mergedTelemetry;
     }
 
-    return generateText<ToolSet, OUTPUT>(payload);
+    return generateText(payload) as Promise<GenerateTextResult<ToolSet, any>>;
   }
 
   if ("messages" in options && options.messages !== undefined) {
@@ -500,13 +495,13 @@ async function callGenerateText<
       payload.experimental_telemetry = mergedTelemetry;
     }
 
-    return generateText<ToolSet, OUTPUT>(payload);
+    return generateText(payload) as Promise<GenerateTextResult<ToolSet, any>>;
   }
 
   throw new Error("Structured pipeline requires prompt or messages.");
 }
 
-async function callGenerateObjectDirect<
+async function callGenerateTextDirect<
   OUTPUT,
   PARTIAL_OUTPUT,
   STATE extends RuntimeState,
@@ -522,7 +517,7 @@ async function callGenerateObjectDirect<
   options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
   telemetryEnabled: boolean;
   schema: ReturnType<typeof jsonSchema>;
-}): Promise<GenerateObjectResult<OUTPUT>> {
+}): Promise<GenerateTextResult<ToolSet, any>> {
   if ("prompt" in options && options.prompt !== undefined) {
     const {
       system: _system,
@@ -550,12 +545,12 @@ async function callGenerateObjectDirect<
     const payload = {
       ...restWithoutContext,
       model,
-      system: mergeSystemWithSchema(system, schema),
-      schema,
+      system,
+      output: Output.object({ schema }),
     } as Omit<WithPrompt<GenerateTextParams>, "experimental_output"> & {
       experimental_context?: unknown;
       experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
-      schema: ReturnType<typeof jsonSchema>;
+      output: unknown;
     };
 
     const mergedContext = RuntimeStore.mergeExperimentalContext(
@@ -577,7 +572,7 @@ async function callGenerateObjectDirect<
       payload.experimental_telemetry = mergedTelemetry;
     }
 
-    return generateObject(payload);
+    return generateText(payload) as Promise<GenerateTextResult<ToolSet, any>>;
   }
 
   if ("messages" in options && options.messages !== undefined) {
@@ -607,12 +602,12 @@ async function callGenerateObjectDirect<
     const payload = {
       ...restWithoutContext,
       model,
-      system: mergeSystemWithSchema(system, schema),
-      schema,
+      system,
+      output: Output.object({ schema }),
     } as Omit<WithMessages<GenerateTextParams>, "experimental_output"> & {
       experimental_context?: unknown;
       experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
-      schema: ReturnType<typeof jsonSchema>;
+      output: unknown;
     };
 
     const mergedContext = RuntimeStore.mergeExperimentalContext(
@@ -634,13 +629,13 @@ async function callGenerateObjectDirect<
       payload.experimental_telemetry = mergedTelemetry;
     }
 
-    return generateObject(payload);
+    return generateText(payload) as Promise<GenerateTextResult<ToolSet, any>>;
   }
 
   throw new Error("Structured pipeline requires prompt or messages.");
 }
 
-async function callStreamText<
+function callStreamText<
   OUTPUT,
   PARTIAL_OUTPUT,
   STATE extends RuntimeState,
@@ -658,7 +653,7 @@ async function callStreamText<
   options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
   telemetryEnabled: boolean;
   loopToolsEnabled: boolean;
-}): Promise<StreamTextResult<ToolSet, PARTIAL_OUTPUT>> {
+}): StreamTextResult<ToolSet, any> {
   if ("prompt" in options && options.prompt !== undefined) {
     const {
       system: _system,
@@ -717,7 +712,7 @@ async function callStreamText<
       payload.experimental_telemetry = mergedTelemetry;
     }
 
-    return streamText<ToolSet, OUTPUT, PARTIAL_OUTPUT>(payload);
+    return streamText(payload) as StreamTextResult<ToolSet, any>;
   }
 
   if ("messages" in options && options.messages !== undefined) {
@@ -779,7 +774,7 @@ async function callStreamText<
       payload.experimental_telemetry = mergedTelemetry;
     }
 
-    return streamText<ToolSet, OUTPUT, PARTIAL_OUTPUT>(payload);
+    return streamText(payload) as StreamTextResult<ToolSet, any>;
   }
 
   throw new Error("Structured pipeline requires prompt or messages.");
@@ -813,91 +808,6 @@ function extractObjectCallSettings(options: Partial<GenerateTextParams>) {
     headers,
     providerOptions,
   });
-}
-
-function createGenerateTextResultFromObject<OUTPUT>(
-  objectResult: GenerateObjectResult<OUTPUT>,
-): GenerateTextResult<ToolSet, OUTPUT> {
-  const serializedObject = serializeObjectResult(objectResult.object);
-  const reasoningParts: ReasoningOutput[] = objectResult.reasoning
-    ? [{ type: "reasoning", text: objectResult.reasoning }]
-    : [];
-  const responseWithMessages = {
-    ...objectResult.response,
-    messages: [] as GenerateTextResult<ToolSet, OUTPUT>["response"]["messages"],
-  };
-
-  const baseStep: Omit<
-    GenerateTextResult<ToolSet, OUTPUT>,
-    "totalUsage" | "steps" | "experimental_output"
-  > = {
-    content: serializedObject
-      ? [{ type: "text", text: serializedObject }]
-      : [],
-    text: serializedObject,
-    reasoning: reasoningParts,
-    reasoningText: objectResult.reasoning,
-    files: [],
-    sources: [],
-    toolCalls: [],
-    staticToolCalls: [],
-    dynamicToolCalls: [],
-    toolResults: [],
-    staticToolResults: [],
-    dynamicToolResults: [],
-    finishReason: objectResult.finishReason,
-    usage: objectResult.usage,
-    warnings: objectResult.warnings,
-    request: objectResult.request,
-    response: responseWithMessages,
-    providerMetadata: objectResult.providerMetadata,
-  };
-
-  return {
-    ...baseStep,
-    totalUsage: objectResult.usage,
-    steps: [
-      {
-        ...baseStep,
-        response: responseWithMessages,
-      },
-    ],
-    experimental_output: undefined as unknown as OUTPUT,
-  };
-}
-
-function serializeObjectResult(objectResult: unknown): string {
-  if (objectResult == null) {
-    return "";
-  }
-
-  if (typeof objectResult === "string") {
-    return objectResult;
-  }
-
-  try {
-    return JSON.stringify(objectResult, null, 2);
-  } catch {
-    return "";
-  }
-}
-
-function mergeSystemWithSchema(
-  system: string | undefined,
-  schema: ReturnType<typeof jsonSchema>,
-): string {
-  const schemaPrompt = buildSchemaInstruction(schema);
-  return system ? `${system}\n\n${schemaPrompt}` : schemaPrompt;
-}
-
-function buildSchemaInstruction(schema: ReturnType<typeof jsonSchema>): string {
-  const schemaJson = JSON.stringify(schema, null, 2);
-  return [
-    "You must return a valid JSON object that matches the following schema exactly.",
-    "All fields are required only if specified. Use null for missing or uncertain values.",
-    "Do not include explanations or extra keys. Respond with JSON only.",
-    schemaJson,
-  ].join("\n");
 }
 
 const EMPTY_ASYNC_ITERABLE = {

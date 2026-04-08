@@ -2,18 +2,18 @@ import type { JSONSchema7 } from "ai";
 
 import type { StructuredOutput } from "./types.js";
 
-export function getJsonSchemaFromStructuredOutput(
+export async function getJsonSchemaFromStructuredOutput(
   structuredOutput: StructuredOutput<unknown, unknown>,
-): JSONSchema7 {
-  if (structuredOutput.type !== "object") {
+): Promise<JSONSchema7> {
+  const kind = (structuredOutput.type ?? structuredOutput.name) as string | undefined;
+  if (kind && kind !== "object") {
     throw new Error(
       "Structured output pipeline requires an object structured output.",
     );
   }
 
-  const schema = (structuredOutput.responseFormat as {
-    schema?: JSONSchema7;
-  }).schema;
+  const responseFormat = await Promise.resolve(structuredOutput.responseFormat);
+  const schema = (responseFormat as { schema?: JSONSchema7 } | undefined)?.schema;
 
   if (!schema) {
     throw new Error(

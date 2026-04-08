@@ -182,15 +182,18 @@ export class ServerKit {
 
       // Include experimental_output in the response if it exists
       // (it's non-enumerable so needs to be explicitly serialized)
-      const response = result as any;
-      if ("experimental_output" in response) {
+      // Use try-catch because accessing experimental_output throws if not configured
+      try {
+        const response = result as any;
+        const output = response.experimental_output;
         return c.json({
           ...result,
-          experimental_output: response.experimental_output,
+          experimental_output: output,
         });
+      } catch {
+        // No structured output configured, return result as-is
+        return c.json(result);
       }
-
-      return c.json(result);
     });
 
     this.app.post("/api/agents/:id/stream", async c => {
