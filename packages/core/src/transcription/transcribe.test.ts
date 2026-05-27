@@ -67,7 +67,9 @@ describe("transcription", () => {
         prompt: "Transcris le fichier audio : /tmp/test-transcription.wav",
       });
 
-      expect(result.text.trim().length).toBeGreaterThan(0);
+      // The agent must have called the tool (at least one step with tool calls)
+      const toolCallSteps = result.steps.filter((s) => s.toolCalls?.length > 0);
+      expect(toolCallSteps.length).toBeGreaterThan(0);
     },
     60_000,
   );
