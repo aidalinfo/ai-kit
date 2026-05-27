@@ -23,9 +23,10 @@ async function loadAudio(
   inputType: AudioInputType,
 ): Promise<Uint8Array> {
   if (inputType === "buffer") {
-    return audio instanceof Uint8Array
-      ? audio
-      : new Uint8Array(audio as unknown as ArrayBuffer);
+    if (audio instanceof Uint8Array) return audio;
+    // Buffer extends Uint8Array — copy via shared underlying ArrayBuffer
+    if (Buffer.isBuffer(audio)) return new Uint8Array(audio.buffer, audio.byteOffset, audio.byteLength);
+    throw new Error("Expected Buffer or Uint8Array for inputType 'buffer'");
   }
   if (inputType === "path") {
     const buf = await readFile(audio as string);
@@ -56,14 +57,14 @@ export async function transcribe(
   const result = await experimental_transcribe({
     model: options.model as any,
     audio: audioData,
-    ...(options.mediaType !== undefined && { mediaType: options.mediaType }),
+    // experimental_transcribe auto-detects media type from audio bytes
     providerOptions: providerOptions as any,
     abortSignal: options.abortSignal,
   });
 
   return {
     text: result.text,
-    segments: result.segments,
+    segments: result.segments ?? [],
     language: result.language,
     durationInSeconds: result.durationInSeconds,
   };
