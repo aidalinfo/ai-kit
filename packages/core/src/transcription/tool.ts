@@ -33,14 +33,15 @@ export function createTranscriptionTool(
       "Transcrit un fichier audio en texte. Accepte un chemin de fichier, une URL ou un contenu base64.",
     inputSchema: transcriptionSchema,
     async execute({ audio, inputType, mediaType, language }: z.infer<typeof transcriptionSchema>) {
-      let audioData: string | Uint8Array = audio;
-      let resolvedInputType: "buffer" | "path" | "url" = inputType as
-        | "path"
-        | "url";
+      let audioData: string | Uint8Array;
+      let resolvedInputType: "buffer" | "path" | "url";
 
       if (inputType === "base64") {
         audioData = Uint8Array.from(atob(audio), (c) => c.charCodeAt(0));
         resolvedInputType = "buffer";
+      } else {
+        audioData = audio;
+        resolvedInputType = inputType;
       }
 
       const result = await transcribe({
