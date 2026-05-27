@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 jobs:
   publish:
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && 'self-hosted' || 'ubuntu-latest' }}
     
     steps:
     - name: Checkout repository
