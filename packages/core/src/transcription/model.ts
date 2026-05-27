@@ -21,7 +21,7 @@ export function createTranscriptionModel(
           ? Uint8Array.from(atob(options.audio), (c) => c.charCodeAt(0))
           : options.audio;
 
-      const blob = new Blob([audioData], {
+      const blob = new Blob([audioData as BlobPart], {
         type: options.mediaType ?? "audio/wav",
       });
 
