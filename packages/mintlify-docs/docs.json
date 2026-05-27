@@ -70,7 +70,8 @@
                   "fr/agents/toon",
                   "fr/agents/streaming",
                   "fr/agents/runtime",
-                  "fr/agents/memory"
+                  "fr/agents/memory",
+                  "fr/agents/transcription"
                 ]
               },
               {
@@ -168,7 +169,8 @@
                   "en/agents/toon",
                   "en/agents/streaming",
                   "en/agents/runtime",
-                  "en/agents/memory"
+                  "en/agents/memory",
+                  "en/agents/transcription"
                 ]
               },
               {

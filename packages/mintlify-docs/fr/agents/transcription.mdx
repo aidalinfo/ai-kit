@@ -1,0 +1,94 @@
+---
+title: "Transcription audio"
+description: "Transcription audio agnostique du modèle avec createTranscriptionModel, transcribe et createTranscriptionTool."
+locale: fr
+---
+
+`@ai_kit/core` inclut un support de transcription audio agnostique du modèle, compatible avec n'importe quel endpoint OpenAI-compatible (Scaleway Whisper large v3, OpenAI whisper-1, etc.).
+
+## Trois primitives publiques
+
+| Export | Rôle |
+|---|---|
+| `createTranscriptionModel(config)` | Crée un provider `TranscriptionModelV3` |
+| `transcribe(options)` | Fonction standalone : charge l'audio (chemin / URL / buffer), appelle le modèle, retourne la transcription |
+| `createTranscriptionTool(model, options?)` | Retourne un `tool()` AI SDK à attacher directement à un `Agent` |
+
+## `createTranscriptionModel`
+
+```ts
+import { createTranscriptionModel } from "@ai_kit/core";
+
+const whisperModel = createTranscriptionModel({
+  modelId: "whisper-large-v3",
+  apiKey: process.env.SCALEWAY_API_KEY!,
+  baseURL: "https://api.scaleway.ai/v1",
+  providerName: "scaleway", // optionnel, utilisé dans les logs
+});
+```
+
+Compatible avec tout endpoint `/audio/transcriptions` OpenAI-compatible (`response_format=verbose_json`).
+
+## `transcribe`
+
+```ts
+import { transcribe } from "@ai_kit/core";
+
+// Depuis un chemin de fichier
+const result = await transcribe({
+  model: whisperModel,
+  audio: "/chemin/vers/audio.wav",
+  inputType: "path",         // "path" | "url" | "buffer" — auto-détecté si omis
+  language: "fr",            // code langue ISO-639-1, optionnel
+});
+
+console.log(result.text);
+// result.segments → [{ text, startSecond, endSecond }]
+// result.language, result.durationInSeconds
+```
+
+`audio` accepte un chemin de fichier, une URL `http(s)`, ou un `Buffer` / `Uint8Array`. L'`inputType` est auto-détecté si omis.
+
+### Valeur retournée
+
+```ts
+interface TranscribeResult {
+  text: string;
+  segments: Array<{ text: string; startSecond: number; endSecond: number }>;
+  language: string | undefined;
+  durationInSeconds: number | undefined;
+}
+```
+
+## `createTranscriptionTool` — attacher à un Agent
+
+```ts
+import { createTranscriptionModel, createTranscriptionTool, Agent } from "@ai_kit/core";
+import { scaleway } from "@ai_kit/core";
+
+const whisperModel = createTranscriptionModel({
+  modelId: "whisper-large-v3",
+  apiKey: process.env.SCALEWAY_API_KEY!,
+  baseURL: "https://api.scaleway.ai/v1",
+});
+
+const agent = new Agent({
+  name: "assistant-medical",
+  model: scaleway("gpt-oss-120b"),
+  tools: {
+    transcribeAudio: createTranscriptionTool(whisperModel, {
+      description: "Transcrit un enregistrement audio médical en texte",
+    }),
+  },
+});
+
+const result = await agent.generate({
+  prompt: "Transcris ce fichier : /enregistrements/consultation.mp3",
+});
+```
+
+Le schéma du tool exposé au LLM : `audio` (chemin / URL / base64), `inputType`, `language`.
+
+## Formats audio supportés
+
+`flac`, `mp3`, `mp4`, `mpeg`, `mpga`, `m4a`, `ogg`, `wav`, `webm` (identique à OpenAI Whisper).
