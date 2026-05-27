@@ -1,6 +1,6 @@
 // packages/core/src/transcription/transcribe.ts
 import { readFile } from "node:fs/promises";
-import type { JSONObject } from "@ai-sdk/provider";
+import { experimental_transcribe } from "ai";
 import type {
   AudioInput,
   AudioInputType,
@@ -53,17 +53,17 @@ export async function transcribe(
     };
   }
 
-  const result = await options.model.doGenerate({
+  const result = await experimental_transcribe({
+    model: options.model as any,
     audio: audioData,
-    mediaType: options.mediaType ?? "audio/wav",
-    providerOptions: providerOptions as Record<string, JSONObject>,
+    ...(options.mediaType !== undefined && { mediaType: options.mediaType }),
+    providerOptions: providerOptions as any,
     abortSignal: options.abortSignal,
-    headers: {},
   });
 
   return {
     text: result.text,
-    segments: result.segments ?? [],
+    segments: result.segments,
     language: result.language,
     durationInSeconds: result.durationInSeconds,
   };
