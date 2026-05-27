@@ -11,3 +11,4 @@ export {
     streamWithStructuredPipeline,
 } from "./agents/structurePipeline.js";
 export * from "./telemetry/langfuse.js";
+export * from "./transcription/index.js";
