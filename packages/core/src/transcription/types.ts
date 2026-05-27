@@ -17,7 +17,6 @@ export interface TranscribeOptions {
   model: TranscriptionModelV3;
   audio: AudioInput;
   inputType?: AudioInputType;
-  mediaType?: string;
   language?: string;
   providerOptions?: Record<string, Record<string, unknown>>;
   abortSignal?: AbortSignal;
@@ -32,5 +31,4 @@ export interface TranscribeResult {
 
 export interface TranscriptionToolOptions {
   description?: string;
-  toolName?: string;
 }

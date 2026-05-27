@@ -13,10 +13,6 @@ const transcriptionSchema = z.object({
   inputType: z
     .enum(["path", "url", "base64"])
     .describe("Type de l'input audio"),
-  mediaType: z
-    .string()
-    .optional()
-    .describe("Type MIME, ex: audio/wav, audio/mp3"),
   language: z
     .string()
     .optional()
@@ -32,7 +28,7 @@ export function createTranscriptionTool(
       options?.description ??
       "Transcrit un fichier audio en texte. Accepte un chemin de fichier, une URL ou un contenu base64.",
     inputSchema: transcriptionSchema,
-    async execute({ audio, inputType, mediaType, language }: z.infer<typeof transcriptionSchema>) {
+    async execute({ audio, inputType, language }: z.infer<typeof transcriptionSchema>) {
       let audioData: string | Uint8Array;
       let resolvedInputType: "buffer" | "path" | "url";
 
@@ -48,7 +44,6 @@ export function createTranscriptionTool(
         model,
         audio: audioData,
         inputType: resolvedInputType,
-        mediaType,
         language,
       });
 

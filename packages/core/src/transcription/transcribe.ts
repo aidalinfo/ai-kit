@@ -34,6 +34,9 @@ async function loadAudio(
   }
   // url
   const response = await fetch(audio as string);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch audio from URL: ${response.status} ${response.statusText}`);
+  }
   return new Uint8Array(await response.arrayBuffer());
 }
 
@@ -57,7 +60,6 @@ export async function transcribe(
   const result = await experimental_transcribe({
     model: options.model as any,
     audio: audioData,
-    // experimental_transcribe auto-detects media type from audio bytes
     providerOptions: providerOptions as any,
     abortSignal: options.abortSignal,
   });

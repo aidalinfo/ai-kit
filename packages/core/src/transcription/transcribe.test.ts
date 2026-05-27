@@ -25,7 +25,6 @@ describe("transcription", () => {
         model: whisperModel,
         audio: "/tmp/test-transcription.wav",
         inputType: "path",
-        mediaType: "audio/wav",
       });
       expect(typeof result.text).toBe("string");
       expect(Array.isArray(result.segments)).toBe(true);
@@ -41,7 +40,6 @@ describe("transcription", () => {
         model: whisperModel,
         audio: new Uint8Array(buf),
         inputType: "buffer",
-        mediaType: "audio/wav",
       });
       expect(typeof result.text).toBe("string");
     },
