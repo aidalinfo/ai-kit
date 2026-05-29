@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import { createTranscriptionModel } from "./model.js";
+import { createTranscriptionStreamingModel } from "./streaming-model.js";
 import { transcribe } from "./transcribe.js";
 import { createTranscriptionTool } from "./tool.js";
 import { Agent } from "../agents/index.js";
@@ -10,12 +11,15 @@ import { scaleway } from "../shared/utils/provider/scaleway.js";
 const apiKey = process.env.SCALEWAY_API_KEY;
 if (!apiKey) throw new Error("SCALEWAY_API_KEY is required for these tests");
 
-const whisperModel = createTranscriptionModel({
+const scalewayConfig = {
   modelId: "whisper-large-v3",
   apiKey,
   baseURL: "https://api.scaleway.ai/v1",
   providerName: "scaleway",
-});
+};
+
+const whisperModel = createTranscriptionModel(scalewayConfig);
+const whisperStreamingModel = createTranscriptionStreamingModel(scalewayConfig);
 
 describe("transcription", () => {
   it(
@@ -42,6 +46,37 @@ describe("transcription", () => {
         inputType: "buffer",
       });
       expect(typeof result.text).toBe("string");
+    },
+    30_000,
+  );
+
+  it(
+    "streams a transcription natively from a buffer",
+    async () => {
+      const buf = await readFile("/tmp/test-transcription.wav");
+
+      const deltas: string[] = [];
+      let finalText: string | undefined;
+      let doneCount = 0;
+
+      for await (const chunk of whisperStreamingModel.stream({
+        audio: new Uint8Array(buf),
+        inputType: "buffer",
+      })) {
+        if (chunk.type === "delta") {
+          expect(typeof chunk.textDelta).toBe("string");
+          deltas.push(chunk.textDelta);
+        } else {
+          doneCount += 1;
+          finalText = chunk.text;
+        }
+      }
+
+      // Exactly one done event closing the stream.
+      expect(doneCount).toBe(1);
+      expect(typeof finalText).toBe("string");
+      // The final text matches the concatenation of the streamed deltas.
+      expect(finalText).toBe(deltas.join(""));
     },
     30_000,
   );

@@ -6,11 +6,12 @@ locale: en
 
 `@ai_kit/core` includes model-agnostic audio transcription support, compatible with any OpenAI-compatible endpoint (Scaleway Whisper large v3, OpenAI whisper-1, etc.).
 
-## Three public primitives
+## Four public primitives
 
 | Export | Role |
 |---|---|
 | `createTranscriptionModel(config)` | Creates a `TranscriptionModelV3` provider |
+| `createTranscriptionStreamingModel(config)` | Creates a **native** streaming model (no AI SDK) that emits partial text over SSE |
 | `transcribe(options)` | Standalone function: loads audio (path / URL / buffer), calls the model, returns the transcript |
 | `createTranscriptionTool(model, options?)` | Returns an AI SDK `tool()` to attach directly to an `Agent` |
 
@@ -59,6 +60,51 @@ interface TranscribeResult {
   durationInSeconds: number | undefined;
 }
 ```
+
+## `createTranscriptionStreamingModel` — streaming (native)
+
+For long recordings you can stream the transcript as it is produced instead of waiting for the whole file. This primitive talks **directly** to the OpenAI-compatible `/audio/transcriptions` endpoint with `stream=true` and parses the server-sent events natively — it does **not** use the AI SDK's `experimental_transcribe`.
+
+```ts
+import { createTranscriptionStreamingModel } from "@ai_kit/core";
+
+const streamingModel = createTranscriptionStreamingModel({
+  modelId: "whisper-large-v3",
+  apiKey: process.env.SCALEWAY_API_KEY!,
+  baseURL: "https://api.scaleway.ai/v1",
+  providerName: "scaleway",
+});
+
+let full = "";
+for await (const chunk of streamingModel.stream({
+  audio: "/path/to/audio.wav", // path / URL / Buffer / Uint8Array (auto-detected)
+  language: "fr",              // optional ISO-639-1 code
+})) {
+  if (chunk.type === "delta") {
+    full += chunk.textDelta;
+    process.stdout.write(chunk.textDelta); // print as it arrives
+  } else {
+    // final event
+    console.log("\nDone:", chunk.text, chunk.durationInSeconds);
+  }
+}
+```
+
+Output starts streaming as soon as the provider has processed the first 30-second chunk — a few seconds in, rather than after the whole file.
+
+### Chunk shape
+
+```ts
+type TranscriptionStreamChunk =
+  | { type: "delta"; textDelta: string }
+  | { type: "done"; text: string; durationInSeconds?: number };
+```
+
+`delta` events carry incremental text; the single closing `done` event carries the full accumulated text (equal to the concatenation of all deltas). Pass an `AbortSignal` via `abortSignal` to cancel mid-stream.
+
+<Note>
+Streaming uses the default JSON stream format — `verbose_json` (and therefore per-segment timestamps) is not available while streaming. Use `transcribe` / `createTranscriptionModel` when you need `segments`.
+</Note>
 
 ## `createTranscriptionTool` — attach to an Agent
 
