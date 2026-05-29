@@ -32,3 +32,33 @@ export interface TranscribeResult {
 export interface TranscriptionToolOptions {
   description?: string;
 }
+
+export interface TranscribeStreamOptions {
+  audio: AudioInput;
+  inputType?: AudioInputType;
+  language?: string;
+  /** MIME type of the audio payload (defaults to "audio/wav"). */
+  mediaType?: string;
+  abortSignal?: AbortSignal;
+}
+
+/**
+ * A chunk emitted while streaming a transcription.
+ * - `delta`: an incremental piece of transcribed text.
+ * - `done`: the final event, carrying the full accumulated text.
+ */
+export type TranscriptionStreamChunk =
+  | { type: "delta"; textDelta: string }
+  | { type: "done"; text: string; durationInSeconds?: number };
+
+/**
+ * A native (non AI SDK) streaming transcription model. Streams partial text
+ * over server-sent events as the provider processes the audio.
+ */
+export interface TranscriptionStreamingModel {
+  modelId: string;
+  provider: string;
+  stream(
+    options: TranscribeStreamOptions,
+  ): AsyncGenerator<TranscriptionStreamChunk, void, unknown>;
+}
