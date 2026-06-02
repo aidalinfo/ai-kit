@@ -76,6 +76,28 @@ Le constructeur valide la configuration : `engine: "world"` sans `world` lève u
 
 Consultez la [référence API `WorkflowKit`](/fr/api-reference/workflow-kit) pour la surface complète.
 
+## Récupérer le résultat d'un run
+
+Un run world est **durable et découplé** : `kit.run(fn, args)` retourne un `WorldRunHandle` (pass-through du `Run` SDK), **pas la sortie directement**. Pour le consommer de manière synchrone — comme le legacy `await workflow.run()` puis `.result` — utilisez `kit.runAndWait` :
+
+```ts
+const report = await kit.runAndWait(reportWorkflow, [input]); // se résout avec la sortie
+```
+
+Ou conservez le handle et attendez son `returnValue` (interroge jusqu'à la fin du run) :
+
+```ts
+const run = await kit.run(reportWorkflow, [input]);
+const report = await run.returnValue;     // lève une erreur si le run a échoué / été annulé
+console.log(run.runId, await run.status); // aussi : run.exists, run.cancel()
+```
+
+`returnValue` **rejette en cas d'échec** (`WorkflowRunFailedError`) ou d'annulation (`WorkflowRunCancelledError`), en transportant l'erreur d'origine — encapsulez-le dans un `try/catch` là où le code legacy inspectait `result.status`. Pour une consommation différée, stockez `runId` et reconstituez le handle plus tard avec `getRun(runId)` depuis `workflow/api`.
+
+<Note>
+`runAndWait` fonctionne pour **les deux** moteurs (legacy retourne la sortie du workflow ; world attend `returnValue`) et lève une erreur pour tout résultat non réussi — un remplacement drop-in propre pour les workflows consommés de manière synchrone en cours de migration.
+</Note>
+
 ## Installer le moteur world
 
 Le moteur world vit dans un package optionnel afin que le core reste léger :
