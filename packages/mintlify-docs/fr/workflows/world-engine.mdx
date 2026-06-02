@@ -1,0 +1,242 @@
+---
+title: "World engine (workflows durables)"
+description: "Exécutez des workflows sur un backend Vercel Workflow SDK durable (Postgres/MongoDB auto-hébergé) via la facade WorkflowKit, en parallèle du moteur en mémoire historique."
+locale: fr
+---
+
+AI Kit embarque **deux moteurs de workflow** derrière une façade unique, `WorkflowKit` :
+
+- **`legacy`** (défaut) — le moteur en mémoire que vous construisez avec [`createWorkflow`](/fr/workflows/introduction) / `WorkflowBuilder`. Zéro dépendance supplémentaire, s'exécute en mémoire, l'état vit en mémoire.
+- **`world`** — le [Vercel Workflow SDK](https://workflow-sdk.dev) adossé à un **world** durable : **Postgres** auto-hébergé (`@workflow/world-postgres`) ou **MongoDB** (`@workflow-worlds/mongodb`). Les runs survivent aux redémarrages (replay durable, file de jobs, journal d'événements).
+
+`WorkflowKit` vous permet de choisir le moteur via la configuration ; le défaut est toujours `legacy`, donc le code existant continue de fonctionner et les utilisateurs du mode legacy n'importent jamais une dépendance Vercel.
+
+## Quand utiliser lequel
+
+| | `legacy` (défaut) | `world` |
+|---|---|---|
+| Persistance | En mémoire uniquement | Durable (Postgres / MongoDB) |
+| Survit aux redémarrages / crashs | Non | Oui (replay) |
+| Dépendances supplémentaires | Aucune | `@ai_kit/workflow-world` + `workflow` + un backend world |
+| Étape de build | Aucune | **Build Nitro requis** (compile `"use workflow"`) |
+| Runtime | Quelconque (en process) | Worker long-lived (pas serverless) |
+| Écriture | Builder `createWorkflow().then(...)` | Fonctions `"use workflow"` / `"use step"` |
+
+Utilisez `legacy` pour l'orchestration rapide en process et le développement local ; utilisez `world` quand vous avez besoin de durabilité, de suspension (`sleep`) et de processus longs reprennables.
+
+## La façade `WorkflowKit`
+
+```ts
+import { WorkflowKit } from "@ai_kit/core";
+
+const kit = new WorkflowKit({
+  engine: "legacy", // défaut — peut être omis
+});
+
+// Legacy: workflow = un Workflow AI Kit, input = WorkflowRunOptions
+const result = await kit.run(myLegacyWorkflow, { inputData: { id: 42 } });
+console.log(result.status); // "success" | "failed" | ...
+```
+
+Passez au moteur durable en définissant `engine: "world"` et en fournissant une config `world` :
+
+```ts
+const kit = new WorkflowKit({
+  engine: "world",
+  world: { type: "postgres", url: process.env.WORKFLOW_POSTGRES_URL! },
+});
+
+await kit.start();                                  // démarre le worker durable
+const handle = await kit.run(handleUserSignup, ["hello@example.com"]);
+console.log(handle.runId);
+await kit.stop();                                   // arrêt propre
+```
+
+- `kit.start()` / `kit.stop()` gèrent le worker world long-lived. **Ce sont des no-ops sur `legacy`**, donc le même code de cycle de vie fonctionne pour les deux moteurs.
+- `kit.run(...)` dispatche vers le moteur configuré. Vous pouvez surcharger par appel : `kit.run(wf, input, { engine: "world" })`.
+
+### Configuration
+
+```ts
+interface WorkflowKitOptions {
+  engine?: "legacy" | "world"; // défaut "legacy"
+  world?: WorldConfig;         // requis quand engine === "world"
+}
+
+interface WorldConfig {
+  type: "postgres" | "mongodb";
+  url: string;                 // chaîne de connexion
+  jobPrefix?: string;          // postgres: espace de noms des jobs sur une DB partagée
+  workerConcurrency?: number;  // postgres: workers concurrents
+  maxPoolSize?: number;        // postgres: taille du pool de connexions
+}
+```
+
+Le constructeur valide la configuration : `engine: "world"` sans `world` lève une erreur, et un `world.type` inconnu lève également une erreur.
+
+Consultez la [référence API `WorkflowKit`](/fr/api-reference/workflow-kit) pour la surface complète.
+
+## Installer le moteur world
+
+Le moteur world vit dans un package optionnel afin que le core reste léger :
+
+```bash
+pnpm add @ai_kit/core @ai_kit/workflow-world workflow
+# choisissez le backend world dont vous avez besoin (peer dependency optionnelle) :
+pnpm add @workflow/world-postgres            # Postgres (officiel)
+# ou
+pnpm add @workflow-worlds/mongodb            # MongoDB (communauté, expérimental)
+# build de l'application hôte :
+pnpm add -D nitro rollup
+```
+
+Si vous sélectionnez `engine: "world"` sans `@ai_kit/workflow-world` installé, `WorkflowKit` lève une erreur claire vous demandant de l'installer.
+
+## Écrire des workflows world
+
+Un workflow world est une simple fonction async marquée avec la directive `"use workflow"` ; le vrai travail se passe dans des fonctions `"use step"`. Ces directives sont détectées **à la compilation** par le compilateur `workflow/nitro`.
+
+```ts
+import { sleep, FatalError } from "workflow";
+
+export async function handleUserSignup(email: string) {
+  "use workflow";                       // le corps doit être déterministe
+  const user = await createUser(email); // chaque await est un checkpoint durable
+  await sendWelcomeEmail(user);
+  await sleep("5s");
+  return { userId: user.id };
+}
+
+async function createUser(email: string) {
+  "use step";                           // runtime Node complet, ré-essayé automatiquement
+  if (!email.includes("@")) throw new FatalError("invalid email");
+  return { id: crypto.randomUUID(), email };
+}
+
+async function sendWelcomeEmail(user: { id: string; email: string }) {
+  "use step";
+  return { sent: true };
+}
+```
+
+<Note>
+Il n'existe **pas de helper runtime `defineWorldStep`**. Le compilateur Vercel n'instrumente les directives que sur des **liaisons de niveau supérieur** (une fonction nommée, ou une flèche/fonction liée directement à un `const`). Passer la fonction à un appel wrapper casserait silencieusement la détection — l'étape s'exécuterait comme du code ordinaire non durable. Écrivez donc la directive vous-même et annotez (optionnellement) avec les types exportés.
+</Note>
+
+`@ai_kit/workflow-world` exporte les **types** `WorldStep` / `WorldWorkflow` pour l'ergonomie :
+
+```ts
+import type { WorldStep } from "@ai_kit/workflow-world";
+
+// une flèche liée directement à un const est également détectée par le compilateur
+export const charge: WorldStep<[Order], Receipt> = async (order) => {
+  "use step";
+  return chargePayment(order);
+};
+```
+
+### Le flux de contrôle est du JavaScript natif
+
+Parce qu'un workflow world est simplement une fonction async, vous n'avez pas besoin de primitives spéciales — utilisez le langage :
+
+| Besoin | Moteur world |
+|---|---|
+| Séquentiel | `await` successifs |
+| Boucle / itération | `for` / `while`, `for (const x of items)` |
+| Parallèle / fan-out | `await Promise.all(items.map(step))` |
+| Race / timeout | `await Promise.race([hook, sleep("24h")])` |
+| Condition | `if` / `switch` |
+| Human-in-the-loop | `createWebhook()` ou `defineHook()` + `hook.resume(...)` |
+| Délai durable | `await sleep("30d")` |
+| Nouvelles tentatives | automatiques (max 3) + `FatalError` / `RetryableError` |
+
+Le corps `"use workflow"` doit rester **déterministe** (pas de `Date.now()`, `Math.random()`, `fetch`, I/O directe) — mettez ces effets dans des fonctions `"use step"`.
+
+## Postgres : provisionner le schéma une fois
+
+Avant le premier run, le world Postgres a besoin que son schéma soit créé (sinon vous obtenez une erreur `undefined_table` / `42P01`). C'est une opération unique au déploiement :
+
+```bash
+WORKFLOW_POSTGRES_URL=postgres://world:world@localhost:5432/world npx workflow-postgres-setup
+```
+
+MongoDB n'a pas besoin de cette étape — il se provisionne à la connexion.
+
+## MongoDB (expérimental)
+
+Le world MongoDB est maintenu par la communauté. Seule la configuration change ; le code applicatif est identique à Postgres :
+
+```ts
+const kit = new WorkflowKit({
+  engine: "world",
+  world: { type: "mongodb", url: process.env.WORKFLOW_MONGODB_URI! },
+});
+await kit.start();
+```
+
+## Contraintes de build & de runtime
+
+Le Vercel Workflow SDK impose :
+
+1. **Une étape de build** — Nitro compile les fonctions `"use workflow"` / `"use step"`. Ajoutez le module `workflow/nitro` au `nitro.config.ts` de votre application hôte. AI Kit simplifie la configuration runtime mais ne peut pas supprimer cette étape de build.
+2. **Un worker long-lived** — le world interroge la base de données pour les jobs, donc le moteur world n'est **pas** compatible avec les déploiements purement serverless.
+
+```ts
+// nitro.config.ts (application hôte)
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  modules: ["workflow/nitro"],
+  routes: { "/**": { handler: "./src/index.ts", format: "node" } },
+});
+```
+
+## Migrer un workflow legacy vers le moteur world
+
+La migration est une réécriture du builder déclaratif vers une fonction impérative — il n'existe pas de traducteur automatique.
+
+**Avant (legacy) :**
+
+```ts
+import { createWorkflow, createStep } from "@ai_kit/core";
+
+const fetchOrder = createStep({ id: "fetchOrder", handler: async ({ inputData }) => getOrder(inputData.id) });
+const charge = createStep({ id: "charge", handler: async ({ inputData }) => chargePayment(inputData) });
+
+export const orderWorkflow = createWorkflow({ id: "order" })
+  .then(fetchOrder)
+  .then(charge)
+  .commit();
+
+await orderWorkflow.run({ inputData: { id: "o_123" } });
+```
+
+**Après (world) :**
+
+```ts
+export async function orderWorkflow(orderId: string) {
+  "use workflow";
+  const order = await fetchOrder(orderId);
+  const charged = await charge(order);
+  return { orderId, status: "completed" };
+}
+
+async function fetchOrder(id: string) { "use step"; return getOrder(id); }
+async function charge(order: Order)   { "use step"; return chargePayment(order); }
+
+// lancé via la façade
+await kit.run(orderWorkflow, ["o_123"]);
+```
+
+| Builder legacy | Réécriture world |
+|---|---|
+| `.then(step)` | `await step()` successifs |
+| `.while({ condition })` | `while (await condition()) { ... }` |
+| `forEach` (parallèle) | `await Promise.all(items.map(step))` |
+| `.branchParallel(...)` | `await Promise.all([stepA(), stepB()])` |
+| `.conditions(...).then(...)` | `if (...) {} else {}` |
+| `.human(...)` + `resumeWithHumanInput` | `defineHook()` + `hook.resume(...)` |
+
+## Couverture fonctionnelle
+
+Parce que le moteur `world` embarque le vrai SDK Vercel, il hérite de **toutes** ses capacités : exécution durable, `sleep`, webhooks/hooks (human-in-the-loop), streaming, agents durables, nouvelles tentatives automatiques, et le tableau de bord d'observabilité `npx workflow web`. Les API runtime avancées s'utilisent directement depuis le package `workflow` — la fine façade `WorkflowKit` gère uniquement la sélection du moteur, le cycle de vie et le dispatch des runs.

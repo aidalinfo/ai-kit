@@ -1,0 +1,46 @@
+{
+  "name": "@ai_kit/workflow-world",
+  "version": "0.1.0",
+  "description": "Vercel Workflow SDK world engine adapter for AI Kit (self-hosted Postgres/MongoDB).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "prepare": "pnpm run build",
+    "test": "vitest run",
+    "db:up": "docker compose -f docker-compose.test.yml up -d --wait",
+    "db:down": "docker compose -f docker-compose.test.yml down -v",
+    "test:integration": "WORKFLOW_WORLD_PG_URL=postgres://world:world@localhost:5432/world WORKFLOW_WORLD_MONGO_URL=mongodb://localhost:27017/world vitest run integration"
+  },
+  "keywords": ["ai", "workflow", "vercel", "world", "postgres", "mongodb"],
+  "license": "MIT",
+  "packageManager": "pnpm@10.15.0",
+  "publishConfig": { "access": "public" },
+  "dependencies": {
+    "workflow": "^4.3.1"
+  },
+  "peerDependencies": {
+    "@workflow/world-postgres": ">=4.1.4 <5",
+    "@workflow-worlds/mongodb": ">=0.2.1 <1"
+  },
+  "peerDependenciesMeta": {
+    "@workflow/world-postgres": { "optional": true },
+    "@workflow-worlds/mongodb": { "optional": true }
+  },
+  "devDependencies": {
+    "@workflow/world-postgres": "^4.1.4",
+    "@workflow-worlds/mongodb": "^0.2.1",
+    "@types/node": "^24.7.0",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.8"
+  }
+}

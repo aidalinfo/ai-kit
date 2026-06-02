@@ -1,0 +1,123 @@
+---
+title: "WorkflowKit class"
+description: "Unified facade to run AI Kit workflows on the legacy in-memory engine or the durable world engine."
+locale: en
+---
+
+```ts
+import {
+  WorkflowKit,
+  type WorkflowEngine,
+  type WorkflowKitOptions,
+  type WorldConfig,
+  type WorldRunHandle,
+} from "@ai_kit/core";
+```
+
+`WorkflowKit` selects the workflow engine and exposes a unified lifecycle. The default engine is `legacy` (the in-memory engine); `world` runs on the Vercel Workflow SDK with a durable Postgres/MongoDB backend (requires the optional [`@ai_kit/workflow-world`](/en/workflows/world-engine) package).
+
+## `WorkflowKitOptions`
+
+| Property | Type | Default | Description |
+| --- | --- | --- | --- |
+| `engine` | `"legacy" \| "world"` | `"legacy"` | Engine used by default for `run`. |
+| `world` | `WorldConfig` | `undefined` | World backend config. **Required** when `engine === "world"`. |
+
+## `WorldConfig`
+
+| Property | Type | Default | Description |
+| --- | --- | --- | --- |
+| `type` | `"postgres" \| "mongodb"` | required | World backend. `mongodb` is experimental. |
+| `url` | `string` | required | Connection string (`postgres://` / `mongodb://`). |
+| `jobPrefix` | `string` | `undefined` | Postgres: namespace jobs on a shared database. |
+| `workerConcurrency` | `number` | SDK default | Postgres: concurrent workers (maps to `queueConcurrency`). |
+| `maxPoolSize` | `number` | SDK default | Postgres: connection pool size. |
+
+## Construction
+
+```ts
+const kit = new WorkflowKit({
+  engine: "world",
+  world: { type: "postgres", url: process.env.WORKFLOW_POSTGRES_URL! },
+});
+```
+
+The constructor validates the config:
+
+- `engine: "world"` without a `world` config throws.
+- An unknown `world.type` throws.
+- `engine: "legacy"` with a `world` config is allowed (lets you toggle engines via an env var without rewriting config).
+
+## Properties
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `engine` | `WorkflowEngine` | The configured default engine (read-only). |
+| `world` | `WorldConfig \| undefined` | The world config, if any (read-only). |
+
+## Methods
+
+### `start()`
+
+```ts
+start(): Promise<void>;
+```
+
+Starts the durable world worker (lazily loading `@ai_kit/workflow-world` and creating the adapter). **No-op when `engine === "legacy"`**, so the same lifecycle code works for both engines. Throws a clear error if `@ai_kit/workflow-world` is not installed.
+
+### `stop()`
+
+```ts
+stop(): Promise<void>;
+```
+
+Gracefully stops the world worker. **No-op when `engine === "legacy"`** or when the world was never started.
+
+### `run(workflow, input, dispatch?)`
+
+Dispatches to the configured engine (overridable per call via `dispatch.engine`).
+
+```ts
+// Legacy overload — workflow is an AI Kit Workflow
+run<Output>(
+  workflow: Workflow<any, Output>,
+  options: WorkflowRunOptions,
+  dispatch?: { engine?: WorkflowEngine },
+): Promise<WorkflowRunResult<Output>>;
+
+// World overload — workflow is a "use workflow" function, input is the args array
+run(
+  workflow: (...args: any[]) => unknown,
+  args: unknown[],
+  dispatch?: { engine?: WorkflowEngine },
+): Promise<WorldRunHandle>;
+```
+
+- **`legacy`** → delegates to `Workflow.run(options)` and returns a [`WorkflowRunResult`](/en/api-reference/workflow).
+- **`world`** → delegates to the SDK's `start(fn, args)` and returns a `WorldRunHandle`.
+
+### `WorldRunHandle`
+
+The opaque handle returned by a world run (pass-through of the SDK `Run`):
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `runId` | `string` | Identifier of the durable run. |
+
+## Example
+
+```ts
+import { WorkflowKit } from "@ai_kit/core";
+
+// One config, switchable via env — legacy locally, world in production
+export const kit = new WorkflowKit({
+  engine: (process.env.WORKFLOW_ENGINE as "legacy" | "world") ?? "legacy",
+  world: { type: "postgres", url: process.env.WORKFLOW_POSTGRES_URL ?? "" },
+});
+
+await kit.start();                 // no-op on legacy
+const handle = await kit.run(myWorkflow, ["arg"]);
+await kit.stop();
+```
+
+See the [World engine guide](/en/workflows/world-engine) for installation, authoring rules, and migration.

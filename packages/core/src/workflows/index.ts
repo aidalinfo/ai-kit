@@ -48,3 +48,4 @@ export { WorkflowBuilder, createWorkflow } from "./workflowBuilder.js";
 export { Workflow, withTelemetry } from "./workflow.js";
 export { WorkflowRun } from "./workflowRun.js";
 export { renderWorkflowGraphJSON } from "./inspector.js";
+export * from "./kit/index.js";
