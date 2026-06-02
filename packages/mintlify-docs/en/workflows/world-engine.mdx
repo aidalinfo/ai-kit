@@ -1,0 +1,242 @@
+---
+title: "World engine (durable workflows)"
+description: "Run workflows on a durable Vercel Workflow SDK backend (self-hosted Postgres/MongoDB) via the WorkflowKit facade, alongside the legacy in-memory engine."
+locale: en
+---
+
+AI Kit ships **two workflow engines** behind a single facade, `WorkflowKit`:
+
+- **`legacy`** (default) — the in-memory engine you build with [`createWorkflow`](/en/workflows/introduction) / `WorkflowBuilder`. Zero extra dependencies, runs in-process, state lives in memory.
+- **`world`** — the [Vercel Workflow SDK](https://workflow-sdk.dev) backed by a durable **world**: self-hosted **Postgres** (`@workflow/world-postgres`) or **MongoDB** (`@workflow-worlds/mongodb`). Runs survive restarts (durable replay, job queue, event log).
+
+`WorkflowKit` lets you pick the engine through configuration; the default is always `legacy`, so existing code keeps working and legacy users never pull a single Vercel dependency.
+
+## When to use which
+
+| | `legacy` (default) | `world` |
+|---|---|---|
+| Persistence | In memory only | Durable (Postgres / MongoDB) |
+| Survives restarts / crashes | No | Yes (replay) |
+| Extra dependencies | None | `@ai_kit/workflow-world` + `workflow` + a world backend |
+| Build step | None | **Nitro build required** (compiles `"use workflow"`) |
+| Runtime | Any (in-process) | Long-lived worker (not serverless) |
+| Authoring | `createWorkflow().then(...)` builder | `"use workflow"` / `"use step"` functions |
+
+Use `legacy` for fast in-process orchestration and local development; use `world` when you need durability, suspension (`sleep`), and resumable long-running processes.
+
+## The `WorkflowKit` facade
+
+```ts
+import { WorkflowKit } from "@ai_kit/core";
+
+const kit = new WorkflowKit({
+  engine: "legacy", // default — can be omitted
+});
+
+// Legacy: workflow = an AI Kit Workflow, input = WorkflowRunOptions
+const result = await kit.run(myLegacyWorkflow, { inputData: { id: 42 } });
+console.log(result.status); // "success" | "failed" | ...
+```
+
+Switch to the durable engine by setting `engine: "world"` and providing a `world` config:
+
+```ts
+const kit = new WorkflowKit({
+  engine: "world",
+  world: { type: "postgres", url: process.env.WORKFLOW_POSTGRES_URL! },
+});
+
+await kit.start();                                  // starts the durable worker
+const handle = await kit.run(handleUserSignup, ["hello@example.com"]);
+console.log(handle.runId);
+await kit.stop();                                   // graceful shutdown
+```
+
+- `kit.start()` / `kit.stop()` manage the long-lived world worker. **They are no-ops on `legacy`**, so the same lifecycle code works for both engines.
+- `kit.run(...)` dispatches to the configured engine. You can override per call: `kit.run(wf, input, { engine: "world" })`.
+
+### Configuration
+
+```ts
+interface WorkflowKitOptions {
+  engine?: "legacy" | "world"; // default "legacy"
+  world?: WorldConfig;         // required when engine === "world"
+}
+
+interface WorldConfig {
+  type: "postgres" | "mongodb";
+  url: string;                 // connection string
+  jobPrefix?: string;          // postgres: namespace jobs on a shared DB
+  workerConcurrency?: number;  // postgres: concurrent workers
+  maxPoolSize?: number;        // postgres: connection pool size
+}
+```
+
+The constructor validates the config: `engine: "world"` without a `world` throws, and an unknown `world.type` throws.
+
+See the [`WorkflowKit` API reference](/en/api-reference/workflow-kit) for the full surface.
+
+## Installing the world engine
+
+The world engine lives in an optional package so the core stays lightweight:
+
+```bash
+pnpm add @ai_kit/core @ai_kit/workflow-world workflow
+# choose the world backend you need (optional peer dependency):
+pnpm add @workflow/world-postgres            # Postgres (official)
+# or
+pnpm add @workflow-worlds/mongodb            # MongoDB (community, experimental)
+# host-app build:
+pnpm add -D nitro rollup
+```
+
+If you select `engine: "world"` without `@ai_kit/workflow-world` installed, `WorkflowKit` throws a clear error telling you to install it.
+
+## Authoring world workflows
+
+A world workflow is a plain async function marked with the `"use workflow"` directive; the real work goes in `"use step"` functions. These directives are detected **at build time** by the `workflow/nitro` compiler.
+
+```ts
+import { sleep, FatalError } from "workflow";
+
+export async function handleUserSignup(email: string) {
+  "use workflow";                       // body must be deterministic
+  const user = await createUser(email); // each await is a durable checkpoint
+  await sendWelcomeEmail(user);
+  await sleep("5s");
+  return { userId: user.id };
+}
+
+async function createUser(email: string) {
+  "use step";                           // full Node runtime, auto-retried
+  if (!email.includes("@")) throw new FatalError("invalid email");
+  return { id: crypto.randomUUID(), email };
+}
+
+async function sendWelcomeEmail(user: { id: string; email: string }) {
+  "use step";
+  return { sent: true };
+}
+```
+
+<Note>
+There is **no `defineWorldStep` runtime helper**. The Vercel compiler only instruments directives on **top-level bindings** (a named function, or an arrow/function bound directly to a `const`). Passing the function to a wrapper call would silently break detection — the step would run as plain, non-durable code. So you write the directive yourself and (optionally) annotate with the exported types.
+</Note>
+
+`@ai_kit/workflow-world` exports `WorldStep` / `WorldWorkflow` **types** for ergonomics:
+
+```ts
+import type { WorldStep } from "@ai_kit/workflow-world";
+
+// arrow bound directly to a const is also detected by the compiler
+export const charge: WorldStep<[Order], Receipt> = async (order) => {
+  "use step";
+  return chargePayment(order);
+};
+```
+
+### Control flow is native JavaScript
+
+Because a world workflow is just an async function, you don't need special primitives — use the language:
+
+| Need | World engine |
+|---|---|
+| Sequential | successive `await` |
+| Loop / iterate | `for` / `while`, `for (const x of items)` |
+| Parallel / fan-out | `await Promise.all(items.map(step))` |
+| Race / timeout | `await Promise.race([hook, sleep("24h")])` |
+| Condition | `if` / `switch` |
+| Human-in-the-loop | `createWebhook()` or `defineHook()` + `hook.resume(...)` |
+| Durable delay | `await sleep("30d")` |
+| Retries | automatic (max 3) + `FatalError` / `RetryableError` |
+
+The `"use workflow"` body must stay **deterministic** (no `Date.now()`, `Math.random()`, `fetch`, direct I/O) — put those effects inside `"use step"` functions.
+
+## Postgres: provision the schema once
+
+Before the first run, the Postgres world needs its schema created (otherwise you get an `undefined_table` / `42P01` error). This is a one-time deployment step:
+
+```bash
+WORKFLOW_POSTGRES_URL=postgres://world:world@localhost:5432/world npx workflow-postgres-setup
+```
+
+MongoDB does not need this step — it provisions on connection.
+
+## MongoDB (experimental)
+
+The MongoDB world is community-maintained. Only the configuration changes; no application code differs from Postgres:
+
+```ts
+const kit = new WorkflowKit({
+  engine: "world",
+  world: { type: "mongodb", url: process.env.WORKFLOW_MONGODB_URI! },
+});
+await kit.start();
+```
+
+## Build & runtime constraints
+
+The Vercel Workflow SDK requires:
+
+1. **A build step** — Nitro compiles the `"use workflow"` / `"use step"` functions. Add the `workflow/nitro` module to your host app's `nitro.config.ts`. AI Kit smooths runtime configuration but cannot remove this build step.
+2. **A long-lived worker** — the world polls the database for jobs, so the world engine is **not** compatible with pure serverless deployments.
+
+```ts
+// nitro.config.ts (host app)
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  modules: ["workflow/nitro"],
+  routes: { "/**": { handler: "./src/index.ts", format: "node" } },
+});
+```
+
+## Migrating a legacy workflow to the world engine
+
+Migration is a rewrite from the declarative builder to an imperative function — there is no automatic translator.
+
+**Before (legacy):**
+
+```ts
+import { createWorkflow, createStep } from "@ai_kit/core";
+
+const fetchOrder = createStep({ id: "fetchOrder", handler: async ({ inputData }) => getOrder(inputData.id) });
+const charge = createStep({ id: "charge", handler: async ({ inputData }) => chargePayment(inputData) });
+
+export const orderWorkflow = createWorkflow({ id: "order" })
+  .then(fetchOrder)
+  .then(charge)
+  .commit();
+
+await orderWorkflow.run({ inputData: { id: "o_123" } });
+```
+
+**After (world):**
+
+```ts
+export async function orderWorkflow(orderId: string) {
+  "use workflow";
+  const order = await fetchOrder(orderId);
+  const charged = await charge(order);
+  return { orderId, status: "completed" };
+}
+
+async function fetchOrder(id: string) { "use step"; return getOrder(id); }
+async function charge(order: Order)   { "use step"; return chargePayment(order); }
+
+// launched through the facade
+await kit.run(orderWorkflow, ["o_123"]);
+```
+
+| Legacy builder | World rewrite |
+|---|---|
+| `.then(step)` | successive `await step()` |
+| `.while({ condition })` | `while (await condition()) { ... }` |
+| `forEach` (parallel) | `await Promise.all(items.map(step))` |
+| `.branchParallel(...)` | `await Promise.all([stepA(), stepB()])` |
+| `.conditions(...).then(...)` | `if (...) {} else {}` |
+| `.human(...)` + `resumeWithHumanInput` | `defineHook()` + `hook.resume(...)` |
+
+## Feature coverage
+
+Because the `world` engine embeds the real Vercel SDK, it inherits **all** of its capabilities: durable execution, `sleep`, webhooks/hooks (human-in-the-loop), streaming, durable agents, automatic retries, and the `npx workflow web` observability dashboard. Advanced runtime APIs are used directly from the `workflow` package — the thin `WorkflowKit` facade only handles engine selection, lifecycle, and run dispatch.

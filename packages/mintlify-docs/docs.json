@@ -84,7 +84,8 @@
                   "fr/workflows/branch-parallel",
                   "fr/workflows/human-steps",
                   "fr/workflows/while",
-                  "fr/workflows/telemetry"
+                  "fr/workflows/telemetry",
+                  "fr/workflows/world-engine"
                 ]
               },
               {
@@ -130,6 +131,7 @@
                   "fr/api-reference/agent",
                   "fr/api-reference/workflow",
                   "fr/api-reference/workflow-run",
+                  "fr/api-reference/workflow-kit",
                   "fr/api-reference/runtime-store"
                 ]
               }
@@ -183,7 +185,8 @@
                   "en/workflows/branch-parallel",
                   "en/workflows/human-steps",
                   "en/workflows/while",
-                  "en/workflows/telemetry"
+                  "en/workflows/telemetry",
+                  "en/workflows/world-engine"
                 ]
               },
               {
@@ -229,6 +232,7 @@
                   "en/api-reference/agent",
                   "en/api-reference/workflow",
                   "en/api-reference/workflow-run",
+                  "en/api-reference/workflow-kit",
                   "en/api-reference/runtime-store"
                 ]
               }

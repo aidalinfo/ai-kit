@@ -1,0 +1,123 @@
+---
+title: "Classe WorkflowKit"
+description: "Façade unifiée pour exécuter des workflows AI Kit sur le moteur en mémoire legacy ou le moteur world durable."
+locale: fr
+---
+
+```ts
+import {
+  WorkflowKit,
+  type WorkflowEngine,
+  type WorkflowKitOptions,
+  type WorldConfig,
+  type WorldRunHandle,
+} from "@ai_kit/core";
+```
+
+`WorkflowKit` sélectionne le moteur de workflow et expose un cycle de vie unifié. Le moteur par défaut est `legacy` (le moteur en mémoire) ; `world` s'exécute sur le Vercel Workflow SDK avec un backend Postgres/MongoDB durable (nécessite le package optionnel [`@ai_kit/workflow-world`](/fr/workflows/world-engine)).
+
+## `WorkflowKitOptions`
+
+| Propriété | Type | Défaut | Description |
+| --- | --- | --- | --- |
+| `engine` | `"legacy" \| "world"` | `"legacy"` | Moteur utilisé par défaut pour `run`. |
+| `world` | `WorldConfig` | `undefined` | Configuration du backend world. **Requis** quand `engine === "world"`. |
+
+## `WorldConfig`
+
+| Propriété | Type | Défaut | Description |
+| --- | --- | --- | --- |
+| `type` | `"postgres" \| "mongodb"` | requis | Backend world. `mongodb` est expérimental. |
+| `url` | `string` | requis | Chaîne de connexion (`postgres://` / `mongodb://`). |
+| `jobPrefix` | `string` | `undefined` | Postgres : espace de noms des jobs sur une base partagée. |
+| `workerConcurrency` | `number` | Défaut SDK | Postgres : workers concurrents (correspond à `queueConcurrency`). |
+| `maxPoolSize` | `number` | Défaut SDK | Postgres : taille du pool de connexions. |
+
+## Construction
+
+```ts
+const kit = new WorkflowKit({
+  engine: "world",
+  world: { type: "postgres", url: process.env.WORKFLOW_POSTGRES_URL! },
+});
+```
+
+Le constructeur valide la configuration :
+
+- `engine: "world"` sans config `world` lève une erreur.
+- Un `world.type` inconnu lève une erreur.
+- `engine: "legacy"` avec une config `world` est autorisé (permet de basculer entre les moteurs via une variable d'environnement sans réécrire la configuration).
+
+## Propriétés
+
+| Propriété | Type | Description |
+| --- | --- | --- |
+| `engine` | `WorkflowEngine` | Le moteur par défaut configuré (lecture seule). |
+| `world` | `WorldConfig \| undefined` | La configuration world, le cas échéant (lecture seule). |
+
+## Méthodes
+
+### `start()`
+
+```ts
+start(): Promise<void>;
+```
+
+Démarre le worker world durable (charge `@ai_kit/workflow-world` à la demande et crée l'adaptateur). **No-op quand `engine === "legacy"`**, donc le même code de cycle de vie fonctionne pour les deux moteurs. Lève une erreur claire si `@ai_kit/workflow-world` n'est pas installé.
+
+### `stop()`
+
+```ts
+stop(): Promise<void>;
+```
+
+Arrête proprement le worker world. **No-op quand `engine === "legacy"`** ou quand le world n'a jamais été démarré.
+
+### `run(workflow, input, dispatch?)`
+
+Dispatche vers le moteur configuré (surchargeable par appel via `dispatch.engine`).
+
+```ts
+// Surcharge legacy — workflow est un Workflow AI Kit
+run<Output>(
+  workflow: Workflow<any, Output>,
+  options: WorkflowRunOptions,
+  dispatch?: { engine?: WorkflowEngine },
+): Promise<WorkflowRunResult<Output>>;
+
+// Surcharge world — workflow est une fonction "use workflow", input est le tableau d'args
+run(
+  workflow: (...args: any[]) => unknown,
+  args: unknown[],
+  dispatch?: { engine?: WorkflowEngine },
+): Promise<WorldRunHandle>;
+```
+
+- **`legacy`** → délègue à `Workflow.run(options)` et retourne un [`WorkflowRunResult`](/fr/api-reference/workflow).
+- **`world`** → délègue au `start(fn, args)` du SDK et retourne un `WorldRunHandle`.
+
+### `WorldRunHandle`
+
+Le handle opaque retourné par un run world (pass-through du `Run` SDK) :
+
+| Propriété | Type | Description |
+| --- | --- | --- |
+| `runId` | `string` | Identifiant du run durable. |
+
+## Exemple
+
+```ts
+import { WorkflowKit } from "@ai_kit/core";
+
+// Une seule config, basculable via env — legacy en local, world en production
+export const kit = new WorkflowKit({
+  engine: (process.env.WORKFLOW_ENGINE as "legacy" | "world") ?? "legacy",
+  world: { type: "postgres", url: process.env.WORKFLOW_POSTGRES_URL ?? "" },
+});
+
+await kit.start();                 // no-op sur legacy
+const handle = await kit.run(myWorkflow, ["arg"]);
+await kit.stop();
+```
+
+Consultez le [guide du moteur world](/fr/workflows/world-engine) pour l'installation, les règles d'écriture et la migration.
