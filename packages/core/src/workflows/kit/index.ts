@@ -1,3 +1,4 @@
+export { WorkflowKit } from "./WorkflowKit.js";
 export type {
   WorkflowEngine,
   WorldConfig,
