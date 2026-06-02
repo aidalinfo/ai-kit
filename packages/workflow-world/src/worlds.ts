@@ -1,4 +1,4 @@
-import type { WorldConfig } from "@ai_kit/core";
+import type { WorldConfig } from "./contract.js";
 
 export const WORLD_TARGETS = {
   postgres: "@workflow/world-postgres",

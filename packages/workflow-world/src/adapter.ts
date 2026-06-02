@@ -1,4 +1,4 @@
-import type { WorldConfig, WorldEngineAdapter, WorldRunHandle } from "@ai_kit/core";
+import type { WorldConfig, WorldEngineAdapter, WorldRunHandle } from "./contract.js";
 import { buildWorldOptions, WORLD_TARGETS } from "./worlds.js";
 
 interface SdkWorld {

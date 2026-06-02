@@ -63,7 +63,6 @@
     }
   },
   "devDependencies": {
-    "@ai_kit/workflow-world": "workspace:*",
     "@langchain/core": "^1.1.48",
     "@opentelemetry/sdk-trace-base": "^2.2.0",
     "@qdrant/js-client-rest": "^1.18.0",
