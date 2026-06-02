@@ -6,7 +6,8 @@ import { createRuntimeTool } from "../runtime/tools.js";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 
-describe("Agent.generate with real OpenAI model", () => {
+// Integration tests hitting the real OpenAI API: run only when a key is present.
+describe.skipIf(!process.env.OPENAI_API_KEY)("Agent.generate with real OpenAI model", () => {
   it("returns a textual answer", async () => {
     const assistant = new Agent({
       name: "assistant-documentation",

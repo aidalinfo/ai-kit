@@ -1,6 +1,6 @@
 {
   "name": "@ai_kit/mcp-docs",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "MCP server exposing AI Kit documentation",
   "type": "module",
   "main": "./dist/index.js",
@@ -29,7 +29,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.18.2",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^3.25.4"
   },
   "devDependencies": {

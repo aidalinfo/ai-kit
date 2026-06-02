@@ -118,10 +118,12 @@ export class Agent {
     if (!this.memory) return "";
 
     const searchResult = await this.memory.search(query, {
-      userId: options?.metadata?.["user-id"] as string | undefined,
-      agentId: this.name,
-      runId: options?.thread,
-      limit: 5,
+      topK: 5,
+      filters: {
+        user_id: options?.metadata?.["user-id"] as string | undefined,
+        agent_id: this.name,
+        run_id: options?.thread,
+      },
     });
 
     if (!searchResult || !searchResult.results || searchResult.results.length === 0) return "";

@@ -1,6 +1,6 @@
 {
   "name": "@ai_kit/client-kit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Lightweight HTTP client for interacting with AI Kit servers",
   "type": "module",
   "main": "./dist/index.js",
@@ -37,6 +37,7 @@
   "devDependencies": {
     "@types/node": "^24.7.0",
     "typescript": "^5.9.2",
-    "vitest": "^2.1.3"
+    "vite": "^7.3.5",
+    "vitest": "^4.1.8"
   }
 }
