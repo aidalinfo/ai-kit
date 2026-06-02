@@ -1,0 +1,77 @@
+import type { WorldConfig, WorldEngineAdapter, WorldRunHandle } from "@ai_kit/core";
+import { buildWorldOptions, WORLD_TARGETS } from "./worlds.js";
+
+interface SdkWorld {
+  start?(): Promise<void>;
+  close?(): Promise<void>;
+}
+
+interface WorldModuleLoaders {
+  postgres: () => Promise<{ createWorld: (opts: Record<string, unknown>) => SdkWorld }>;
+  mongodb: () => Promise<{ createWorld: (opts: Record<string, unknown>) => SdkWorld }>;
+  api: () => Promise<{
+    start: (
+      fn: (...args: any[]) => unknown,
+      args: unknown[],
+      options?: { world?: SdkWorld },
+    ) => Promise<WorldRunHandle>;
+  }>;
+  runtime: () => Promise<{ setWorld: (world: SdkWorld | undefined) => void }>;
+}
+
+function defaultLoaders(): WorldModuleLoaders {
+  return {
+    postgres: () => import(WORLD_TARGETS.postgres) as Promise<any>,
+    mongodb: () => import(WORLD_TARGETS.mongodb) as Promise<any>,
+    api: () => import("workflow/api") as Promise<any>,
+    runtime: () => import("workflow/runtime") as Promise<any>,
+  };
+}
+
+let loaders: WorldModuleLoaders = defaultLoaders();
+
+/** @internal Test seam. Called with no argument, it resets to the default loaders. */
+export function __setWorldModuleLoaders(custom?: Partial<WorldModuleLoaders>): void {
+  loaders = { ...defaultLoaders(), ...custom };
+}
+
+async function loadWorldModule(type: WorldConfig["type"]) {
+  try {
+    return type === "postgres" ? await loaders.postgres() : await loaders.mongodb();
+  } catch (err) {
+    if ((err as { code?: string }).code === "ERR_MODULE_NOT_FOUND") {
+      throw new Error(
+        `workflow-world: the optional dependency '${WORLD_TARGETS[type]}' is not installed. ` +
+          `Install it: pnpm add ${WORLD_TARGETS[type]}`,
+      );
+    }
+    throw err;
+  }
+}
+
+export function createWorldAdapter(config: WorldConfig): WorldEngineAdapter {
+  let world: SdkWorld | undefined;
+
+  return {
+    async start() {
+      const mod = await loadWorldModule(config.type);
+      world = mod.createWorld(buildWorldOptions(config));
+      const { setWorld } = await loaders.runtime();
+      setWorld(world);
+      await world.start?.();
+    },
+
+    async stop() {
+      if (!world) return;
+      await world.close?.();
+      const { setWorld } = await loaders.runtime();
+      setWorld(undefined);
+      world = undefined;
+    },
+
+    async run(fn, args) {
+      const { start } = await loaders.api();
+      return start(fn, args, { world });
+    },
+  };
+}
