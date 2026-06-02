@@ -77,6 +77,63 @@ describe("createWorldAdapter (postgres)", () => {
     const adapter = createWorldAdapter({ type: "postgres", url: "postgres://x" });
     await expect(adapter.run(async () => 1, [])).rejects.toThrow(/start\(\) before run\(\)/);
   });
+
+  it("module injecté : utilise config.module et NON le loader dynamique du type", async () => {
+    // loader dynamique interne : doit ne JAMAIS être appelé
+    const dynPostgres = vi.fn(async () => ({ createWorld: vi.fn() }));
+    const setWorld = vi.fn();
+    __setWorldModuleLoaders({
+      postgres: dynPostgres,
+      runtime: async () => ({ setWorld }),
+      api: async () => ({ start: vi.fn() }),
+    });
+
+    // loader fourni par l'app hôte (littéral chez le consommateur)
+    const world = { start: vi.fn().mockResolvedValue(undefined) };
+    const moduleCreateWorld = vi.fn(() => world);
+    const moduleLoader = vi.fn(async () => ({ createWorld: moduleCreateWorld }));
+
+    const adapter = createWorldAdapter({
+      type: "postgres",
+      url: "postgres://u:p@h:5432/db",
+      module: moduleLoader,
+    });
+    await adapter.start();
+
+    expect(moduleLoader).toHaveBeenCalledTimes(1);
+    expect(moduleCreateWorld).toHaveBeenCalledWith({ connectionString: "postgres://u:p@h:5432/db" });
+    expect(setWorld).toHaveBeenCalledWith(world);
+    expect(world.start).toHaveBeenCalledTimes(1);
+    expect(dynPostgres).not.toHaveBeenCalled();
+  });
+
+  it("module injecté qui rejette ERR_MODULE_NOT_FOUND → message explicite, sans hint 'module'", async () => {
+    const setWorld = vi.fn();
+    __setWorldModuleLoaders({
+      runtime: async () => ({ setWorld }),
+      api: async () => ({ start: vi.fn() }),
+    });
+    const adapter = createWorldAdapter({
+      type: "postgres",
+      url: "postgres://x",
+      module: async () => {
+        const e = new Error("nf") as Error & { code?: string };
+        e.code = "ERR_MODULE_NOT_FOUND";
+        throw e;
+      },
+    });
+    await expect(adapter.start()).rejects.toThrow(
+      "workflow-world: the world module '@workflow/world-postgres' could not be loaded.",
+    );
+    let msg = "";
+    try {
+      await adapter.start();
+    } catch (e) {
+      msg = (e as Error).message;
+    }
+    expect(msg).toContain("Install it: pnpm add @workflow/world-postgres");
+    expect(msg).not.toContain("or pass 'module'");
+  });
 });
 
 describe("createWorldAdapter (mongodb)", () => {

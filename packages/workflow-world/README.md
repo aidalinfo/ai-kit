@@ -52,6 +52,32 @@ const handle = await kit.run(myWorldWorkflow, [arg]);  // → start() du SDK
 await kit.stop();                  // arrêt propre
 ```
 
+## Déploiement bundlé (Nitro/Docker) — imports traçables
+
+En build bundlé (Nitro `node-server`, déploiement qui ne copie que `.output`), les
+imports dynamiques **à argument variable** ne sont pas tracés par nft, donc
+`@ai_kit/workflow-world` et le world SDK manquent dans `.output`. Pour les rendre
+traçables, **injecte l'adapter** depuis un fichier serveur (imports littéraux) :
+
+```ts
+// server/utils/workflow-kit.ts (app hôte)
+import { WorkflowKit } from '@ai_kit/core'
+import { createWorldAdapter } from '@ai_kit/workflow-world'   // statique → tracé
+
+export const workflowKit = new WorkflowKit({
+  engine: 'world',
+  adapter: createWorldAdapter({
+    type: 'postgres',
+    url: process.env.WORKFLOW_POSTGRES_URL!,
+    module: () => import('@workflow/world-postgres'),         // littéral → tracé
+  }),
+})
+```
+
+Avec ce pattern, **plus besoin** de `nitro.externals.traceInclude` ni de lister ces
+packages dans `nitro.externals.external`. Le worker se démarre toujours via un plugin
+serveur (`kit.start()` au boot, `kit.stop()` à la fermeture).
+
 ## Écriture des workflows/steps (important)
 
 Il n'existe **pas** de helper runtime `defineWorldStep` : le compilateur `workflow/nitro`
