@@ -18,6 +18,17 @@ pnpm add @workflow-worlds/mongodb            # MongoDB (communautaire, expérime
 pnpm add -D nitro rollup
 ```
 
+## Provisioning du schéma (Postgres)
+
+Le world Postgres exige que son schéma soit créé **une fois** avant le premier run
+(sinon erreur `undefined_table` / `42P01`). C'est une étape de déploiement :
+
+```bash
+WORKFLOW_POSTGRES_URL=postgres://world:world@localhost:5432/world npx workflow-postgres-setup
+```
+
+(Le world MongoDB ne nécessite pas cette étape : il provisionne à la connexion.)
+
 ## Contrainte (à connaître)
 
 Le SDK Vercel **exige une étape de build** (Nitro + rollup, module `workflow/nitro`) pour
