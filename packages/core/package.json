@@ -47,10 +47,14 @@
     "zod": "^4.1.12"
   },
   "peerDependencies": {
+    "@ai_kit/workflow-world": ">=0.1.0 <1",
     "@langfuse/otel": "^5.4.1",
     "@opentelemetry/sdk-trace-node": "^2.2.0"
   },
   "peerDependenciesMeta": {
+    "@ai_kit/workflow-world": {
+      "optional": true
+    },
     "@langfuse/otel": {
       "optional": true
     },
@@ -59,6 +63,7 @@
     }
   },
   "devDependencies": {
+    "@ai_kit/workflow-world": "workspace:*",
     "@langchain/core": "^1.1.48",
     "@opentelemetry/sdk-trace-base": "^2.2.0",
     "@qdrant/js-client-rest": "^1.18.0",
