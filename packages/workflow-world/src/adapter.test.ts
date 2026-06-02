@@ -77,6 +77,34 @@ describe("createWorldAdapter (postgres)", () => {
     const adapter = createWorldAdapter({ type: "postgres", url: "postgres://x" });
     await expect(adapter.run(async () => 1, [])).rejects.toThrow(/start\(\) before run\(\)/);
   });
+
+  it("module injecté : utilise config.module et NON le loader dynamique du type", async () => {
+    // loader dynamique interne : doit ne JAMAIS être appelé
+    const dynPostgres = vi.fn(async () => ({ createWorld: vi.fn() }));
+    const setWorld = vi.fn();
+    __setWorldModuleLoaders({
+      postgres: dynPostgres,
+      runtime: async () => ({ setWorld }),
+      api: async () => ({ start: vi.fn() }),
+    });
+
+    // loader fourni par l'app hôte (littéral chez le consommateur)
+    const world = { start: vi.fn().mockResolvedValue(undefined) };
+    const moduleCreateWorld = vi.fn(() => world);
+    const moduleLoader = vi.fn(async () => ({ createWorld: moduleCreateWorld }));
+
+    const adapter = createWorldAdapter({
+      type: "postgres",
+      url: "postgres://u:p@h:5432/db",
+      module: moduleLoader,
+    });
+    await adapter.start();
+
+    expect(moduleLoader).toHaveBeenCalledTimes(1);
+    expect(moduleCreateWorld).toHaveBeenCalledWith({ connectionString: "postgres://u:p@h:5432/db" });
+    expect(setWorld).toHaveBeenCalledWith(world);
+    expect(dynPostgres).not.toHaveBeenCalled();
+  });
 });
 
 describe("createWorldAdapter (mongodb)", () => {

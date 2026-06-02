@@ -36,14 +36,15 @@ export function __setWorldModuleLoaders(custom?: Partial<WorldModuleLoaders>): v
   loaders = { ...defaultLoaders(), ...custom };
 }
 
-async function loadWorldModule(type: WorldConfig["type"]) {
+async function loadWorldModule(config: WorldConfig) {
+  const loader = config.module ?? loaders[config.type];
   try {
-    return await loaders[type]();
+    return await loader();
   } catch (err) {
     if ((err as { code?: string }).code === "ERR_MODULE_NOT_FOUND") {
       throw new Error(
-        `workflow-world: the optional dependency '${WORLD_TARGETS[type]}' is not installed. ` +
-          `Install it: pnpm add ${WORLD_TARGETS[type]}`,
+        `workflow-world: the world module '${WORLD_TARGETS[config.type]}' could not be loaded. ` +
+          `Install it (pnpm add ${WORLD_TARGETS[config.type]}) or pass 'module' in the world config.`,
       );
     }
     throw err;
@@ -55,8 +56,8 @@ export function createWorldAdapter(config: WorldConfig): WorldEngineAdapter {
 
   return {
     async start() {
-      const mod = await loadWorldModule(config.type);
-      world = mod.createWorld(buildWorldOptions(config));
+      const mod = await loadWorldModule(config);
+      world = mod.createWorld(buildWorldOptions(config)) as SdkWorld;
       const { setWorld } = await loaders.runtime();
       setWorld(world);
       await world.start?.();
