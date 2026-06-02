@@ -61,11 +61,11 @@ export class WorkflowKit {
     dispatch?: WorkflowRunDispatchOptions,
   ): Promise<WorkflowRunResult<Output, any, any>>;
   // Overload: world engine
-  run(
-    workflow: (...args: any[]) => unknown,
+  run<TResult = unknown>(
+    workflow: (...args: any[]) => TResult | Promise<TResult>,
     args: unknown[],
     dispatch?: WorkflowRunDispatchOptions,
-  ): Promise<WorldRunHandle>;
+  ): Promise<WorldRunHandle<TResult>>;
   // Implementation
   async run(workflow: any, input: any, dispatch?: WorkflowRunDispatchOptions): Promise<unknown> {
     const engine = dispatch?.engine ?? this.engine;
@@ -74,6 +74,45 @@ export class WorkflowKit {
     }
     const adapter = await this.#ensureAdapter();
     return adapter.run(workflow, input as unknown[]);
+  }
+
+  // Overload: legacy engine — returns the workflow output, throws on non-success
+  runAndWait<Output>(
+    workflow: Workflow<any, Output, any, any>,
+    options: WorkflowRunOptions<any, any, any>,
+    dispatch?: WorkflowRunDispatchOptions,
+  ): Promise<Output>;
+  // Overload: world engine — awaits the durable run, returns its return value
+  runAndWait<TResult = unknown>(
+    workflow: (...args: any[]) => TResult | Promise<TResult>,
+    args: unknown[],
+    dispatch?: WorkflowRunDispatchOptions,
+  ): Promise<TResult>;
+  /**
+   * Runs a workflow and resolves with its output (synchronous-style), regardless
+   * of engine. Throws if the run does not succeed:
+   * - legacy: throws when the result status is not "success" (with the run error);
+   * - world: rejects via the SDK (`WorkflowRunFailedError` / `WorkflowRunCancelledError`).
+   */
+  async runAndWait(
+    workflow: any,
+    input: any,
+    dispatch?: WorkflowRunDispatchOptions,
+  ): Promise<unknown> {
+    const engine = dispatch?.engine ?? this.engine;
+    if (engine === "legacy") {
+      const result = await (workflow as Workflow<any, any, any, any>).run(input);
+      if (result.status !== "success") {
+        if (result.error instanceof Error) throw result.error;
+        throw new Error(
+          `WorkflowKit: workflow run finished with status '${result.status}'`,
+        );
+      }
+      return result.result;
+    }
+    const adapter = await this.#ensureAdapter();
+    const handle = await adapter.run(workflow, input as unknown[]);
+    return handle.returnValue;
   }
 
   async #ensureAdapter(): Promise<WorldEngineAdapter> {

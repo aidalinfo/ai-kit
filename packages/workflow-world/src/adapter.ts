@@ -1,4 +1,4 @@
-import type { WorldConfig, WorldEngineAdapter, WorldRunHandle } from "./contract.js";
+import type { WorldConfig, WorldEngineAdapter } from "./contract.js";
 import { buildWorldOptions, WORLD_TARGETS } from "./worlds.js";
 
 interface SdkWorld {
@@ -15,7 +15,7 @@ interface WorldModuleLoaders {
       fn: (...args: any[]) => unknown,
       args: unknown[],
       options?: { world?: SdkWorld },
-    ) => Promise<WorldRunHandle>;
+    ) => Promise<any>;
   }>;
   runtime: () => Promise<{ setWorld: (world: SdkWorld | undefined) => void }>;
 }
