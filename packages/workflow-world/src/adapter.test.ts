@@ -67,6 +67,16 @@ describe("createWorldAdapter (postgres)", () => {
     const adapter = createWorldAdapter({ type: "postgres", url: "postgres://x" });
     await expect(adapter.start()).rejects.toThrow("@workflow/world-postgres");
   });
+
+  it("stop avant start: ne throw pas", async () => {
+    const adapter = createWorldAdapter({ type: "postgres", url: "postgres://x" });
+    await expect(adapter.stop()).resolves.toBeUndefined();
+  });
+
+  it("run avant start: throw une erreur claire", async () => {
+    const adapter = createWorldAdapter({ type: "postgres", url: "postgres://x" });
+    await expect(adapter.run(async () => 1, [])).rejects.toThrow(/start\(\) before run\(\)/);
+  });
 });
 
 describe("createWorldAdapter (mongodb)", () => {

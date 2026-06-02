@@ -3,6 +3,7 @@ import { buildWorldOptions, WORLD_TARGETS } from "./worlds.js";
 
 interface SdkWorld {
   start?(): Promise<void>;
+  /** Present at runtime on @workflow/world-postgres (undocumented); absent on @workflow-worlds/mongodb (lazy/no-op). */
   close?(): Promise<void>;
 }
 
@@ -37,7 +38,7 @@ export function __setWorldModuleLoaders(custom?: Partial<WorldModuleLoaders>): v
 
 async function loadWorldModule(type: WorldConfig["type"]) {
   try {
-    return type === "postgres" ? await loaders.postgres() : await loaders.mongodb();
+    return await loaders[type]();
   } catch (err) {
     if ((err as { code?: string }).code === "ERR_MODULE_NOT_FOUND") {
       throw new Error(
@@ -63,13 +64,17 @@ export function createWorldAdapter(config: WorldConfig): WorldEngineAdapter {
 
     async stop() {
       if (!world) return;
-      await world.close?.();
       const { setWorld } = await loaders.runtime();
-      setWorld(undefined);
-      world = undefined;
+      const closing = world;
+      world = undefined;       // clear local ref first
+      setWorld(undefined);     // release SDK injection first
+      await closing.close?.(); // best-effort cleanup (may throw; injection already released)
     },
 
     async run(fn, args) {
+      if (!world) {
+        throw new Error("workflow-world: call start() before run() (the world is not initialized)");
+      }
       const { start } = await loaders.api();
       return start(fn, args, { world });
     },

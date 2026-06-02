@@ -19,7 +19,7 @@ export function buildWorldOptions(config: WorldConfig): Record<string, unknown> 
 
   if (config.type === "postgres") {
     const opts: Record<string, unknown> = { connectionString: config.url };
-    if (config.jobPrefix) opts.jobPrefix = config.jobPrefix;
+    if (config.jobPrefix != null) opts.jobPrefix = config.jobPrefix;
     if (config.workerConcurrency != null) opts.queueConcurrency = config.workerConcurrency;
     if (config.maxPoolSize != null) opts.maxPoolSize = config.maxPoolSize;
     return opts;

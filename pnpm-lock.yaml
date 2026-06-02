@@ -228,12 +228,6 @@ importers:
 
   packages/workflow-world:
     dependencies:
-      '@workflow-worlds/mongodb':
-        specifier: ^0.2.1
-        version: 0.2.1(socks@2.8.7)
-      '@workflow/world-postgres':
-        specifier: ^4.1.4
-        version: 4.1.4(@cloudflare/workers-types@4.20251118.0)(@opentelemetry/api@1.9.0)(@types/pg@8.15.6)(better-sqlite3@12.10.0)(typescript@5.9.3)
       workflow:
         specifier: ^4.3.1
         version: 4.3.1(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.24(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@opentelemetry/api@1.9.0)(@swc/cli@0.8.1(@swc/core@1.15.3)(chokidar@5.0.0))(@swc/core@1.15.3)(typescript@5.9.3)
@@ -244,6 +238,12 @@ importers:
       '@types/node':
         specifier: ^24.7.0
         version: 24.12.4
+      '@workflow-worlds/mongodb':
+        specifier: ^0.2.1
+        version: 0.2.1(socks@2.8.7)
+      '@workflow/world-postgres':
+        specifier: ^4.1.4
+        version: 4.1.4(@cloudflare/workers-types@4.20251118.0)(@opentelemetry/api@1.9.0)(@types/pg@8.15.6)(better-sqlite3@12.10.0)(typescript@5.9.3)
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
