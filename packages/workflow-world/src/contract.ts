@@ -20,6 +20,13 @@ export interface WorldConfig {
   workerConcurrency?: number;
   /** Postgres : taille du pool de connexions. */
   maxPoolSize?: number;
+  /**
+   * Loader du module world fourni par l'app hôte, sous forme de littéral
+   * (`() => import('@workflow/world-postgres')`). Quand présent, il remplace
+   * l'import dynamique interne : le littéral vit dans le code tracé de l'app,
+   * donc le bundler (nft) inclut le package dans `.output`. Doit exposer `createWorld`.
+   */
+  module?: () => Promise<{ createWorld: (opts: Record<string, unknown>) => unknown }>;
 }
 
 /** Statut d'un run world (SDK Vercel). */

@@ -18,8 +18,15 @@ export interface WorldConfig {
 export interface WorkflowKitOptions {
   /** Moteur par défaut. Défaut : "legacy". */
   engine?: WorkflowEngine;
-  /** Config du world. Requis si engine === "world". */
+  /** Config du world. Requis si engine === "world" ET adapter absent. */
   world?: WorldConfig;
+  /**
+   * Adapter world pré-construit (via `createWorldAdapter` de @ai_kit/workflow-world,
+   * importé statiquement par l'app hôte). Quand fourni, court-circuite l'import
+   * dynamique de @ai_kit/workflow-world — ce qui rend les packages traçables par
+   * le bundler depuis le code de l'app. Prioritaire sur `world`.
+   */
+  adapter?: WorldEngineAdapter;
 }
 
 /** Statut d'un run world (SDK Vercel). */
