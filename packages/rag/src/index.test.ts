@@ -4,6 +4,18 @@ import { createRag, MemoryVectorStore, RagDocument } from "./index.js";
 import type { LanguageModel } from "ai";
 import * as aiSdk from "ai";
 
+// `generateText`/`streamText` are ESM named exports of "ai" and cannot be
+// reassigned with vi.spyOn (the namespace is not configurable). Mock the module
+// instead, keeping every other export (e.g. embedMany) untouched.
+vi.mock("ai", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("ai")>();
+  return {
+    ...actual,
+    generateText: vi.fn(),
+    streamText: vi.fn(),
+  };
+});
+
 const simpleEmbedder = async (values: string[]) =>
   values.map((value) => {
     const length = value.length || 1;
@@ -19,7 +31,7 @@ const createEngine = () =>
   });
 
 afterEach(() => {
-  vi.restoreAllMocks();
+  vi.clearAllMocks();
 });
 
 describe("RAG ingestion and search", () => {
@@ -46,7 +58,8 @@ describe("RAG ingestion and search", () => {
     });
 
     const results = await rag.search({ namespace: "kb", query: "First" });
-    expect(results.length).toBe(0);
+    // replace mode wiped the previous content, so no chunk from "First doc" remains
+    expect(results.some((result) => result.chunk.text.includes("First"))).toBe(false);
 
     const newResults = await rag.search({ namespace: "kb", query: "Second" });
     expect(newResults[0]?.chunk.text).toContain("Second");
@@ -67,9 +80,8 @@ describe("RAG ingestion and search", () => {
 
 describe("RAG answer", () => {
   test("answer builds prompt and delegates to generateText", async () => {
-    const generateSpy = vi
-      .spyOn(aiSdk, "generateText")
-      .mockResolvedValue({ text: "Mocked answer" } as Awaited<ReturnType<typeof aiSdk.generateText>>);
+    const generateSpy = vi.mocked(aiSdk.generateText);
+    generateSpy.mockResolvedValue({ text: "Mocked answer" } as Awaited<ReturnType<typeof aiSdk.generateText>>);
     const rag = createEngine();
     await rag.ingest({
       namespace: "kb",
@@ -90,11 +102,10 @@ describe("RAG answer", () => {
   });
 
   test("answer.stream uses streamText", async () => {
-    const streamSpy = vi
-      .spyOn(aiSdk, "streamText")
-      .mockResolvedValue({
-        toAIStreamResponse: () => "stream",
-      } as unknown as Awaited<ReturnType<typeof aiSdk.streamText>>);
+    const streamSpy = vi.mocked(aiSdk.streamText);
+    streamSpy.mockResolvedValue({
+      toAIStreamResponse: () => "stream",
+    } as unknown as Awaited<ReturnType<typeof aiSdk.streamText>>);
     const rag = createEngine();
     await rag.ingest({
       namespace: "kb",

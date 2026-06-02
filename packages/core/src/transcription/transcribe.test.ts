@@ -1,6 +1,7 @@
 // packages/core/src/transcription/transcribe.test.ts
 import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { createTranscriptionModel } from "./model.js";
 import { createTranscriptionStreamingModel } from "./streaming-model.js";
 import { transcribe } from "./transcribe.js";
@@ -8,12 +9,16 @@ import { createTranscriptionTool } from "./tool.js";
 import { Agent } from "../agents/index.js";
 import { scaleway } from "../shared/utils/provider/scaleway.js";
 
+// Integration tests: they hit the real Scaleway API and need a local audio
+// fixture. Run only when both the API key and the fixture are available;
+// otherwise skip cleanly instead of failing the suite.
 const apiKey = process.env.SCALEWAY_API_KEY;
-if (!apiKey) throw new Error("SCALEWAY_API_KEY is required for these tests");
+const AUDIO_FIXTURE = process.env.TRANSCRIPTION_FIXTURE ?? "/tmp/test-transcription.wav";
+const canRun = Boolean(apiKey) && existsSync(AUDIO_FIXTURE);
 
 const scalewayConfig = {
   modelId: "whisper-large-v3",
-  apiKey,
+  apiKey: apiKey ?? "",
   baseURL: "https://api.scaleway.ai/v1",
   providerName: "scaleway",
 };
@@ -21,13 +26,13 @@ const scalewayConfig = {
 const whisperModel = createTranscriptionModel(scalewayConfig);
 const whisperStreamingModel = createTranscriptionStreamingModel(scalewayConfig);
 
-describe("transcription", () => {
+describe.skipIf(!canRun)("transcription", () => {
   it(
     "transcribes from a file path",
     async () => {
       const result = await transcribe({
         model: whisperModel,
-        audio: "/tmp/test-transcription.wav",
+        audio: AUDIO_FIXTURE,
         inputType: "path",
       });
       expect(typeof result.text).toBe("string");
@@ -39,7 +44,7 @@ describe("transcription", () => {
   it(
     "transcribes from a buffer",
     async () => {
-      const buf = await readFile("/tmp/test-transcription.wav");
+      const buf = await readFile(AUDIO_FIXTURE);
       const result = await transcribe({
         model: whisperModel,
         audio: new Uint8Array(buf),
@@ -53,7 +58,7 @@ describe("transcription", () => {
   it(
     "streams a transcription natively from a buffer",
     async () => {
-      const buf = await readFile("/tmp/test-transcription.wav");
+      const buf = await readFile(AUDIO_FIXTURE);
 
       const deltas: string[] = [];
       let finalText: string | undefined;
@@ -97,7 +102,7 @@ describe("transcription", () => {
       });
 
       const result = await agent.generate({
-        prompt: "Transcris le fichier audio : /tmp/test-transcription.wav",
+        prompt: `Transcris le fichier audio : ${AUDIO_FIXTURE}`,
       });
 
       // The agent must have called the tool (at least one step with tool calls)

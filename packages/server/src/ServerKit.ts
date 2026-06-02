@@ -386,7 +386,13 @@ export class ServerKit {
         route.handler,
       ];
 
-      this.app.on(route.method, route.path, ...handlers);
+      // hono >=4.12 types `on()` with fixed-arity handler tuples; spreading a
+      // dynamic MiddlewareHandler[] needs a cast to the non-empty tuple shape.
+      this.app.on(
+        route.method,
+        route.path,
+        ...(handlers as [MiddlewareHandler, ...MiddlewareHandler[]]),
+      );
     }
   }
 
@@ -413,7 +419,7 @@ export class ServerKit {
 
   private getAgentOrThrow(c: Context) {
     const id = c.req.param("id");
-    const agent = this.agents.get(id);
+    const agent = id ? this.agents.get(id) : undefined;
 
     if (!agent) {
       throw new HTTPException(404, { message: `Agent ${id} not found` });
@@ -424,7 +430,7 @@ export class ServerKit {
 
   private getWorkflowOrThrow(c: Context) {
     const id = c.req.param("id");
-    const workflow = this.workflows.get(id);
+    const workflow = id ? this.workflows.get(id) : undefined;
 
     if (!workflow) {
       throw new HTTPException(404, { message: `Workflow ${id} not found` });
