@@ -42,9 +42,11 @@ async function loadWorldModule(config: WorldConfig) {
     return await loader();
   } catch (err) {
     if ((err as { code?: string }).code === "ERR_MODULE_NOT_FOUND") {
+      const hint = config.module
+        ? `Install it: pnpm add ${WORLD_TARGETS[config.type]}`
+        : `Install it (pnpm add ${WORLD_TARGETS[config.type]}) or pass 'module' in the world config.`;
       throw new Error(
-        `workflow-world: the world module '${WORLD_TARGETS[config.type]}' could not be loaded. ` +
-          `Install it (pnpm add ${WORLD_TARGETS[config.type]}) or pass 'module' in the world config.`,
+        `workflow-world: the world module '${WORLD_TARGETS[config.type]}' could not be loaded. ${hint}`,
       );
     }
     throw err;

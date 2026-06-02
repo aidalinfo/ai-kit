@@ -103,6 +103,7 @@ describe("createWorldAdapter (postgres)", () => {
     expect(moduleLoader).toHaveBeenCalledTimes(1);
     expect(moduleCreateWorld).toHaveBeenCalledWith({ connectionString: "postgres://u:p@h:5432/db" });
     expect(setWorld).toHaveBeenCalledWith(world);
+    expect(world.start).toHaveBeenCalledTimes(1);
     expect(dynPostgres).not.toHaveBeenCalled();
   });
 });
