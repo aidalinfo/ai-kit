@@ -127,7 +127,7 @@ describe("WorkflowKit — adapter injecté", () => {
       stop: vi.fn().mockResolvedValue(undefined),
       run: vi.fn().mockResolvedValue({ runId: "r_inj" }),
     };
-    const loader = vi.fn(); // le seam ne doit JAMAIS être invoqué
+    const loader = vi.fn().mockRejectedValue(new Error("loader must not be called")); // le seam ne doit JAMAIS être invoqué
     __setWorkflowWorldLoader(loader);
 
     const kit = new WorkflowKit({ engine: "world", adapter });
@@ -150,5 +150,17 @@ describe("WorkflowKit — adapter injecté", () => {
       run: vi.fn().mockResolvedValue({ runId: "r" }),
     };
     expect(() => new WorkflowKit({ engine: "world", adapter })).not.toThrow();
+  });
+
+  it("world : adapter injecté + config world de type invalide → ne throw pas (world ignoré)", () => {
+    const adapter = {
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      run: vi.fn().mockResolvedValue({ runId: "r" }),
+    };
+    expect(
+      // @ts-expect-error type de world volontairement invalide
+      () => new WorkflowKit({ engine: "world", world: { type: "redis", url: "x" }, adapter }),
+    ).not.toThrow();
   });
 });

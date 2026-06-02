@@ -41,7 +41,9 @@ export class WorkflowKit {
         "WorkflowKit: engine 'world' requires a 'world' config or an 'adapter'",
       );
     }
-    if (this.world && !VALID_WORLD_TYPES.includes(this.world.type)) {
+    // L'adapter injecté a la priorité : si présent, la config `world` est ignorée,
+    // donc on ne valide son `type` que lorsqu'aucun adapter n'est fourni.
+    if (this.world && !this.#adapter && !VALID_WORLD_TYPES.includes(this.world.type)) {
       throw new Error(`WorkflowKit: unsupported world type '${this.world.type}'`);
     }
   }
