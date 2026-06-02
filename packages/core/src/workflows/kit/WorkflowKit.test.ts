@@ -119,3 +119,36 @@ describe("WorkflowKit — runAndWait", () => {
     await expect(kit.runAndWait(fakeWorkflow as any, { inputData: {} })).rejects.toThrow("boom");
   });
 });
+
+describe("WorkflowKit — adapter injecté", () => {
+  it("world : start/run/stop délèguent à l'adapter SANS charger @ai_kit/workflow-world", async () => {
+    const adapter = {
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      run: vi.fn().mockResolvedValue({ runId: "r_inj" }),
+    };
+    const loader = vi.fn(); // le seam ne doit JAMAIS être invoqué
+    __setWorkflowWorldLoader(loader);
+
+    const kit = new WorkflowKit({ engine: "world", adapter });
+    await kit.start();
+    const fn = async () => 1;
+    const handle = await kit.run(fn, ["a"]);
+    await kit.stop();
+
+    expect(adapter.start).toHaveBeenCalledTimes(1);
+    expect(adapter.run).toHaveBeenCalledWith(fn, ["a"]);
+    expect(handle).toEqual({ runId: "r_inj" });
+    expect(adapter.stop).toHaveBeenCalledTimes(1);
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it("world : adapter injecté sans config 'world' → ne throw pas", () => {
+    const adapter = {
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      run: vi.fn().mockResolvedValue({ runId: "r" }),
+    };
+    expect(() => new WorkflowKit({ engine: "world", adapter })).not.toThrow();
+  });
+});
