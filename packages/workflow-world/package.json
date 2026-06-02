@@ -16,7 +16,10 @@
     "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
     "build": "pnpm run clean && tsc -p tsconfig.build.json",
     "prepare": "pnpm run build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:up": "docker compose -f docker-compose.test.yml up -d --wait",
+    "db:down": "docker compose -f docker-compose.test.yml down -v",
+    "test:integration": "WORKFLOW_WORLD_PG_URL=postgres://world:world@localhost:5432/world WORKFLOW_WORLD_MONGO_URL=mongodb://localhost:27017/world vitest run integration"
   },
   "keywords": ["ai", "workflow", "vercel", "world", "postgres", "mongodb"],
   "license": "MIT",
