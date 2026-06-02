@@ -106,6 +106,34 @@ describe("createWorldAdapter (postgres)", () => {
     expect(world.start).toHaveBeenCalledTimes(1);
     expect(dynPostgres).not.toHaveBeenCalled();
   });
+
+  it("module injecté qui rejette ERR_MODULE_NOT_FOUND → message explicite, sans hint 'module'", async () => {
+    const setWorld = vi.fn();
+    __setWorldModuleLoaders({
+      runtime: async () => ({ setWorld }),
+      api: async () => ({ start: vi.fn() }),
+    });
+    const adapter = createWorldAdapter({
+      type: "postgres",
+      url: "postgres://x",
+      module: async () => {
+        const e = new Error("nf") as Error & { code?: string };
+        e.code = "ERR_MODULE_NOT_FOUND";
+        throw e;
+      },
+    });
+    await expect(adapter.start()).rejects.toThrow(
+      "workflow-world: the world module '@workflow/world-postgres' could not be loaded.",
+    );
+    let msg = "";
+    try {
+      await adapter.start();
+    } catch (e) {
+      msg = (e as Error).message;
+    }
+    expect(msg).toContain("Install it: pnpm add @workflow/world-postgres");
+    expect(msg).not.toContain("or pass 'module'");
+  });
 });
 
 describe("createWorldAdapter (mongodb)", () => {
