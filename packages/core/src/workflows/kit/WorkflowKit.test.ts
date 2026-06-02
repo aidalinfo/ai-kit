@@ -64,3 +64,58 @@ describe("WorkflowKit — dispatch run", () => {
     await expect(kit.start()).rejects.toThrow("@ai_kit/workflow-world");
   });
 });
+
+describe("WorkflowKit — runAndWait", () => {
+  function worldKitWith(handle: Record<string, unknown>) {
+    const adapter = {
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      run: vi.fn().mockResolvedValue(handle),
+    };
+    __setWorkflowWorldLoader(async () => ({ createWorldAdapter: () => adapter }));
+    return new WorkflowKit({ engine: "world", world: { type: "postgres", url: "postgres://x" } });
+  }
+
+  it("world : résout avec returnValue du run", async () => {
+    const kit = worldKitWith({
+      runId: "r_1",
+      returnValue: Promise.resolve({ ok: true }),
+      status: Promise.resolve("completed"),
+      exists: Promise.resolve(true),
+      cancel: vi.fn(),
+    });
+    const out = await kit.runAndWait(async () => ({ ok: true }), ["a"]);
+    expect(out).toEqual({ ok: true });
+  });
+
+  it("world : propage le rejet de returnValue (échec du run)", async () => {
+    const kit = worldKitWith({
+      runId: "r_2",
+      // getter : crée la promesse rejetée seulement quand runAndWait la lit (pas d'unhandled rejection)
+      get returnValue() {
+        return Promise.reject(new Error("workflow failed"));
+      },
+      status: Promise.resolve("failed"),
+      exists: Promise.resolve(true),
+      cancel: vi.fn(),
+    });
+    await expect(kit.runAndWait(async () => 1, ["a"])).rejects.toThrow("workflow failed");
+  });
+
+  it("legacy : résout avec result.result quand status=success", async () => {
+    const fakeWorkflow = {
+      run: vi.fn().mockResolvedValue({ status: "success", result: { total: 42 } }),
+    };
+    const kit = new WorkflowKit();
+    const out = await kit.runAndWait(fakeWorkflow as any, { inputData: {} });
+    expect(out).toEqual({ total: 42 });
+  });
+
+  it("legacy : throw quand status != success", async () => {
+    const fakeWorkflow = {
+      run: vi.fn().mockResolvedValue({ status: "failed", error: new Error("boom") }),
+    };
+    const kit = new WorkflowKit();
+    await expect(kit.runAndWait(fakeWorkflow as any, { inputData: {} })).rejects.toThrow("boom");
+  });
+});

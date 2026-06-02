@@ -1,6 +1,6 @@
 {
   "name": "@ai_kit/workflow-world",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Vercel Workflow SDK world engine adapter for AI Kit (self-hosted Postgres/MongoDB).",
   "type": "module",
   "main": "./dist/index.js",

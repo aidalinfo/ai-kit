@@ -22,9 +22,24 @@ export interface WorldConfig {
   maxPoolSize?: number;
 }
 
-/** Handle opaque renvoyé par le moteur world (pass-through du SDK Vercel). */
-export interface WorldRunHandle {
-  runId?: string;
+/** Statut d'un run world (SDK Vercel). */
+export type WorldRunStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+/**
+ * Handle d'un run "world" (pass-through du `Run` du SDK Vercel).
+ * `returnValue` résout avec la sortie, ou rejette si le run échoue/est annulé.
+ */
+export interface WorldRunHandle<TResult = unknown> {
+  runId: string;
+  readonly returnValue: Promise<TResult>;
+  readonly status: Promise<WorldRunStatus>;
+  readonly exists: Promise<boolean>;
+  cancel(): Promise<void>;
   [key: string]: unknown;
 }
 

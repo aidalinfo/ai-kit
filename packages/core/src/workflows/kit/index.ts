@@ -4,6 +4,7 @@ export type {
   WorldConfig,
   WorkflowKitOptions,
   WorldRunHandle,
+  WorldRunStatus,
   WorldEngineAdapter,
   WorkflowWorldModule,
   WorkflowRunDispatchOptions,

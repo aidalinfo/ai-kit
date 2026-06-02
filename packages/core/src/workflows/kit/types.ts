@@ -22,9 +22,33 @@ export interface WorkflowKitOptions {
   world?: WorldConfig;
 }
 
-/** Handle opaque renvoyé par le moteur world (pass-through du SDK Vercel). */
-export interface WorldRunHandle {
-  runId?: string;
+/** Statut d'un run world (SDK Vercel). */
+export type WorldRunStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+/**
+ * Handle d'un run "world" (pass-through du `Run` du SDK Vercel).
+ *
+ * `returnValue` poll jusqu'à la complétion du run : il **résout** avec la sortie
+ * du workflow, ou **rejette** (`WorkflowRunFailedError` / `WorkflowRunCancelledError`)
+ * si le run échoue ou est annulé.
+ */
+export interface WorldRunHandle<TResult = unknown> {
+  /** Identifiant du run durable. */
+  runId: string;
+  /** Sortie du run : attend la complétion ; rejette en cas d'échec/annulation. */
+  readonly returnValue: Promise<TResult>;
+  /** Statut courant du run. */
+  readonly status: Promise<WorldRunStatus>;
+  /** Le run existe-t-il dans le world. */
+  readonly exists: Promise<boolean>;
+  /** Annule le run. */
+  cancel(): Promise<void>;
+  /** Pass-through : autres membres du `Run` SDK (wakeUp, getReadable, timestamps…) disponibles au runtime. */
   [key: string]: unknown;
 }
 

@@ -86,23 +86,57 @@ run<Output>(
 ): Promise<WorkflowRunResult<Output>>;
 
 // World overload — workflow is a "use workflow" function, input is the args array
-run(
-  workflow: (...args: any[]) => unknown,
+run<TResult = unknown>(
+  workflow: (...args: any[]) => TResult | Promise<TResult>,
   args: unknown[],
   dispatch?: { engine?: WorkflowEngine },
-): Promise<WorldRunHandle>;
+): Promise<WorldRunHandle<TResult>>;
 ```
 
 - **`legacy`** → delegates to `Workflow.run(options)` and returns a [`WorkflowRunResult`](/en/api-reference/workflow).
-- **`world`** → delegates to the SDK's `start(fn, args)` and returns a `WorldRunHandle`.
+- **`world`** → delegates to the SDK's `start(fn, args)` and returns a `WorldRunHandle` (durable; the output is **not** returned directly — see `runAndWait` / `returnValue`).
 
-### `WorldRunHandle`
+### `runAndWait(workflow, input, dispatch?)`
 
-The opaque handle returned by a world run (pass-through of the SDK `Run`):
+Runs a workflow and resolves with **its output**, synchronous-style, regardless of engine — the closest match to the legacy `await workflow.run()` then `.result`.
 
-| Property | Type | Description |
+```ts
+// Legacy overload → resolves with the workflow Output
+runAndWait<Output>(
+  workflow: Workflow<any, Output>,
+  options: WorkflowRunOptions,
+  dispatch?: { engine?: WorkflowEngine },
+): Promise<Output>;
+
+// World overload → awaits the durable run and resolves with its return value
+runAndWait<TResult = unknown>(
+  workflow: (...args: any[]) => TResult | Promise<TResult>,
+  args: unknown[],
+  dispatch?: { engine?: WorkflowEngine },
+): Promise<TResult>;
+```
+
+**Throws on failure** (so wrap it where legacy code read `result.status`):
+- `legacy` → throws when the result status is not `"success"` (with the run error);
+- `world` → rejects via the SDK (`WorkflowRunFailedError` / `WorkflowRunCancelledError`).
+
+```ts
+const report = await kit.runAndWait(reportWorkflow, [input]); // output directly
+```
+
+### `WorldRunHandle<TResult>`
+
+The handle returned by a world `run` (pass-through of the SDK `Run`). Use it when you want to start now and consume later:
+
+| Member | Type | Description |
 | --- | --- | --- |
 | `runId` | `string` | Identifier of the durable run. |
+| `returnValue` | `Promise<TResult>` | Resolves with the output once complete; **rejects** if the run failed/was cancelled. |
+| `status` | `Promise<WorldRunStatus>` | `"pending" \| "running" \| "completed" \| "failed" \| "cancelled"`. |
+| `exists` | `Promise<boolean>` | Whether the run exists in the world. |
+| `cancel()` | `Promise<void>` | Cancels the run. |
+
+Reconstitute a handle later from a stored id with `getRun(runId)` from `workflow/api`.
 
 ## Example
 
