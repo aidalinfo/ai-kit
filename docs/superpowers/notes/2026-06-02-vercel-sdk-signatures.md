@@ -270,6 +270,107 @@ Also re-exported from `@workflow/core/runtime`.
 
 ---
 
-## Spike Directive-in-Arrow Placeholder
+## Spike Directive-in-Arrow (Task 1.1)
 
-_(Task 1.1 will fill this section with the `"use workflow"` directive placement findings.)_
+**VERDICT 2 — Named-only (more precisely: "top-level binding only").**
+
+An arrow function passed as an **argument to a call expression** (the `defineWorldStep('id', async () => { "use step" })`
+"candidate" form) is **NOT** detected or transformed by the `workflow` compiler. The directive is silently left in the
+function body and no durable primitive is emitted — meaning the step/workflow would run as **plain non-durable code**.
+
+We therefore **cannot** ship `defineWorldStep` / `defineWorldWorkflow` as runtime identity wrappers.
+Ship **type-only ergonomics** instead (a `WorldStep<I,O>` / `WorldWorkflow<I,O>` type) and require users to write a
+**top-level binding** with the directive inside the body, e.g.:
+
+```ts
+// OK — top-level named function (canonical, all docs use this)
+export async function charge(order: Order) {
+  "use step";
+  return chargePayment(order);
+}
+
+// ALSO OK — arrow/fn-expression bound DIRECTLY to a const (no wrapping call)
+export const charge: WorldStep<Order, Receipt> = async (order) => {
+  "use step";
+  return chargePayment(order);
+};
+```
+
+### Where the transform actually lives
+
+- File-selection gate (`@workflow/builders/dist/transform-utils.js`) is a **pure source-text regex** on the directive
+  string (`useWorkflowPattern = /^\s*(['"])use workflow\1;?\s*$/m`) and is form-agnostic — so the file *is* picked up
+  for transformation regardless of function form. That gate is **not** what decides durability.
+- The real AST transform is a compiled-Rust SWC plugin: `@workflow/swc-plugin/swc_plugin_workflow.wasm` (v4.1.1),
+  invoked by `@workflow/builders/dist/apply-swc-transform.js` via `@swc/core`'s `transform` with
+  `jsc.experimental.plugins = [[swcPluginPath, { mode, moduleSpecifier }]]` where `mode` is `'workflow'` or `'step'`.
+  This wasm decides what gets a durable boundary.
+
+### Method used: empirical run of the **real production transform**
+
+I invoked `applySwcTransform()` (the exact function the Nitro/rollup builders call) on control vs candidate forms and
+inspected the emitted code + `workflowManifest`. A transformed step gets: the `"use step"` directive **stripped**, an
+injected `import { registerStepFunction } from "workflow/internal/private"`, a `/**__internal_workflows{...}*/` manifest
+comment, and a trailing `registerStepFunction("step//…", fn)` registration. A transformed workflow gets a
+`fn.workflowId = "workflow//…"` assignment + `globalThis.__private_workflows.set(...)`. Untransformed code keeps the raw
+directive and produces an empty `{}` manifest.
+
+Results (mode in parens):
+
+| Form | Transformed? | Evidence |
+|---|---|---|
+| `export async function f(){ "use step" }` (CONTROL) | **YES** | directive stripped, `registerStepFunction("step//./test//chargeControl", chargeControl)` emitted, manifest `{"steps":{...}}` |
+| `export const f = async () => { "use step" }` (arrow bound directly to const) | **YES** | manifest `{"steps":{...}}`, `registerStepFunction("step//./test//chargeVar", chargeVar)` emitted |
+| `const f = async () => { "use step" }; export { f }` (local then re-export) | **YES** | manifest populated, registration emitted |
+| `obj = { async charge(){ "use step" } }` (object method) | **YES** | hoisted to `obj$charge`, `registerStepFunction("step//./t//obj/charge", obj$charge)` |
+| **`export const f = defineWorldStep('id', async () => { "use step" })`** (CANDIDATE — arrow in wrapper call) | **NO** | directive left intact in body, **no** `registerStepFunction`, manifest `{}` |
+| `export const a = wrap(async () => { "use step" })` (wrapper, single arg) | **NO** | directive intact, manifest `{}` |
+| `register(async () => { "use step" })` (bare inline call arg) | **NO** | directive intact, manifest `{}` |
+| `export const wf = defineWorldWorkflow('wf', async () => { "use workflow" })` (CANDIDATE workflow) | **NO** | no `.workflowId`, no `__private_workflows.set`, manifest `{}` |
+| `export async function wf(){ "use workflow" }` (CONTROL workflow) | **YES** | `wf.workflowId = "workflow//…"`, `globalThis.__private_workflows.set(...)`, manifest populated |
+
+Verbatim CONTROL output (transformed):
+```js
+import { registerStepFunction } from "workflow/internal/private";
+/**__internal_workflows{"steps":{"test.ts":{"chargeControl":{"stepId":"step//./test//chargeControl"}}}}*/;
+export async function chargeControl(order) { return order.amount; }
+registerStepFunction("step//./test//chargeControl", chargeControl);
+```
+
+Verbatim CANDIDATE output (NOT transformed — directive survives, undurable):
+```js
+const defineWorldStep = (_id, fn)=>fn;
+export const chargeCandidate = defineWorldStep('charge', async (order)=>{
+    "use step";              // ← left in place, never stripped, never registered
+    return order.amount;
+});
+// workflowManifest: {}
+```
+
+### Corroborating source/string evidence
+
+`strings` on `swc_plugin_workflow.wasm` shows the transform validates the **container form** of a directive and
+enumerates the supported containers — none of which is "arrow inside a call argument":
+
+- `Class instance methods cannot be marked with "use workflow". Only static methods, functions, and object methods are supported.`
+- `Functions marked with "use step" must be async functions`
+- `<directive> must be at the top of the <…>` / `"…" is not a supported directive`
+- registration symbols: `registerStepFunction`, `workflow/internal/private`, `WORKFLOW_USE_STEP`, `__private_workflows`.
+
+(Note: `@workflow/builders/dist/workflows-extractor.js` *does* walk `ArrowFunctionExpression` in `buildFunctionMap`, but
+that is only the **inspector graph** extractor — not the durability transform — so it is not evidence of durability.)
+
+### Why this is the safe verdict
+
+A runtime identity wrapper would compile cleanly, pass types, and *look* correct, but the step/workflow body would
+execute as ordinary code with **zero durability / no replay boundary** — a silent correctness failure for users. The
+deciding factor is purely syntactic: the directive-bearing function must be the initializer of a **top-level
+declaration** (named `function`, or arrow/fn-expr bound directly to a `const`/`let`), an object method, or a static
+method. Putting it inside a **call expression** (a wrapper) breaks detection.
+
+**Ship plan:** type-only ergonomics — export `WorldStep<I,O>` / `WorldWorkflow<I,O>` function types so users get
+inference + a documented requirement to write the directive inside a top-level binding. No `defineWorldStep` runtime
+wrapper.
+
+(Scratch project `/tmp/world-spike` used `workflow` 4.3.1 → `@workflow/swc-plugin` 4.1.1 / `@workflow/builders` 4.0.9,
+`@swc/core` 1.15.3; cleaned up after the spike.)
