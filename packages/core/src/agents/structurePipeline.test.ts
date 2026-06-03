@@ -33,10 +33,12 @@ vi.mock("./structuredOutputSchema.js", () => ({
 }));
 
 import {
+  generateWithDirectStructuredObject,
   generateWithStructuredPipeline,
   shouldUseStructuredPipeline,
   streamWithStructuredPipeline,
 } from "./structurePipeline.js";
+import { resolveResilienceConfig } from "./structuredOutputResilience.js";
 
 class MockStreamResult {
   text: Promise<string>;
@@ -79,6 +81,25 @@ describe("structurePipeline", () => {
     streamTextMock.mockReset();
     jsonSchemaMock.mockClear();
     outputObjectMock.mockClear();
+  });
+
+  it("shouldUseStructuredPipeline reconnaît Output.object via .name (sans .type)", () => {
+    // The AI SDK's Output.object() result carries { name: "object" } and no
+    // `type`. The gate must treat it as a structured object all the same.
+    const outputObjectShape = { name: "object" } as any;
+
+    expect(
+      shouldUseStructuredPipeline({ provider: "scaleway.chat" } as any, {}, outputObjectShape),
+    ).toBe(true);
+    expect(
+      shouldUseStructuredPipeline({ provider: "anthropic" } as any, {}, outputObjectShape),
+    ).toBe(true);
+    expect(
+      shouldUseStructuredPipeline({ provider: "openai" } as any, {}, outputObjectShape),
+    ).toBe(false);
+    expect(
+      shouldUseStructuredPipeline({ provider: "anthropic" } as any, {}, { name: "text" } as any),
+    ).toBe(false);
   });
 
   it("shouldUseStructuredPipeline respecte toon, type et provider", () => {
@@ -204,5 +225,117 @@ describe("structurePipeline", () => {
       "structured stream failed",
     );
     expect(() => (result as any).experimental_output).toThrow("structured stream failed");
+  });
+
+  it("normalise une clé dérivée de la sortie structurée sans reprise", async () => {
+    generateTextMock.mockResolvedValueOnce({ text: "Réponse libre" });
+    generateTextMock.mockResolvedValueOnce({ output: { Summary: "OK" } });
+
+    const result = await generateWithStructuredPipeline({
+      model: { provider: "anthropic" } as any,
+      structuredOutput: { type: "object" } as any,
+      options: { prompt: "Fais un résumé" } as any,
+      telemetryEnabled: false,
+      loopToolsEnabled: false,
+    });
+
+    expect((result as any).experimental_output).toEqual({ summary: "OK" });
+    expect(generateTextMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("relance le modèle pour réparer un alias sémantique (clé manquante)", async () => {
+    generateTextMock.mockResolvedValueOnce({ text: "Réponse libre" });
+    generateTextMock.mockResolvedValueOnce({ output: { resume: "mauvaise clé" } });
+    generateTextMock.mockResolvedValueOnce({ output: { summary: "réparé" } });
+
+    const result = await generateWithStructuredPipeline({
+      model: { provider: "anthropic" } as any,
+      structuredOutput: { type: "object" } as any,
+      options: { prompt: "Fais un résumé" } as any,
+      telemetryEnabled: false,
+      loopToolsEnabled: false,
+    });
+
+    expect((result as any).experimental_output).toEqual({ summary: "réparé" });
+    expect(generateTextMock).toHaveBeenCalledTimes(3);
+
+    const repairPayload = generateTextMock.mock.calls[2]?.[0];
+    const lastMessage = repairPayload.messages[repairPayload.messages.length - 1];
+    expect(lastMessage.role).toBe("user");
+    expect(lastMessage.content).toContain("summary");
+  });
+
+  it("ne relance pas quand la réparation est désactivée", async () => {
+    generateTextMock.mockResolvedValueOnce({ text: "Réponse libre" });
+    generateTextMock.mockResolvedValueOnce({ output: { resume: "mauvaise clé" } });
+
+    const result = await generateWithStructuredPipeline({
+      model: { provider: "anthropic" } as any,
+      structuredOutput: { type: "object" } as any,
+      options: { prompt: "Fais un résumé" } as any,
+      telemetryEnabled: false,
+      loopToolsEnabled: false,
+      resilienceConfig: resolveResilienceConfig({ structuredOutputRepair: false }),
+    });
+
+    expect((result as any).experimental_output).toEqual({ resume: "mauvaise clé" });
+    expect(generateTextMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("normalise la clé dérivée du dernier objet en streaming", async () => {
+    const baseStreamResult = new MockStreamResult("Texte stream") as any;
+    const objectStream = {
+      output: Promise.resolve({ Summary: "stream-ok" }),
+      partialOutputStream: asAsyncIterable([{ summary: "partiel" }]),
+    };
+
+    streamTextMock.mockReturnValueOnce(baseStreamResult);
+    streamTextMock.mockResolvedValueOnce(objectStream);
+
+    const result = await streamWithStructuredPipeline({
+      model: { provider: "anthropic" } as any,
+      structuredOutput: { type: "object" } as any,
+      options: { prompt: "stream" } as any,
+      telemetryEnabled: false,
+      loopToolsEnabled: false,
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect((result as any).experimental_output).toEqual({ summary: "stream-ok" });
+  });
+
+  it("normalise la clé dérivée sur le chemin direct (sans outils)", async () => {
+    generateTextMock.mockResolvedValueOnce({ output: { Summary: "OK" } });
+
+    const result = await generateWithDirectStructuredObject({
+      model: { provider: "anthropic" } as any,
+      structuredOutput: { type: "object" } as any,
+      options: { prompt: "Fais un résumé" } as any,
+      telemetryEnabled: false,
+    });
+
+    expect((result as any).experimental_output).toEqual({ summary: "OK" });
+    expect(generateTextMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("répare un alias sémantique sur le chemin direct", async () => {
+    generateTextMock.mockResolvedValueOnce({ output: { resume: "mauvaise clé" } });
+    generateTextMock.mockResolvedValueOnce({ output: { summary: "réparé" } });
+
+    const result = await generateWithDirectStructuredObject({
+      model: { provider: "anthropic" } as any,
+      structuredOutput: { type: "object" } as any,
+      options: { prompt: "Fais un résumé" } as any,
+      telemetryEnabled: false,
+    });
+
+    expect((result as any).experimental_output).toEqual({ summary: "réparé" });
+    expect(generateTextMock).toHaveBeenCalledTimes(2);
+
+    const repairPayload = generateTextMock.mock.calls[1]?.[0];
+    const lastMessage = repairPayload.messages[repairPayload.messages.length - 1];
+    expect(lastMessage.role).toBe("user");
+    expect(lastMessage.content).toContain("summary");
   });
 });
