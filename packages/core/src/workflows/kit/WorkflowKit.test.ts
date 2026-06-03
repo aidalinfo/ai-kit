@@ -175,4 +175,13 @@ describe("WorkflowKit — télémétrie world (tags compile-check)", () => {
     };
     expect(true).toBe(true);
   });
+
+  it("resolveWorkflowTelemetryConfig propage tags dans la config résolue", async () => {
+    const { resolveWorkflowTelemetryConfig } = await import("../telemetry.js");
+    const config = resolveWorkflowTelemetryConfig({
+      workflowId: "wf",
+      overrideOption: { tags: ["env:prod", "wf:form-builder"] },
+    });
+    expect(config?.tags).toEqual(["env:prod", "wf:form-builder"]);
+  });
 });

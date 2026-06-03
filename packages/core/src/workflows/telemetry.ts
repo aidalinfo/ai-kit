@@ -21,6 +21,7 @@ export interface WorkflowTelemetryResolvedConfig {
   recordInputs: boolean;
   recordOutputs: boolean;
   userId?: string;
+  tags?: string[];
 }
 
 interface ResolveTelemetryOptionsParams {
@@ -138,6 +139,10 @@ export const resolveWorkflowTelemetryConfig = ({
 
   const resolvedUserId = overrideOverrides?.userId ?? baseOverrides?.userId;
 
+  const resolvedTags =
+    overrideOverrides?.tags ??
+    baseOverrides?.tags;
+
   const hasMetadata = Object.keys(metadata).length > 0;
   const resolvedTraceName = overrideOverrides?.traceName ?? baseOverrides?.traceName ?? workflowId;
 
@@ -152,6 +157,7 @@ export const resolveWorkflowTelemetryConfig = ({
     recordInputs: resolvedRecordInputs,
     recordOutputs: resolvedRecordOutputs,
     userId: resolvedUserId,
+    tags: resolvedTags,
   };
 };
 
