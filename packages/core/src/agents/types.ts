@@ -18,6 +18,17 @@ export interface AgentTelemetryOverrides {
   recordOutputs?: boolean;
 }
 
+/**
+ * Per-agent telemetry configuration. Use the object form to set a custom trace
+ * name (`functionId`) or to attach metadata shared by every call of the agent
+ * (e.g. `{ metadata: { workflow: "form-builder" } }` to group a pipeline).
+ */
+export interface AgentTelemetryConfig {
+  enabled?: boolean;
+  functionId?: string;
+  metadata?: Record<string, unknown>;
+}
+
 type FirstArg<T> = T extends (arg: infer A, ...rest: any[]) => any ? A : never;
 
 export type GenerateTextParams = FirstArg<typeof generateText>;
