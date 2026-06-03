@@ -1,3 +1,4 @@
+import { context as otelContext, SpanStatusCode } from "@opentelemetry/api";
 import type { Workflow } from "../workflow.js";
 import type { WorkflowRunOptions, WorkflowRunResult } from "../types.js";
 import type {
@@ -9,6 +10,8 @@ import type {
   WorldRunHandle,
   WorkflowRunDispatchOptions,
 } from "./types.js";
+import { startWorldRootSpan } from "./worldTelemetry.js";
+import { resolveWorkflowTelemetryConfig } from "../telemetry.js";
 
 const VALID_WORLD_TYPES = ["postgres", "mongodb"] as const;
 
@@ -78,7 +81,32 @@ export class WorkflowKit {
       return (workflow as Workflow<any, any, any, any>).run(input);
     }
     const adapter = await this.#ensureAdapter();
-    return adapter.run(workflow, input as unknown[]);
+    const telemetryConfig = resolveWorkflowTelemetryConfig({
+      workflowId: (workflow as { name?: string }).name ?? "workflow",
+      overrideOption: dispatch?.telemetry,
+    });
+
+    if (!telemetryConfig) {
+      return adapter.run(workflow, input as unknown[]);
+    }
+
+    const { span, rootContext } = startWorldRootSpan(telemetryConfig, input);
+    try {
+      const handle = await otelContext.with(rootContext, () =>
+        adapter.run(workflow, input as unknown[]),
+      );
+      span.setStatus({ code: SpanStatusCode.OK });
+      span.end();
+      return handle;
+    } catch (error) {
+      span.recordException(error instanceof Error ? error : new Error(String(error)));
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      span.end();
+      throw error;
+    }
   }
 
   // Overload: legacy engine — returns the workflow output, throws on non-success
@@ -116,8 +144,43 @@ export class WorkflowKit {
       return result.result;
     }
     const adapter = await this.#ensureAdapter();
-    const handle = await adapter.run(workflow, input as unknown[]);
-    return handle.returnValue;
+    const telemetryConfig = resolveWorkflowTelemetryConfig({
+      workflowId: (workflow as { name?: string }).name ?? "workflow",
+      overrideOption: dispatch?.telemetry,
+    });
+
+    if (!telemetryConfig) {
+      const handle = await adapter.run(workflow, input as unknown[]);
+      return handle.returnValue;
+    }
+
+    const { span, rootContext } = startWorldRootSpan(telemetryConfig, input);
+    try {
+      const handle = await otelContext.with(rootContext, () =>
+        adapter.run(workflow, input as unknown[]),
+      );
+      const result = await handle.returnValue;
+      if (telemetryConfig.recordOutputs) {
+        let outputStr: string;
+        try {
+          outputStr = JSON.stringify(result);
+        } catch {
+          outputStr = String(result);
+        }
+        span.setAttribute("output", outputStr);
+      }
+      span.setStatus({ code: SpanStatusCode.OK });
+      span.end();
+      return result;
+    } catch (error) {
+      span.recordException(error instanceof Error ? error : new Error(String(error)));
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      span.end();
+      throw error;
+    }
   }
 
   async #ensureAdapter(): Promise<WorldEngineAdapter> {

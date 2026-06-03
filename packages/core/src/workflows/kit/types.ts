@@ -1,5 +1,5 @@
 import type { Workflow } from "../workflow.js";
-import type { WorkflowRunOptions, WorkflowRunResult } from "../types.js";
+import type { WorkflowRunOptions, WorkflowRunResult, WorkflowTelemetryOption } from "../types.js";
 
 export type WorkflowEngine = "legacy" | "world";
 
@@ -74,6 +74,7 @@ export interface WorkflowWorldModule {
 /** Options par appel de WorkflowKit.run. */
 export interface WorkflowRunDispatchOptions {
   engine?: WorkflowEngine;
+  telemetry?: WorkflowTelemetryOption;
 }
 
 export type { Workflow, WorkflowRunOptions, WorkflowRunResult };

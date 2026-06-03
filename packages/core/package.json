@@ -1,6 +1,6 @@
 {
   "name": "@ai_kit/core",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "",
   "type": "module",
   "main": "./dist/index.js",
@@ -65,6 +65,7 @@
   "devDependencies": {
     "@langchain/core": "^1.1.48",
     "@opentelemetry/sdk-trace-base": "^2.2.0",
+    "@opentelemetry/sdk-trace-node": "^2.2.0",
     "@qdrant/js-client-rest": "^1.18.0",
     "@types/pg": "^8.15.6",
     "@types/ws": "^8.18.1",
