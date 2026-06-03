@@ -114,6 +114,15 @@ const agent = new Agent({
   telemetry: true,
 });
 
+// La trace Langfuse prend automatiquement le nom de l'agent (`functionId = name`)
+// et reçoit `metadata.agent = name`, donc elle est filtrable par agent.
+// Forme objet pour personnaliser le nom ou regrouper un workflow :
+const writer = new Agent({
+  name: "writer-agent",
+  model: openai("gpt-4.1-mini"),
+  telemetry: { functionId: "writeDoc", metadata: { workflow: "form-builder" } },
+});
+
 const workflow = createWorkflow({ id: "demo", telemetry: true })
   .then(createStep({ id: "noop", handler: ({ input }) => input }))
   .commit();

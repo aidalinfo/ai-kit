@@ -25,6 +25,8 @@ import {
   type AgentStreamOptions,
   type AgentStreamResult,
   type AgentStructuredOutput,
+  type AgentTelemetryConfig,
+  type AgentTelemetryOverrides,
   type AgentTools,
   type GenerateTextParams,
   type StreamTextParams,
@@ -33,7 +35,7 @@ import {
   type WithPrompt,
 } from "./types.js";
 import { applyDefaultStopWhen } from "./toolDefaults.js";
-import { mergeTelemetryConfig } from "./telemetry.js";
+import { combineTelemetryOverrides, mergeTelemetryConfig } from "./telemetry.js";
 import {
   createToolLoopSettings,
   DEFAULT_MAX_STEP_TOOLS,
@@ -54,6 +56,7 @@ export type {
   AgentGenerateResult,
   AgentStreamOptions,
   AgentStreamResult,
+  AgentTelemetryConfig,
   AgentTelemetryOverrides,
   AgentStructuredOutput,
 } from "./types.js";
@@ -64,7 +67,7 @@ export interface AgentConfig {
   instructions?: string;
   model: LanguageModel;
   tools?: AgentTools;
-  telemetry?: boolean;
+  telemetry?: boolean | AgentTelemetryConfig;
   loopTools?: boolean;
   maxStepTools?: number;
   toon?: boolean;
@@ -77,6 +80,7 @@ export class Agent {
   readonly model: LanguageModel;
   readonly tools?: AgentTools;
   private telemetryEnabled: boolean;
+  private telemetryDefaults?: AgentTelemetryOverrides;
   private loopToolsEnabled: boolean;
   private maxStepTools: number;
   private toonEnabled: boolean;
@@ -97,7 +101,9 @@ export class Agent {
     this.instructions = instructions;
     this.model = model;
     this.tools = tools;
-    this.telemetryEnabled = telemetry ?? false;
+    const resolvedTelemetry = resolveAgentTelemetry(telemetry);
+    this.telemetryEnabled = resolvedTelemetry.enabled;
+    this.telemetryDefaults = resolvedTelemetry.defaults;
     this.loopToolsEnabled = loopTools ?? false;
     this.maxStepTools = maxStepTools ?? DEFAULT_MAX_STEP_TOOLS;
     this.toonEnabled = toon ?? false;
@@ -226,6 +232,8 @@ export class Agent {
             structuredOutput,
             options: preparedOptions,
             telemetryEnabled: this.telemetryEnabled,
+            telemetryDefaults: this.telemetryDefaults,
+            agentName: this.name,
           }),
         );
       }
@@ -250,6 +258,8 @@ export class Agent {
                 structuredOutput,
                 options: optionsWithStopWhen,
                 telemetryEnabled: this.telemetryEnabled,
+                telemetryDefaults: this.telemetryDefaults,
+                agentName: this.name,
                 loopToolsEnabled: loopSettings.enabled,
               });
 
@@ -321,8 +331,12 @@ export class Agent {
 
               const mergedTelemetry = mergeTelemetryConfig({
                 agentTelemetryEnabled: this.telemetryEnabled,
-                overrides: telemetryOverrides,
+                overrides: combineTelemetryOverrides(
+                  this.telemetryDefaults,
+                  telemetryOverrides,
+                ),
                 existing: experimental_telemetry,
+                agentName: this.name,
               });
 
               if (mergedTelemetry !== undefined) {
@@ -397,8 +411,12 @@ export class Agent {
 
               const mergedTelemetry = mergeTelemetryConfig({
                 agentTelemetryEnabled: this.telemetryEnabled,
-                overrides: telemetryOverrides,
+                overrides: combineTelemetryOverrides(
+                  this.telemetryDefaults,
+                  telemetryOverrides,
+                ),
                 existing: experimental_telemetry,
+                agentName: this.name,
               });
 
               if (mergedTelemetry !== undefined) {
@@ -480,6 +498,8 @@ export class Agent {
               structuredOutput,
               options: optionsWithStopWhen,
               telemetryEnabled: this.telemetryEnabled,
+              telemetryDefaults: this.telemetryDefaults,
+              agentName: this.name,
               loopToolsEnabled: loopSettings.enabled,
             });
           },
@@ -550,8 +570,12 @@ export class Agent {
 
             const mergedTelemetry = mergeTelemetryConfig({
               agentTelemetryEnabled: this.telemetryEnabled,
-              overrides: telemetryOverrides,
+              overrides: combineTelemetryOverrides(
+                this.telemetryDefaults,
+                telemetryOverrides,
+              ),
               existing: experimental_telemetry,
+              agentName: this.name,
             });
 
             if (mergedTelemetry !== undefined) {
@@ -636,8 +660,12 @@ export class Agent {
 
             const mergedTelemetry = mergeTelemetryConfig({
               agentTelemetryEnabled: this.telemetryEnabled,
-              overrides: telemetryOverrides,
+              overrides: combineTelemetryOverrides(
+                this.telemetryDefaults,
+                telemetryOverrides,
+              ),
               existing: experimental_telemetry,
+              agentName: this.name,
             });
 
             if (mergedTelemetry !== undefined) {
@@ -682,6 +710,28 @@ export class Agent {
       }
     });
   }
+}
+
+function resolveAgentTelemetry(telemetry?: boolean | AgentTelemetryConfig): {
+  enabled: boolean;
+  defaults?: AgentTelemetryOverrides;
+} {
+  if (telemetry === undefined || typeof telemetry === "boolean") {
+    return { enabled: telemetry ?? false };
+  }
+
+  const defaults: AgentTelemetryOverrides = {};
+  if (telemetry.functionId !== undefined) {
+    defaults.functionId = telemetry.functionId;
+  }
+  if (telemetry.metadata !== undefined) {
+    defaults.metadata = telemetry.metadata;
+  }
+
+  return {
+    enabled: telemetry.enabled ?? true,
+    defaults: Object.keys(defaults).length > 0 ? defaults : undefined,
+  };
 }
 
 function hasAgentTools(tools: AgentTools | undefined): boolean {
