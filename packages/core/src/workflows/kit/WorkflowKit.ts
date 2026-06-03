@@ -134,8 +134,37 @@ export class WorkflowKit {
       return result.result;
     }
     const adapter = await this.#ensureAdapter();
-    const handle = await adapter.run(workflow, input as unknown[]);
-    return handle.returnValue;
+    const telemetryConfig = resolveWorkflowTelemetryConfig({
+      workflowId: (workflow as { name?: string }).name ?? "workflow",
+      overrideOption: dispatch?.telemetry,
+    });
+
+    if (!telemetryConfig) {
+      const handle = await adapter.run(workflow, input as unknown[]);
+      return handle.returnValue;
+    }
+
+    const { span, rootContext } = startWorldRootSpan(telemetryConfig, input);
+    try {
+      const handle = await otelContext.with(rootContext, () =>
+        adapter.run(workflow, input as unknown[]),
+      );
+      const result = await handle.returnValue;
+      if (telemetryConfig.recordOutputs) {
+        span.setAttribute("output", JSON.stringify(result));
+      }
+      span.setStatus({ code: SpanStatusCode.OK });
+      span.end();
+      return result;
+    } catch (error) {
+      span.recordException(error instanceof Error ? error : new Error(String(error)));
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      span.end();
+      throw error;
+    }
   }
 
   async #ensureAdapter(): Promise<WorldEngineAdapter> {
