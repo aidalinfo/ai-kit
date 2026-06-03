@@ -43,6 +43,10 @@ import {
 } from "./toolLoop.js";
 import { buildToonSystemPrompt, parseToonStructuredOutput } from "./toon.js";
 import { getJsonSchemaFromStructuredOutput } from "./structuredOutputSchema.js";
+import {
+  resolveResilienceConfig,
+  type StructuredOutputResilienceOptions,
+} from "./structuredOutputResilience.js";
 
 const Output = BaseOutput as typeof BaseOutput & {
   object: <SCHEMA extends FlexibleSchema<unknown>>(options: {
@@ -61,8 +65,9 @@ export type {
   AgentStructuredOutput,
 } from "./types.js";
 export { DEFAULT_MAX_STEP_TOOLS } from "./toolLoop.js";
+export type { StructuredOutputResilienceOptions } from "./structuredOutputResilience.js";
 
-export interface AgentConfig {
+export interface AgentConfig extends StructuredOutputResilienceOptions {
   name: string;
   instructions?: string;
   model: LanguageModel;
@@ -84,6 +89,8 @@ export class Agent {
   private loopToolsEnabled: boolean;
   private maxStepTools: number;
   private toonEnabled: boolean;
+  private normalizeStructuredKeysDefault?: boolean;
+  private structuredOutputRepairDefault?: boolean | { maxAttempts?: number };
   readonly memory?: Memory;
 
   constructor({
@@ -96,6 +103,8 @@ export class Agent {
     maxStepTools,
     toon,
     memory,
+    normalizeStructuredKeys,
+    structuredOutputRepair,
   }: AgentConfig) {
     this.name = name;
     this.instructions = instructions;
@@ -107,9 +116,20 @@ export class Agent {
     this.loopToolsEnabled = loopTools ?? false;
     this.maxStepTools = maxStepTools ?? DEFAULT_MAX_STEP_TOOLS;
     this.toonEnabled = toon ?? false;
+    this.normalizeStructuredKeysDefault = normalizeStructuredKeys;
+    this.structuredOutputRepairDefault = structuredOutputRepair;
     if (memory) {
       this.memory = new Memory(memory);
     }
+  }
+
+  private resolveResilience(options: StructuredOutputResilienceOptions) {
+    return resolveResilienceConfig({
+      normalizeStructuredKeys:
+        options.normalizeStructuredKeys ?? this.normalizeStructuredKeysDefault,
+      structuredOutputRepair:
+        options.structuredOutputRepair ?? this.structuredOutputRepairDefault,
+    });
   }
 
   withTelemetry(enabled: boolean = true) {
@@ -234,6 +254,7 @@ export class Agent {
             telemetryEnabled: this.telemetryEnabled,
             telemetryDefaults: this.telemetryDefaults,
             agentName: this.name,
+            resilienceConfig: this.resolveResilience(options),
           }),
         );
       }
@@ -261,6 +282,7 @@ export class Agent {
                 telemetryDefaults: this.telemetryDefaults,
                 agentName: this.name,
                 loopToolsEnabled: loopSettings.enabled,
+                resilienceConfig: this.resolveResilience(options),
               });
 
               return result;
@@ -275,6 +297,8 @@ export class Agent {
           structuredOutput: _structured,
           runtime: _runtime,
           toon: _toon,
+          normalizeStructuredKeys: _normalizeStructuredKeys,
+          structuredOutputRepair: _structuredOutputRepair,
           ...rest
         } = options;
         const {
@@ -355,6 +379,8 @@ export class Agent {
           structuredOutput: _structured,
           runtime: _runtime,
           toon: _toon,
+          normalizeStructuredKeys: _normalizeStructuredKeys,
+          structuredOutputRepair: _structuredOutputRepair,
           ...rest
         } = options;
         const {
@@ -501,6 +527,7 @@ export class Agent {
               telemetryDefaults: this.telemetryDefaults,
               agentName: this.name,
               loopToolsEnabled: loopSettings.enabled,
+              resilienceConfig: this.resolveResilience(options),
             });
           },
         });
@@ -515,6 +542,8 @@ export class Agent {
           structuredOutput: _structured,
           runtime: _runtime,
           toon: _toon,
+          normalizeStructuredKeys: _normalizeStructuredKeys,
+          structuredOutputRepair: _structuredOutputRepair,
           ...rest
         } = options;
         const {
@@ -605,6 +634,8 @@ export class Agent {
           structuredOutput: _structured,
           runtime: _runtime,
           toon: _toon,
+          normalizeStructuredKeys: _normalizeStructuredKeys,
+          structuredOutputRepair: _structuredOutputRepair,
           ...rest
         } = options;
         const {
