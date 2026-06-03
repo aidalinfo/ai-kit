@@ -232,6 +232,89 @@ describe("startWorldRootSpan", () => {
   });
 });
 
+describe("WorkflowKit — world — télémétrie run (fire-and-forget)", () => {
+  let provider: BasicTracerProvider;
+  let exporter: InMemorySpanExporter;
+
+  beforeEach(() => {
+    exporter = new InMemorySpanExporter();
+    provider = new BasicTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    });
+    trace.setGlobalTracerProvider(provider);
+  });
+
+  afterEach(async () => {
+    await provider.shutdown();
+    exporter.reset();
+    trace.disable();
+  });
+
+  it("sans telemetry → 0 span émis, adapter appelé normalement", async () => {
+    const handle = { runId: "r1", returnValue: Promise.resolve("ok") };
+    const adapter = {
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      run: vi.fn().mockResolvedValue(handle),
+    };
+    __setWorkflowWorldLoader(async () => ({ createWorldAdapter: () => adapter }));
+
+    const kit = new WorkflowKit({ engine: "world", world: { type: "postgres", url: "x" } });
+    const fn = async () => 42;
+    const result = await kit.run(fn, ["a"]);
+
+    expect(adapter.run).toHaveBeenCalledWith(fn, ["a"]);
+    expect(result).toBe(handle);
+    expect(exporter.getFinishedSpans()).toHaveLength(0);
+  });
+
+  it("avec telemetry → 1 span racine nommé terminé avant le return", async () => {
+    const handle = { runId: "r2", returnValue: Promise.resolve("ok") };
+    const adapter = {
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      run: vi.fn().mockResolvedValue(handle),
+    };
+    __setWorkflowWorldLoader(async () => ({ createWorldAdapter: () => adapter }));
+
+    const kit = new WorkflowKit({ engine: "world", world: { type: "postgres", url: "x" } });
+
+    async function monWorkflow(input: string) { return input; }
+
+    await kit.run(monWorkflow, ["hello"], {
+      telemetry: { traceName: "mon-workflow", userId: "u1", tags: ["t"] },
+    });
+
+    const spans = exporter.getFinishedSpans();
+    expect(spans).toHaveLength(1);
+    const s = spans[0]!;
+    expect(s.name).toBe("mon-workflow");
+    expect(s.attributes["langfuse.user.id"]).toBe("u1");
+    expect(s.attributes["langfuse.trace.tags"]).toBe('["t"]');
+    expect(s.attributes["input"]).toBeDefined();
+  });
+
+  it("avec telemetry: true → traceName = fn.name", async () => {
+    const handle = { runId: "r3", returnValue: Promise.resolve("ok") };
+    const adapter = {
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      run: vi.fn().mockResolvedValue(handle),
+    };
+    __setWorkflowWorldLoader(async () => ({ createWorldAdapter: () => adapter }));
+
+    const kit = new WorkflowKit({ engine: "world", world: { type: "postgres", url: "x" } });
+
+    async function buildForm() { return "done"; }
+
+    await kit.run(buildForm, [], { telemetry: true });
+
+    const spans = exporter.getFinishedSpans();
+    expect(spans).toHaveLength(1);
+    expect(spans[0]!.name).toBe("buildForm");
+  });
+});
+
 describe("WorkflowKit — télémétrie world (tags compile-check)", () => {
   it("WorkflowRunDispatchOptions accepte telemetry avec tags (type-check uniquement)", () => {
     // Ce test ne fait que vérifier que le type compile — il n'a pas de logique runtime.
