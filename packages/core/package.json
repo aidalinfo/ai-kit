@@ -67,8 +67,10 @@
     "@opentelemetry/sdk-trace-base": "^2.2.0",
     "@qdrant/js-client-rest": "^1.18.0",
     "@types/pg": "^8.15.6",
+    "@types/ws": "^8.18.1",
     "typescript": "^5.9.2",
     "vite": "^7.3.5",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "ws": "^8.21.0"
   }
 }
