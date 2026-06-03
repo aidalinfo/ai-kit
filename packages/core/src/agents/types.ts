@@ -10,6 +10,7 @@ import {
 } from "ai";
 
 import type { RuntimeState, RuntimeStore } from "../runtime/store.js";
+import type { StructuredOutputResilienceOptions } from "./structuredOutputResilience.js";
 
 export interface AgentTelemetryOverrides {
   functionId?: string;
@@ -68,7 +69,7 @@ export type BaseAgentOptions<
   loopTools?: boolean;
   maxStepTools?: number;
   memory?: MemoryOptions;
-};
+} & StructuredOutputResilienceOptions;
 
 export type AgentGenerateOptions<
   OUTPUT = never,

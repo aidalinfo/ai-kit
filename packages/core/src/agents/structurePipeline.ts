@@ -27,6 +27,12 @@ import {
 } from "./types.js";
 import { setExperimentalOutput } from "./experimentalOutput.js";
 import { getJsonSchemaFromStructuredOutput } from "./structuredOutputSchema.js";
+import {
+  normalizeKeysToSchema,
+  resolveResilienceConfig,
+  resolveResilientObject,
+  type ResilienceConfig,
+} from "./structuredOutputResilience.js";
 
 const OPENAI_PROVIDER_ID = "openai";
 
@@ -46,6 +52,7 @@ interface StructuredGeneratePipelineParams<
   telemetryDefaults?: AgentTelemetryOverrides;
   agentName?: string;
   loopToolsEnabled: boolean;
+  resilienceConfig?: ResilienceConfig;
 }
 
 interface StructuredStreamPipelineParams<
@@ -62,6 +69,7 @@ interface StructuredStreamPipelineParams<
   telemetryDefaults?: AgentTelemetryOverrides;
   agentName?: string;
   loopToolsEnabled: boolean;
+  resilienceConfig?: ResilienceConfig;
 }
 
 interface StructuredDirectGenerateParams<
@@ -76,6 +84,7 @@ interface StructuredDirectGenerateParams<
   telemetryEnabled: boolean;
   telemetryDefaults?: AgentTelemetryOverrides;
   agentName?: string;
+  resilienceConfig?: ResilienceConfig;
 }
 
 export function shouldUseStructuredPipeline<OUTPUT, PARTIAL_OUTPUT>(
@@ -88,7 +97,11 @@ export function shouldUseStructuredPipeline<OUTPUT, PARTIAL_OUTPUT>(
     return false;
   }
 
-  if (!structuredOutput || structuredOutput.type !== "object") {
+  // The AI SDK's `Output.object()` result identifies itself via `name`
+  // ("object"), while hand-built structured outputs may use `type`. Accept
+  // either, consistent with getJsonSchemaFromStructuredOutput.
+  const kind = structuredOutput?.type ?? structuredOutput?.name;
+  if (!structuredOutput || kind !== "object") {
     return false;
   }
 
@@ -112,6 +125,7 @@ export async function generateWithStructuredPipeline<
     telemetryDefaults,
     agentName,
     loopToolsEnabled,
+    resilienceConfig,
   } = params;
 
   const originalPrompt = "prompt" in options ? options.prompt : undefined;
@@ -128,26 +142,35 @@ export async function generateWithStructuredPipeline<
       loopToolsEnabled,
     });
 
-  const schema = jsonSchema(
-    await getJsonSchemaFromStructuredOutput(structuredOutput),
+  const jsonSchemaObject = await getJsonSchemaFromStructuredOutput(
+    structuredOutput,
   );
+  const schema = jsonSchema(jsonSchemaObject);
   const structuringMessages = buildStructuringMessages({
     text: textResult.text,
     originalPrompt,
     originalMessages,
   });
+  const objectCallSettings = extractObjectCallSettings(
+    options as unknown as Partial<GenerateTextParams>,
+  );
 
-  const objectResult = await generateText({
-    ...extractObjectCallSettings(
-      options as unknown as Partial<GenerateTextParams>,
-    ),
-    model,
-    system,
-    messages: structuringMessages,
-    output: Output.object({ schema }),
+  const runStructuredObjectCall = (messages: ModelMessages) =>
+    generateStructuredObject({ model, system, schema, messages, objectCallSettings });
+
+  const initialObject = await runStructuredObjectCall(structuringMessages);
+
+  const resilient = await resolveResilientObject({
+    initialObject,
+    schema: jsonSchemaObject,
+    config: resilienceConfig ?? resolveResilienceConfig({}),
+    requery: ({ instruction, previousObject }) =>
+      runStructuredObjectCall(
+        appendRepairTurn(structuringMessages, instruction, previousObject),
+      ),
   });
 
-  setExperimentalOutput(textResult, objectResult.output as OUTPUT);
+  setExperimentalOutput(textResult, resilient as OUTPUT);
 
   return textResult;
 }
@@ -167,11 +190,13 @@ export async function generateWithDirectStructuredObject<
     telemetryEnabled,
     telemetryDefaults,
     agentName,
+    resilienceConfig,
   } = params;
 
-  const schema = jsonSchema(
-    await getJsonSchemaFromStructuredOutput(structuredOutput),
+  const jsonSchemaObject = await getJsonSchemaFromStructuredOutput(
+    structuredOutput,
   );
+  const schema = jsonSchema(jsonSchemaObject);
 
   const textResult = await callGenerateTextDirect({
     model,
@@ -183,7 +208,26 @@ export async function generateWithDirectStructuredObject<
     schema,
   });
 
-  setExperimentalOutput(textResult, textResult.output as OUTPUT);
+  const objectCallSettings = extractObjectCallSettings(
+    options as unknown as Partial<GenerateTextParams>,
+  );
+  const baseMessages = deriveBaseMessages(options);
+
+  const resilient = await resolveResilientObject({
+    initialObject: textResult.output as unknown,
+    schema: jsonSchemaObject,
+    config: resilienceConfig ?? resolveResilienceConfig({}),
+    requery: ({ instruction, previousObject }) =>
+      generateStructuredObject({
+        model,
+        system,
+        schema,
+        messages: appendRepairTurn(baseMessages, instruction, previousObject),
+        objectCallSettings,
+      }),
+  });
+
+  setExperimentalOutput(textResult, resilient as OUTPUT);
 
   return textResult;
 }
@@ -205,6 +249,7 @@ export async function streamWithStructuredPipeline<
     telemetryDefaults,
     agentName,
     loopToolsEnabled,
+    resilienceConfig,
   } = params;
 
   const originalPrompt = "prompt" in options ? options.prompt : undefined;
@@ -221,9 +266,11 @@ export async function streamWithStructuredPipeline<
     loopToolsEnabled,
   });
 
-  const schema = jsonSchema(
-    await getJsonSchemaFromStructuredOutput(structuredOutput),
+  const jsonSchemaObject = await getJsonSchemaFromStructuredOutput(
+    structuredOutput,
   );
+  const schema = jsonSchema(jsonSchemaObject);
+  const config = resilienceConfig ?? resolveResilienceConfig({});
   let pipelineError: unknown;
 
   const objectStreamPromise = (async () => {
@@ -246,7 +293,10 @@ export async function streamWithStructuredPipeline<
 
     try {
       const finalObject = await objectStream.output;
-      setExperimentalOutput(streamResult, finalObject as OUTPUT);
+      const normalized = config.normalizeKeys
+        ? normalizeKeysToSchema(finalObject, jsonSchemaObject)
+        : finalObject;
+      setExperimentalOutput(streamResult, normalized as OUTPUT);
     } catch (error) {
       pipelineError = error;
       throw error;
@@ -281,6 +331,69 @@ export async function streamWithStructuredPipeline<
 
 function getProvider(model: LanguageModel): string | undefined {
   return typeof model === "string" ? undefined : model.provider;
+}
+
+/**
+ * Runs a single structuring object generation and returns the produced object
+ * (unvalidated — the schema passed to `Output.object` here is a bare JSON
+ * schema, so resilience layers downstream own validation).
+ */
+async function generateStructuredObject({
+  model,
+  system,
+  schema,
+  messages,
+  objectCallSettings,
+}: {
+  model: LanguageModel;
+  system?: string;
+  schema: ReturnType<typeof jsonSchema>;
+  messages: ModelMessages;
+  objectCallSettings: ReturnType<typeof extractObjectCallSettings>;
+}): Promise<unknown> {
+  const objectResult = await generateText({
+    ...objectCallSettings,
+    model,
+    system,
+    messages,
+    output: Output.object({ schema }),
+  });
+
+  return objectResult.output as unknown;
+}
+
+/** Appends the repair re-query (issues + expected keys + prior JSON) as a user turn. */
+function appendRepairTurn(
+  messages: ModelMessages,
+  instruction: string,
+  previousObject: unknown,
+): ModelMessages {
+  return [
+    ...messages,
+    {
+      role: "user",
+      content: `${instruction}\n\nPrevious response:\n${JSON.stringify(
+        previousObject,
+      )}`,
+    },
+  ];
+}
+
+/** Conversation to re-send when repairing a direct (single-pass) structured call. */
+function deriveBaseMessages(options: {
+  prompt?: GenerateTextParams["prompt"];
+  messages?: GenerateTextParams["messages"];
+}): ModelMessages {
+  if (options.messages !== undefined) {
+    return options.messages as ModelMessages;
+  }
+
+  const content = flattenPrompt(options.prompt);
+  if (content !== undefined) {
+    return [{ role: "user", content }];
+  }
+
+  return [];
 }
 
 function buildStructuringMessages({
@@ -421,12 +534,19 @@ async function callGenerateText<
       experimental_telemetry,
       loopTools: _loopTools,
       maxStepTools: _maxStepTools,
+      normalizeStructuredKeys: _normalizeStructuredKeys,
+      structuredOutputRepair: _structuredOutputRepair,
       ...restWithoutContext
     } = rest as {
       experimental_context?: unknown;
       telemetry?: AgentTelemetryOverrides;
       experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
-    } & typeof rest & { loopTools?: unknown; maxStepTools?: unknown };
+    } & typeof rest & {
+      loopTools?: unknown;
+      maxStepTools?: unknown;
+      normalizeStructuredKeys?: unknown;
+      structuredOutputRepair?: unknown;
+    };
     const toolSet = toToolSet(tools);
     const payload = {
       ...restWithoutContext,
@@ -484,12 +604,19 @@ async function callGenerateText<
       experimental_telemetry,
       loopTools: _loopTools,
       maxStepTools: _maxStepTools,
+      normalizeStructuredKeys: _normalizeStructuredKeys,
+      structuredOutputRepair: _structuredOutputRepair,
       ...restWithoutContext
     } = rest as {
       experimental_context?: unknown;
       telemetry?: AgentTelemetryOverrides;
       experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
-    } & typeof rest & { loopTools?: unknown; maxStepTools?: unknown };
+    } & typeof rest & {
+      loopTools?: unknown;
+      maxStepTools?: unknown;
+      normalizeStructuredKeys?: unknown;
+      structuredOutputRepair?: unknown;
+    };
     const toolSet = toToolSet(tools);
     const payload = {
       ...restWithoutContext,
@@ -569,12 +696,17 @@ async function callGenerateTextDirect<
       experimental_context,
       telemetry: telemetryOverrides,
       experimental_telemetry,
+      normalizeStructuredKeys: _normalizeStructuredKeys,
+      structuredOutputRepair: _structuredOutputRepair,
       ...restWithoutContext
     } = rest as {
       experimental_context?: unknown;
       telemetry?: AgentTelemetryOverrides;
       experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
-    } & typeof rest;
+    } & typeof rest & {
+      normalizeStructuredKeys?: unknown;
+      structuredOutputRepair?: unknown;
+    };
 
     const payload = {
       ...restWithoutContext,
@@ -627,12 +759,17 @@ async function callGenerateTextDirect<
       experimental_context,
       telemetry: telemetryOverrides,
       experimental_telemetry,
+      normalizeStructuredKeys: _normalizeStructuredKeys,
+      structuredOutputRepair: _structuredOutputRepair,
       ...restWithoutContext
     } = rest as {
       experimental_context?: unknown;
       telemetry?: AgentTelemetryOverrides;
       experimental_telemetry?: GenerateTextParams["experimental_telemetry"];
-    } & typeof rest;
+    } & typeof rest & {
+      normalizeStructuredKeys?: unknown;
+      structuredOutputRepair?: unknown;
+    };
 
     const payload = {
       ...restWithoutContext,
@@ -713,12 +850,19 @@ function callStreamText<
       experimental_telemetry,
       loopTools: _loopTools,
       maxStepTools: _maxStepTools,
+      normalizeStructuredKeys: _normalizeStructuredKeys,
+      structuredOutputRepair: _structuredOutputRepair,
       ...restWithoutContext
     } = rest as {
       experimental_context?: unknown;
       telemetry?: AgentTelemetryOverrides;
       experimental_telemetry?: StreamTextParams["experimental_telemetry"];
-    } & typeof rest & { loopTools?: unknown; maxStepTools?: unknown };
+    } & typeof rest & {
+      loopTools?: unknown;
+      maxStepTools?: unknown;
+      normalizeStructuredKeys?: unknown;
+      structuredOutputRepair?: unknown;
+    };
     const toolSet = toToolSet(tools);
     const payload = {
       ...restWithoutContext,
@@ -775,12 +919,19 @@ function callStreamText<
       experimental_telemetry,
       loopTools: _loopTools,
       maxStepTools: _maxStepTools,
+      normalizeStructuredKeys: _normalizeStructuredKeys,
+      structuredOutputRepair: _structuredOutputRepair,
       ...restWithoutContext
     } = rest as {
       experimental_context?: unknown;
       telemetry?: AgentTelemetryOverrides;
       experimental_telemetry?: StreamTextParams["experimental_telemetry"];
-    } & typeof rest & { loopTools?: unknown; maxStepTools?: unknown };
+    } & typeof rest & {
+      loopTools?: unknown;
+      maxStepTools?: unknown;
+      normalizeStructuredKeys?: unknown;
+      structuredOutputRepair?: unknown;
+    };
     const toolSet = toToolSet(tools);
     const payload = {
       ...restWithoutContext,
