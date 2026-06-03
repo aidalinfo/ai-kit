@@ -11,7 +11,7 @@ import {
 
 import { RuntimeStore, type RuntimeState } from "../runtime/store.js";
 import { applyDefaultStopWhen } from "./toolDefaults.js";
-import { mergeTelemetryConfig } from "./telemetry.js";
+import { combineTelemetryOverrides, mergeTelemetryConfig } from "./telemetry.js";
 
 import {
   toToolSet,
@@ -43,6 +43,8 @@ interface StructuredGeneratePipelineParams<
   structuredOutput: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
   options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
   telemetryEnabled: boolean;
+  telemetryDefaults?: AgentTelemetryOverrides;
+  agentName?: string;
   loopToolsEnabled: boolean;
 }
 
@@ -57,6 +59,8 @@ interface StructuredStreamPipelineParams<
   structuredOutput: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
   options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
   telemetryEnabled: boolean;
+  telemetryDefaults?: AgentTelemetryOverrides;
+  agentName?: string;
   loopToolsEnabled: boolean;
 }
 
@@ -70,6 +74,8 @@ interface StructuredDirectGenerateParams<
   structuredOutput: StructuredOutput<OUTPUT, PARTIAL_OUTPUT>;
   options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
   telemetryEnabled: boolean;
+  telemetryDefaults?: AgentTelemetryOverrides;
+  agentName?: string;
 }
 
 export function shouldUseStructuredPipeline<OUTPUT, PARTIAL_OUTPUT>(
@@ -103,6 +109,8 @@ export async function generateWithStructuredPipeline<
     structuredOutput,
     options,
     telemetryEnabled,
+    telemetryDefaults,
+    agentName,
     loopToolsEnabled,
   } = params;
 
@@ -115,6 +123,8 @@ export async function generateWithStructuredPipeline<
       tools,
       options,
       telemetryEnabled,
+      telemetryDefaults,
+      agentName,
       loopToolsEnabled,
     });
 
@@ -149,7 +159,15 @@ export async function generateWithDirectStructuredObject<
 >(
   params: StructuredDirectGenerateParams<OUTPUT, PARTIAL_OUTPUT, STATE>,
 ) {
-  const { model, system, structuredOutput, options, telemetryEnabled } = params;
+  const {
+    model,
+    system,
+    structuredOutput,
+    options,
+    telemetryEnabled,
+    telemetryDefaults,
+    agentName,
+  } = params;
 
   const schema = jsonSchema(
     await getJsonSchemaFromStructuredOutput(structuredOutput),
@@ -160,6 +178,8 @@ export async function generateWithDirectStructuredObject<
     system,
     options,
     telemetryEnabled,
+    telemetryDefaults,
+    agentName,
     schema,
   });
 
@@ -182,6 +202,8 @@ export async function streamWithStructuredPipeline<
     structuredOutput,
     options,
     telemetryEnabled,
+    telemetryDefaults,
+    agentName,
     loopToolsEnabled,
   } = params;
 
@@ -194,6 +216,8 @@ export async function streamWithStructuredPipeline<
     tools,
     options,
     telemetryEnabled,
+    telemetryDefaults,
+    agentName,
     loopToolsEnabled,
   });
 
@@ -365,6 +389,8 @@ async function callGenerateText<
   tools,
   options,
   telemetryEnabled,
+  telemetryDefaults,
+  agentName,
   loopToolsEnabled,
 }: {
   model: LanguageModel;
@@ -372,6 +398,8 @@ async function callGenerateText<
   tools?: AgentTools;
   options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
   telemetryEnabled: boolean;
+  telemetryDefaults?: AgentTelemetryOverrides;
+  agentName?: string;
   loopToolsEnabled: boolean;
 }): Promise<GenerateTextResult<ToolSet, any>> {
   if ("prompt" in options && options.prompt !== undefined) {
@@ -425,8 +453,9 @@ async function callGenerateText<
 
     const mergedTelemetry = mergeTelemetryConfig({
       agentTelemetryEnabled: telemetryEnabled,
-      overrides: telemetryOverrides,
+      overrides: combineTelemetryOverrides(telemetryDefaults, telemetryOverrides),
       existing: experimental_telemetry,
+      agentName,
     });
 
     if (mergedTelemetry !== undefined) {
@@ -487,8 +516,9 @@ async function callGenerateText<
 
     const mergedTelemetry = mergeTelemetryConfig({
       agentTelemetryEnabled: telemetryEnabled,
-      overrides: telemetryOverrides,
+      overrides: combineTelemetryOverrides(telemetryDefaults, telemetryOverrides),
       existing: experimental_telemetry,
+      agentName,
     });
 
     if (mergedTelemetry !== undefined) {
@@ -510,12 +540,16 @@ async function callGenerateTextDirect<
   system,
   options,
   telemetryEnabled,
+  telemetryDefaults,
+  agentName,
   schema,
 }: {
   model: LanguageModel;
   system?: string;
   options: AgentGenerateOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
   telemetryEnabled: boolean;
+  telemetryDefaults?: AgentTelemetryOverrides;
+  agentName?: string;
   schema: ReturnType<typeof jsonSchema>;
 }): Promise<GenerateTextResult<ToolSet, any>> {
   if ("prompt" in options && options.prompt !== undefined) {
@@ -564,8 +598,9 @@ async function callGenerateTextDirect<
 
     const mergedTelemetry = mergeTelemetryConfig({
       agentTelemetryEnabled: telemetryEnabled,
-      overrides: telemetryOverrides,
+      overrides: combineTelemetryOverrides(telemetryDefaults, telemetryOverrides),
       existing: experimental_telemetry,
+      agentName,
     });
 
     if (mergedTelemetry !== undefined) {
@@ -621,8 +656,9 @@ async function callGenerateTextDirect<
 
     const mergedTelemetry = mergeTelemetryConfig({
       agentTelemetryEnabled: telemetryEnabled,
-      overrides: telemetryOverrides,
+      overrides: combineTelemetryOverrides(telemetryDefaults, telemetryOverrides),
       existing: experimental_telemetry,
+      agentName,
     });
 
     if (mergedTelemetry !== undefined) {
@@ -645,6 +681,8 @@ function callStreamText<
   tools,
   options,
   telemetryEnabled,
+  telemetryDefaults,
+  agentName,
   loopToolsEnabled,
 }: {
   model: LanguageModel;
@@ -652,6 +690,8 @@ function callStreamText<
   tools?: AgentTools;
   options: AgentStreamOptions<OUTPUT, PARTIAL_OUTPUT, STATE>;
   telemetryEnabled: boolean;
+  telemetryDefaults?: AgentTelemetryOverrides;
+  agentName?: string;
   loopToolsEnabled: boolean;
 }): StreamTextResult<ToolSet, any> {
   if ("prompt" in options && options.prompt !== undefined) {
@@ -704,8 +744,9 @@ function callStreamText<
 
     const mergedTelemetry = mergeTelemetryConfig({
       agentTelemetryEnabled: telemetryEnabled,
-      overrides: telemetryOverrides,
+      overrides: combineTelemetryOverrides(telemetryDefaults, telemetryOverrides),
       existing: experimental_telemetry,
+      agentName,
     });
 
     if (mergedTelemetry !== undefined) {
@@ -766,8 +807,9 @@ function callStreamText<
 
     const mergedTelemetry = mergeTelemetryConfig({
       agentTelemetryEnabled: telemetryEnabled,
-      overrides: telemetryOverrides,
+      overrides: combineTelemetryOverrides(telemetryDefaults, telemetryOverrides),
       existing: experimental_telemetry,
+      agentName,
     });
 
     if (mergedTelemetry !== undefined) {
