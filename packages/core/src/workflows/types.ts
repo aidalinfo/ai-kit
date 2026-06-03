@@ -44,6 +44,7 @@ export interface WorkflowTelemetryOverrides {
   recordInputs?: boolean;
   recordOutputs?: boolean;
   userId?: string;
+  tags?: string[];
 }
 
 export type WorkflowTelemetryOption =

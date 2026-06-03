@@ -164,3 +164,15 @@ describe("WorkflowKit — adapter injecté", () => {
     ).not.toThrow();
   });
 });
+
+describe("WorkflowKit — télémétrie world (tags compile-check)", () => {
+  it("WorkflowRunDispatchOptions accepte telemetry avec tags (type-check uniquement)", () => {
+    // Ce test ne fait que vérifier que le type compile — il n'a pas de logique runtime.
+    // Si les types ne sont pas définis, tsc et vitest échouent à l'import.
+    const _options: import("./types.js").WorkflowRunDispatchOptions = {
+      engine: "world",
+      telemetry: { traceName: "t", tags: ["a", "b"], userId: "u" },
+    };
+    expect(true).toBe(true);
+  });
+});
