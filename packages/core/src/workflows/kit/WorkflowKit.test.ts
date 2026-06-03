@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkflowKit, __setWorkflowWorldLoader } from "./WorkflowKit.js";
 
 afterEach(() => __setWorkflowWorldLoader());
@@ -162,6 +162,73 @@ describe("WorkflowKit — adapter injecté", () => {
       // @ts-expect-error type de world volontairement invalide
       () => new WorkflowKit({ engine: "world", world: { type: "redis", url: "x" }, adapter }),
     ).not.toThrow();
+  });
+});
+
+import {
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
+import { trace } from "@opentelemetry/api";
+
+describe("startWorldRootSpan", () => {
+  let provider: BasicTracerProvider;
+  let exporter: InMemorySpanExporter;
+
+  beforeEach(() => {
+    exporter = new InMemorySpanExporter();
+    provider = new BasicTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    });
+    trace.setGlobalTracerProvider(provider);
+  });
+
+  afterEach(async () => {
+    await provider.shutdown();
+    exporter.reset();
+    trace.disable();
+  });
+
+  it("crée un span nommé traceName avec les attributs Langfuse", async () => {
+    const { startWorldRootSpan } = await import("./worldTelemetry.js");
+
+    const { span } = startWorldRootSpan(
+      {
+        traceName: "form-builder",
+        metadata: { documentType: "bilan" },
+        userId: "user-42",
+        tags: ["env:prod"],
+        recordInputs: true,
+        recordOutputs: true,
+      },
+      [{ id: 1 }],
+    );
+    span.end();
+
+    const spans = exporter.getFinishedSpans();
+    expect(spans).toHaveLength(1);
+    const s = spans[0]!;
+    expect(s.name).toBe("form-builder");
+    expect(s.attributes["name"]).toBe("form-builder");
+    expect(s.attributes["langfuse.user.id"]).toBe("user-42");
+    expect(s.attributes["user.id"]).toBe("user-42");
+    expect(s.attributes["langfuse.trace.tags"]).toBe('["env:prod"]');
+    expect(s.attributes["metadata"]).toContain("bilan");
+    expect(s.attributes["input"]).toBeDefined();
+  });
+
+  it("ne pose pas input si recordInputs=false", async () => {
+    const { startWorldRootSpan } = await import("./worldTelemetry.js");
+
+    const { span } = startWorldRootSpan(
+      { traceName: "t", recordInputs: false, recordOutputs: true },
+      ["secret"],
+    );
+    span.end();
+
+    const s = exporter.getFinishedSpans()[0]!;
+    expect(s.attributes["input"]).toBeUndefined();
   });
 });
 
