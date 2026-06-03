@@ -1,0 +1,147 @@
+---
+title: "Transcription temps réel"
+description: "Transcription full-duplex en temps réel via WebSocket, compatible Mistral (Voxtral), avec createRealtimeTranscription et mistralRealtimeTranscription."
+locale: fr
+---
+
+`@ai_kit/core` inclut une transcription **temps réel full-duplex** : vous poussez des chunks audio au fil de l'eau (micro, flux live) sur une connexion WebSocket et recevez les deltas de transcription à mesure qu'ils arrivent. C'est compatible avec [l'API realtime de Mistral](https://docs.mistral.ai/studio-api/audio/speech_to_text/realtime_transcription) (modèle Voxtral).
+
+<Note>
+À ne pas confondre avec `createTranscriptionStreamingModel` (voir [Transcription audio](/fr/agents/transcription)), qui streame la **sortie** d'un fichier **complet** déjà envoyé. Ici, c'est l'**entrée** qui est poussée en continu — idéal pour un micro.
+</Note>
+
+## Pourquoi un client WebSocket natif ?
+
+Le SDK Vercel AI (`ai`) ne propose **aucune** primitive de transcription temps réel : `experimental_transcribe` / `transcribe` et l'interface `TranscriptionModelV3` sont **batch uniquement**. `@ai_kit/core` fournit donc un petit client WebSocket direct — **sans dépendance runtime supplémentaire** (le `WebSocket` global de Node ≥ 22 envoie l'en-tête `Authorization: Bearer` via undici).
+
+## Deux primitives publiques
+
+| Export | Rôle |
+|---|---|
+| `createRealtimeTranscription(config)` | Factory générique, config-driven (compatible Mistral par défaut, réutilisable pour tout endpoint WebSocket compatible) |
+| `mistralRealtimeTranscription(opts?)` | Raccourci Mistral-first : applique le modèle, la base URL et le fallback `MISTRAL_API_KEY` |
+
+## Format audio
+
+Mistral attend du **PCM brut `pcm_s16le`, 16 000 Hz, mono**. Aucune conversion n'est embarquée. Pour convertir un fichier avec `ffmpeg` :
+
+```bash
+ffmpeg -i entree.mp3 -f s16le -ar 16000 -ac 1 sortie.pcm
+```
+
+Une capture micro est en général déjà du PCM 16-bit mono — aucune conversion nécessaire.
+
+## Démarrage rapide — `transcribeStream` (haut niveau)
+
+Idéal pour transcrire un fichier ou un flux que vous pouvez itérer. Vous passez un `AsyncIterable<Uint8Array>` de PCM et recevez les événements jusqu'à `done`.
+
+```ts
+import { mistralRealtimeTranscription } from "@ai_kit/core";
+import { readFile } from "node:fs/promises";
+
+const rt = mistralRealtimeTranscription({ apiKey: process.env.MISTRAL_API_KEY! });
+
+// PCM s16le / 16 kHz / mono — par ex. produit par ffmpeg
+const pcm = new Uint8Array(await readFile("audio.pcm"));
+
+async function* chunks() {
+  const size = 4096;
+  for (let i = 0; i < pcm.length; i += size) {
+    yield pcm.subarray(i, i + size);
+  }
+}
+
+let full = "";
+for await (const ev of rt.transcribeStream(chunks())) {
+  if (ev.type === "delta") {
+    full += ev.textDelta;
+    process.stdout.write(ev.textDelta);
+  } else if (ev.type === "done") {
+    console.log("\nTerminé :", ev.text);
+  }
+}
+```
+
+`transcribeStream` ouvre la connexion, pompe l'audio en tâche de fond (puis envoie `flush` + `end`), et s'arrête automatiquement après l'événement `done` ou `error`.
+
+## Micro / source poussée — `connect` (bas niveau)
+
+Quand l'audio arrive via des callbacks (micro, WebSocket entrant), ouvrez une session et poussez les chunks vous-même.
+
+```ts
+import { mistralRealtimeTranscription } from "@ai_kit/core";
+
+const rt = mistralRealtimeTranscription();
+const session = await rt.connect({ targetStreamingDelayMs: 1000 });
+
+// Lire les événements en parallèle
+(async () => {
+  for await (const ev of session) {
+    if (ev.type === "delta") process.stdout.write(ev.textDelta);
+    if (ev.type === "done") console.log("\n→", ev.text);
+    if (ev.type === "error") console.error("Erreur :", ev.error);
+  }
+})();
+
+// Pousser l'audio à mesure qu'il arrive
+micro.on("data", (pcm: Uint8Array) => session.sendAudio(pcm)); // découpé auto > 256 Ko
+micro.on("end", async () => {
+  await session.flush();
+  await session.end();
+  await session.close();
+});
+```
+
+### Méthodes de session
+
+| Méthode | Rôle |
+|---|---|
+| `sendAudio(chunk)` | Encode en base64 et envoie le PCM (découpe automatiquement les chunks > 262144 octets) |
+| `flush()` | Demande au provider de vider son buffer et d'émettre la transcription en attente |
+| `end()` | Signale la fin du flux audio |
+| `close(code?, reason?)` | Ferme le WebSocket et termine le flux d'événements |
+| `events()` | Itérateur async sur les événements normalisés (équivalent à `for await ... of session`) |
+
+## Événements normalisés
+
+```ts
+type RealtimeTranscriptionEvent =
+  | { type: "session.created"; session: { requestId; model; audioFormat } }
+  | { type: "session.updated"; session: { requestId; model; audioFormat } }
+  | { type: "delta"; textDelta: string }
+  | { type: "segment"; text: string; startSecond?: number; endSecond?: number }
+  | { type: "language"; language: string }
+  | { type: "done"; text: string; usage?: { promptTokens?; completionTokens? } }
+  | { type: "error"; error: string }
+  | { type: "unknown"; raw: unknown };
+```
+
+Les types d'événements inconnus sont remontés en `{ type: "unknown", raw }` (jamais d'exception) pour la compatibilité ascendante.
+
+## Configuration
+
+```ts
+import { createRealtimeTranscription } from "@ai_kit/core";
+
+const rt = createRealtimeTranscription({
+  modelId: "voxtral-mini-transcribe-realtime-2602",
+  apiKey: process.env.MISTRAL_API_KEY!,
+  baseURL: "https://api.mistral.ai/v1", // défaut ; http/https → ws/wss
+  providerName: "mistral",              // défaut
+});
+```
+
+### Options de connexion
+
+| Option | Rôle |
+|---|---|
+| `audioFormat` | `{ encoding, sampleRate }` envoyé via `session.update` avant l'audio |
+| `targetStreamingDelayMs` | Réglage latence/précision (ex. `240` pour la réactivité, `2400` pour la précision) |
+| `timeoutMs` | Timeout du handshake (défaut `30000`) |
+| `signal` | `AbortSignal` pour interrompre la connexion |
+| `headers` | En-têtes additionnels sur la requête d'upgrade |
+
+## Gestion des erreurs
+
+- Échec de connexion, timeout de handshake ou abort → lève une `RealtimeTranscriptionError`.
+- Un événement serveur `error` est remonté en `{ type: "error", error }` ; `transcribeStream` s'arrête après l'avoir émis (en bas niveau, c'est l'appelant qui décide).

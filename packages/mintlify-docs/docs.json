@@ -71,7 +71,8 @@
                   "fr/agents/streaming",
                   "fr/agents/runtime",
                   "fr/agents/memory",
-                  "fr/agents/transcription"
+                  "fr/agents/transcription",
+                  "fr/agents/realtime-transcription"
                 ]
               },
               {
@@ -172,7 +173,8 @@
                   "en/agents/streaming",
                   "en/agents/runtime",
                   "en/agents/memory",
-                  "en/agents/transcription"
+                  "en/agents/transcription",
+                  "en/agents/realtime-transcription"
                 ]
               },
               {
