@@ -21,6 +21,7 @@ const baseScaleway = createOpenAICompatible({
   apiKey: process.env.SCALEWAY_API_KEY!,
   baseURL: "https://api.scaleway.ai/v1",
   name: "scaleway",
+  supportsStructuredOutputs: true,
 });
 
 type BaseScalewayProvider = typeof baseScaleway;
