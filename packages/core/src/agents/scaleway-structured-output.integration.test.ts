@@ -52,4 +52,23 @@ describe.skipIf(!apiKey)("Scaleway structured output (intégration)", () => {
     },
     60_000,
   );
+
+  it(
+    "accepte reasoningEffort low avec qwen3.5",
+    async () => {
+      const result = await generateText({
+        model: scaleway("qwen3.5-397b-a17b"),
+        prompt: "Answer in one short sentence: what is 2 + 2?",
+        maxOutputTokens: 512,
+        providerOptions: {
+          scaleway: {
+            reasoningEffort: "low",
+          },
+        },
+      });
+
+      expect(result.text).toContain("4");
+    },
+    60_000,
+  );
 });

@@ -5,6 +5,7 @@ const scalewayModelIds = [
   "mistral-small-3.2-24b-instruct-2506",
   "voxtral-small-24b-2507",
   "gpt-oss-120b",
+  "qwen3.5-397b-a17b",
   "devstral-small-2505",
   "llama-3.3-70b-instruct",
   "llama-3.1-8b-instruct",

@@ -47,6 +47,7 @@ console.log(result.text);
 | `llama-3.1-8b-instruct` | Compact Llama 3.1 | 8B |
 | `mistral-small-3.2-24b-instruct-2506` | Latest Mistral Small | 24B |
 | `mistral-nemo-instruct-2407` | Mistral Nemo optimised | 12B |
+| `qwen3.5-397b-a17b` | Large Qwen 3.5 | 397B |
 | `qwen3-235b-a22b-instruct-2507` | Large Qwen 3 | 235B |
 | `qwen3-coder-30b-a3b-instruct` | Qwen 3 code-specialised | 30B |
 | `deepseek-r1-distill-llama-70b` | Distilled DeepSeek R1 | 70B |
@@ -143,12 +144,42 @@ for await (const chunk of stream.textStream) {
 }
 ```
 
+### Reasoning effort
+
+Scaleway reasoning models expose the OpenAI-compatible `reasoning_effort` parameter. With AI Kit, pass it through `providerOptions.scaleway.reasoningEffort`.
+
+```ts
+const assistant = new Agent({
+  name: "reasoning-assistant",
+  instructions: "You answer concisely.",
+  model: scaleway("qwen3.5-397b-a17b"),
+});
+
+const result = await assistant.generate({
+  prompt: "Solve this calculation and return only the result: 13 * 17 - 58 + 4 * 23",
+  maxOutputTokens: 512,
+  providerOptions: {
+    scaleway: {
+      reasoningEffort: "none",
+    },
+  },
+});
+
+console.log(result.text);
+```
+
+Scaleway accepts these values: `"none"`, `"low"`, `"medium"`, `"high"`.
+
+<Tip>
+Use `reasoningEffort`, not `reasoningLevel`. The AI SDK maps `reasoningEffort` to the HTTP `reasoning_effort` field for OpenAI-compatible providers.
+</Tip>
+
 ## Model selection tips
 
 - Code generation: `qwen3-coder-30b-a3b-instruct`, `devstral-small-2505`.
 - General-purpose tasks: `gpt-oss-120b`, `llama-3.3-70b-instruct`.
 - Lightweight workloads: `llama-3.1-8b-instruct`, `mistral-nemo-instruct-2407`.
-- Reasoning-heavy tasks: `deepseek-r1-distill-llama-70b`, `qwen3-235b-a22b-instruct-2507`.
+- Reasoning-heavy tasks: `qwen3.5-397b-a17b`, `deepseek-r1-distill-llama-70b`, `qwen3-235b-a22b-instruct-2507`.
 - Multimodal scenarios: `pixtral-12b-2409`.
 
 ## Best practices
