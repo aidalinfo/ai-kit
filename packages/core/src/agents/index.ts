@@ -48,7 +48,12 @@ import {
   type StructuredOutputResilienceOptions,
 } from "./structuredOutputResilience.js";
 
-const Output = BaseOutput as typeof BaseOutput & {
+// `Omit` the original `object` signature before intersecting: a plain
+// intersection keeps the AI SDK overload first, so overload resolution returns
+// the raw `Output<...>` type and OUTPUT inference collapses to `never`.
+// Replacing it makes `Output.object()` return the public `StructuredOutput`
+// type and lets `generate`/`stream` infer OUTPUT from the schema.
+const Output = BaseOutput as unknown as Omit<typeof BaseOutput, "object"> & {
   object: <SCHEMA extends FlexibleSchema<unknown>>(options: {
     schema: SCHEMA;
   }) => AgentStructuredOutput<SCHEMA>;
