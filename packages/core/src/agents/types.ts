@@ -41,11 +41,14 @@ export type WithMessages<T> = Extract<T, { messages: unknown }>;
 export type StructuredOutput<OUTPUT, PARTIAL_OUTPUT> = {
   type?: string;
   name?: string;
-  responseFormat?: {
-    schema?: unknown;
-  } | Promise<{ schema?: unknown }>;
+  // Accept the AI SDK `Output` shape: `responseFormat` is a `PromiseLike`
+  // (not a full `Promise`) that may resolve to a variant without `schema`
+  // (e.g. `{ type: "text" }`) or to `undefined`. Keeping this loose lets a
+  // concrete `Output<T>` stay assignable under strict TypeScript.
+  responseFormat?:
+    | { schema?: unknown }
+    | PromiseLike<unknown>;
   parseOutput?: (...args: any[]) => Promise<OUTPUT> | OUTPUT;
-  [key: string]: unknown;
 };
 
 export type AgentStructuredOutput<SchemaOrOutput> =
@@ -107,7 +110,11 @@ export type AgentStreamOptions<
     STATE
   >;
 
-type ProviderToolSet = Record<string, Tool<unknown, unknown>>;
+// `Tool<any, any>` (not `Tool<unknown, unknown>`) so that concrete tools such
+// as `Tool<{}, any>` — produced by provider tool builders — remain assignable
+// under strict TypeScript. `unknown` in the input position makes the generic
+// invariant and rejects otherwise-valid tools.
+type ProviderToolSet = Record<string, Tool<any, any>>;
 
 export type AgentTools = ToolSet | ProviderToolSet | undefined;
 
