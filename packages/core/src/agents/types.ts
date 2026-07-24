@@ -4,7 +4,6 @@ import {
   streamText,
   type GenerateTextResult,
   type StreamTextResult,
-  type Tool,
   type ToolSet,
   type DeepPartial,
 } from "ai";
@@ -110,11 +109,16 @@ export type AgentStreamOptions<
     STATE
   >;
 
-// `Tool<any, any>` (not `Tool<unknown, unknown>`) so that concrete tools such
-// as `Tool<{}, any>` — produced by provider tool builders — remain assignable
-// under strict TypeScript. `unknown` in the input position makes the generic
-// invariant and rejects otherwise-valid tools.
-type ProviderToolSet = Record<string, Tool<any, any>>;
+// Version-agnostic tool record. `Tool` is version- and copy-specific: a tool
+// built by a consumer's own `ai` install (or a different major, e.g. v7) has a
+// structurally distinct `inputSchema: FlexibleSchema<...>`, so binding to
+// ai-kit's bundled `Tool<any, any>` rejects it (TS then reports against the
+// `Tool<never, never>` arm of `ToolSet` → the misleading `FlexibleSchema<never>`
+// error). Accepting any object-valued record keeps provider-defined and
+// cross-version tools assignable; the AI SDK still validates tool shape at
+// runtime (tools are cast to `ToolSet` in `toToolSet`). `ToolSet` is kept as
+// the first union member so inline `tool()` authoring keeps full autocomplete.
+type ProviderToolSet = Record<string, object>;
 
 export type AgentTools = ToolSet | ProviderToolSet | undefined;
 
