@@ -1,0 +1,43 @@
+version: 2
+
+updates:
+  # Dépendances npm du monorepo pnpm (racine + tous les packages du workspace).
+  # Les alertes de sécurité seules ne rafraîchissent jamais le lockfile : sans
+  # ces PR de version, les dépendances transitives dérivent jusqu'à accumuler
+  # des dizaines d'advisories corrigeables par un simple `pnpm update`.
+  - package-ecosystem: npm
+    directories:
+      - "/"
+      - "/packages/*"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    versioning-strategy: increase-if-necessary
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore(deps)
+      prefix-development: chore(deps-dev)
+    groups:
+      # Un lot unique pour les patchs/mineures : c'est ce qui referme la
+      # quasi-totalité des alertes transitives sans revue individuelle.
+      minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+      # Les majeures restent en PR séparées, elles demandent une vraie revue.
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore(ci)

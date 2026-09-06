@@ -14,3 +14,13 @@ onlyBuiltDependencies:
   - esbuild
   - protobufjs
   - sqlite3
+
+# Résolutions forcées : dépendances transitives épinglées en version exacte
+# par leur parent, donc hors de portée d'un `pnpm update`.
+#   - mem0ai>uuid : ancienne résolution, conservée depuis package.json
+#   - undici / nanoid : advisories GHSA ouvertes, versions figées par `workflow`
+overrides:
+  mem0ai>uuid: ^11.1.1
+  '@workflow/world-local>undici': ^7.29.0
+  '@workflow/world-vercel>undici': ^7.29.0
+  '@workflow/core>nanoid': ^5.1.16
