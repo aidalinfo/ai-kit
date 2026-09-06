@@ -46,7 +46,7 @@ importers:
         version: 4.0.23(zod@4.1.12)
       '@ai_kit/workflow-world':
         specifier: '>=0.1.0 <1'
-        version: link:../workflow-world
+        version: 0.2.0(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.24(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@opentelemetry/api@1.9.0)(@swc/cli@0.8.1(@swc/core@1.15.3)(chokidar@5.0.0))(@swc/core@1.15.3)(@workflow-worlds/mongodb@0.2.1(socks@2.8.7))(@workflow/world-postgres@4.1.4(@cloudflare/workers-types@4.20251118.0)(@opentelemetry/api@1.9.0)(@types/pg@8.15.6)(better-sqlite3@12.10.0)(typescript@5.9.3))(typescript@5.9.3)
       '@langfuse/otel':
         specifier: ^5.4.1
         version: 5.4.1(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.207.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))
@@ -57,8 +57,8 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(@opentelemetry/api@1.9.0)
       '@toon-format/toon':
-        specifier: ^0.9.0
-        version: 0.9.0
+        specifier: ^2.3.1
+        version: 2.3.1
       '@types/node':
         specifier: ^24.5.2
         version: 24.7.0
@@ -286,6 +286,17 @@ packages:
   '@ai-sdk/provider@3.0.8':
     resolution: {integrity: sha512-oGMAgGoQdBXbZqNG0Ze56CHjDZ1IDYOwGYxYjO5KLSlz5HiNQ9udIXsPZ61VWaHGZ5XW/jyjmr6t2xz2jGVwbQ==}
     engines: {node: '>=18'}
+
+  '@ai_kit/workflow-world@0.2.0':
+    resolution: {integrity: sha512-y+MxZKy8vwnBAhtGGpq8IW0aVyWuFRuE6T5SArrs+61mya9X145zdurG/JxpP74vK0wvkJAMY8mjuMYQ2yyG1A==}
+    peerDependencies:
+      '@workflow-worlds/mongodb': '>=0.2.1 <1'
+      '@workflow/world-postgres': '>=4.1.4 <5'
+    peerDependenciesMeta:
+      '@workflow-worlds/mongodb':
+        optional: true
+      '@workflow/world-postgres':
+        optional: true
 
   '@anthropic-ai/sdk@0.40.1':
     resolution: {integrity: sha512-DJMWm8lTEM9Lk/MSFL+V+ugF7jKOn0M2Ujvb5fN8r2nY14aHbGPZ1k6sgjL+tpJ3VuOGJNG+4R83jEpOuYPv8w==}
@@ -1464,8 +1475,8 @@ packages:
   '@tokenizer/token@0.3.0':
     resolution: {integrity: sha512-OvjF+z51L3ov0OyAU0duzsYuvO01PH7x4t6DJx+guahgTnBHkhJdG7soQeTSFLWN3efnHyibZ4Z8l2EuWwJN3A==}
 
-  '@toon-format/toon@0.9.0':
-    resolution: {integrity: sha512-BaMhGh1+/z8ceDrF2xL9Drd42hijbUJlivm/1goPR26RgCYsqlMkHbg48hx9a5UjZC7oZqxWPJ6ju5qvALi6Ag==}
+  '@toon-format/toon@2.3.1':
+    resolution: {integrity: sha512-sWqEMeAJGMda9qRrfPKrX3C4c33CO9SJuvJzzrcBEn5sbDB+k6pSLkDsfN0rVnLQwR97MV3sDgVbcxQNsq8xVw==}
 
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
@@ -4664,6 +4675,24 @@ snapshots:
     dependencies:
       json-schema: 0.4.0
 
+  '@ai_kit/workflow-world@0.2.0(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.24(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@opentelemetry/api@1.9.0)(@swc/cli@0.8.1(@swc/core@1.15.3)(chokidar@5.0.0))(@swc/core@1.15.3)(@workflow-worlds/mongodb@0.2.1(socks@2.8.7))(@workflow/world-postgres@4.1.4(@cloudflare/workers-types@4.20251118.0)(@opentelemetry/api@1.9.0)(@types/pg@8.15.6)(better-sqlite3@12.10.0)(typescript@5.9.3))(typescript@5.9.3)':
+    dependencies:
+      workflow: 4.3.1(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.24(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@opentelemetry/api@1.9.0)(@swc/cli@0.8.1(@swc/core@1.15.3)(chokidar@5.0.0))(@swc/core@1.15.3)(typescript@5.9.3)
+    optionalDependencies:
+      '@workflow-worlds/mongodb': 0.2.1(socks@2.8.7)
+      '@workflow/world-postgres': 4.1.4(@cloudflare/workers-types@4.20251118.0)(@opentelemetry/api@1.9.0)(@types/pg@8.15.6)(better-sqlite3@12.10.0)(typescript@5.9.3)
+    transitivePeerDependencies:
+      - '@nestjs/common'
+      - '@nestjs/core'
+      - '@opentelemetry/api'
+      - '@swc/cli'
+      - '@swc/core'
+      - '@swc/helpers'
+      - magicast
+      - next
+      - supports-color
+      - typescript
+
   '@anthropic-ai/sdk@0.40.1(encoding@0.1.13)':
     dependencies:
       '@types/node': 18.19.130
@@ -5756,7 +5785,7 @@ snapshots:
 
   '@tokenizer/token@0.3.0': {}
 
-  '@toon-format/toon@0.9.0': {}
+  '@toon-format/toon@2.3.1': {}
 
   '@types/chai@5.2.3':
     dependencies:
