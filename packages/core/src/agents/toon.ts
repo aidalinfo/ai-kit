@@ -8,6 +8,13 @@ import type { StructuredOutput } from "./types.js";
 const DEFAULT_ARRAY_EXAMPLE_LENGTH = 2;
 const MAX_EXAMPLE_DEPTH = 6;
 
+/**
+ * Keys that must never be copied by plain assignment: `result["__proto__"] = x`
+ * rewires the prototype of the target object, so a model output containing such
+ * a key would poison every consumer of the decoded value (CVE-2026-82404 class).
+ */
+const UNSAFE_OBJECT_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 type SchemaDefinition =
   JSONSchema7["properties"] extends Record<string, infer Definition>
     ? Definition
@@ -381,6 +388,9 @@ function coerceBySchema(value: unknown, schema: JSONSchema7): unknown {
   ) {
     const result: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(value)) {
+      if (UNSAFE_OBJECT_KEYS.has(key)) {
+        continue;
+      }
       const propSchema = schema.properties[key];
       if (propSchema) {
         result[key] = coerceBySchema(
