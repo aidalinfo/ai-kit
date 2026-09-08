@@ -114,6 +114,23 @@ pnpm add -D nitro rollup
 
 If you select `engine: "world"` without `@ai_kit/workflow-world` installed, `WorkflowKit` throws a clear error telling you to install it.
 
+<Warning>
+  `workflow` is a **peer dependency** (`>=4.3.1 <5`) of `@ai_kit/workflow-world`, not one of its own dependencies — the host app owns the version.
+
+  `@workflow/core` keeps the step registry (`registerStep`/`getStepFunction`) and the injected world (`setWorld`) in **module scope**: it is a stateful singleton. Two copies in one process means `setWorld()` targets instance B while the steps compiled by your framework plugin (`workflow/nuxt`, `workflow/next`, …) register in instance A — you get `StepNotRegisteredError`, or `world is not initialized`, at runtime. Since `workflow` pins `@workflow/core` to an **exact** version, a single minor-version drift is enough to split the instance.
+
+  If you pin `workflow` in the host app (for example to work around a bug in one of the `@workflow/<framework>` adapters), pin it in `overrides` too so transitive resolution cannot drift away from it:
+
+  ```json
+  "pnpm": {
+    "overrides": {
+      "workflow": "4.4.0",
+      "@workflow/core": "4.4.0"
+    }
+  }
+  ```
+</Warning>
+
 ## Authoring world workflows
 
 A world workflow is a plain async function marked with the `"use workflow"` directive; the real work goes in `"use step"` functions. These directives are detected **at build time** by the `workflow/nitro` compiler.

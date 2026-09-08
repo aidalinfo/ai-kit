@@ -18,6 +18,32 @@ pnpm add @workflow-worlds/mongodb            # MongoDB (communautaire, expérime
 pnpm add -D nitro rollup
 ```
 
+`workflow` est une **peer dependency** (`>=4.3.1 <5`) : ce package ne l'embarque
+jamais, c'est l'app hôte qui choisit la version.
+
+Ce n'est pas cosmétique. `@workflow/core` garde le registre des steps
+(`registerStep`/`getStepFunction`) et le world injecté (`setWorld`) en portée
+module — c'est un singleton d'état. Si `@ai_kit/workflow-world` embarquait son
+propre `workflow`, `setWorld()` viserait une seconde instance de
+`@workflow/core` pendant que les steps compilés par l'hôte (`workflow/nuxt`,
+`workflow/next`, …) s'enregistreraient dans la première : `StepNotRegisteredError`
+au runtime, ou `world is not initialized`. Comme `workflow` épingle
+`@workflow/core` en version **exacte**, un simple écart de version mineure suffit
+à provoquer la scission.
+
+Corollaire pour l'app hôte : si tu épingles `workflow` (p. ex. pour contourner un
+bug d'un `@workflow/<framework>`), épingle-le aussi en `overrides` afin que la
+résolution transitive ne puisse pas dériver :
+
+```json
+"pnpm": {
+  "overrides": {
+    "workflow": "4.4.0",
+    "@workflow/core": "4.4.0"
+  }
+}
+```
+
 ## Provisioning du schéma (Postgres)
 
 Le world Postgres exige que son schéma soit créé **une fois** avant le premier run
