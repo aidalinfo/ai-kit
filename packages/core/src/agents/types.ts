@@ -4,7 +4,6 @@ import {
   streamText,
   type GenerateTextResult,
   type StreamTextResult,
-  type Tool,
   type ToolSet,
   type DeepPartial,
 } from "ai";
@@ -41,11 +40,14 @@ export type WithMessages<T> = Extract<T, { messages: unknown }>;
 export type StructuredOutput<OUTPUT, PARTIAL_OUTPUT> = {
   type?: string;
   name?: string;
-  responseFormat?: {
-    schema?: unknown;
-  } | Promise<{ schema?: unknown }>;
+  // Accept the AI SDK `Output` shape: `responseFormat` is a `PromiseLike`
+  // (not a full `Promise`) that may resolve to a variant without `schema`
+  // (e.g. `{ type: "text" }`) or to `undefined`. Keeping this loose lets a
+  // concrete `Output<T>` stay assignable under strict TypeScript.
+  responseFormat?:
+    | { schema?: unknown }
+    | PromiseLike<unknown>;
   parseOutput?: (...args: any[]) => Promise<OUTPUT> | OUTPUT;
-  [key: string]: unknown;
 };
 
 export type AgentStructuredOutput<SchemaOrOutput> =
@@ -107,7 +109,16 @@ export type AgentStreamOptions<
     STATE
   >;
 
-type ProviderToolSet = Record<string, Tool<unknown, unknown>>;
+// Version-agnostic tool record. `Tool` is version- and copy-specific: a tool
+// built by a consumer's own `ai` install (or a different major, e.g. v7) has a
+// structurally distinct `inputSchema: FlexibleSchema<...>`, so binding to
+// ai-kit's bundled `Tool<any, any>` rejects it (TS then reports against the
+// `Tool<never, never>` arm of `ToolSet` → the misleading `FlexibleSchema<never>`
+// error). Accepting any object-valued record keeps provider-defined and
+// cross-version tools assignable; the AI SDK still validates tool shape at
+// runtime (tools are cast to `ToolSet` in `toToolSet`). `ToolSet` is kept as
+// the first union member so inline `tool()` authoring keeps full autocomplete.
+type ProviderToolSet = Record<string, object>;
 
 export type AgentTools = ToolSet | ProviderToolSet | undefined;
 

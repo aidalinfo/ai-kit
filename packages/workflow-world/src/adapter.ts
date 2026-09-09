@@ -20,6 +20,22 @@ interface WorldModuleLoaders {
   runtime: () => Promise<{ setWorld: (world: SdkWorld | undefined) => void }>;
 }
 
+/**
+ * `workflow` est une PEER DEPENDENCY, jamais une dépendance de ce package.
+ *
+ * `@workflow/core` garde en portée module le registre des steps
+ * (`registerStep`/`getStepFunction`) et le world injecté (`setWorld`) : c'est un
+ * singleton d'état. Les deux imports ci-dessous se résolvent depuis l'arbre de
+ * CE package ; s'il embarquait son propre `workflow`, `setWorld()` viserait une
+ * seconde instance de `@workflow/core`, tandis que les steps compilés par
+ * l'hôte (`workflow/nuxt`, `workflow/next`, …) s'enregistreraient dans la
+ * première → `StepNotRegisteredError` au runtime.
+ *
+ * En peer, la résolution remonte à l'unique copie de l'app hôte. Et comme
+ * `workflow` épingle `@workflow/core` en version EXACTE, tout écart de version
+ * mineure suffirait à scinder l'instance : le range peer doit rester large et
+ * c'est à l'hôte de choisir la version.
+ */
 function defaultLoaders(): WorldModuleLoaders {
   return {
     postgres: () => import(WORLD_TARGETS.postgres) as Promise<any>,

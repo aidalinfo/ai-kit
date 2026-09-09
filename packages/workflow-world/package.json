@@ -1,6 +1,6 @@
 {
   "name": "@ai_kit/workflow-world",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Vercel Workflow SDK world engine adapter for AI Kit (self-hosted Postgres/MongoDB).",
   "type": "module",
   "main": "./dist/index.js",
@@ -25,10 +25,8 @@
   "license": "MIT",
   "packageManager": "pnpm@10.15.0",
   "publishConfig": { "access": "public" },
-  "dependencies": {
-    "workflow": "^4.3.1"
-  },
   "peerDependencies": {
+    "workflow": ">=4.3.1 <5",
     "@workflow/world-postgres": ">=4.1.4 <5",
     "@workflow-worlds/mongodb": ">=0.2.1 <1"
   },
@@ -37,6 +35,7 @@
     "@workflow-worlds/mongodb": { "optional": true }
   },
   "devDependencies": {
+    "workflow": "4.3.1",
     "@workflow/world-postgres": "^4.1.4",
     "@workflow-worlds/mongodb": "^0.2.1",
     "@types/node": "^24.7.0",
